@@ -122,7 +122,7 @@ defmodule Peri do
   @doc false
   defp traverse_schema(schema, data) do
     Enum.reduce(schema, [], fn {key, type}, errors ->
-      value = Map.get(data, key)
+      value = Map.get(data, key) || Map.get(data, to_string(key))
 
       case validate_field(value, type) do
         :ok -> errors
