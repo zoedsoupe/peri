@@ -335,4 +335,67 @@ defmodule PeriTest do
       assert string_score_map(data) == {:ok, data}
     end
   end
+
+  defschema(:user, %{
+    name: :string,
+    age: :integer,
+    email: {:required, :string}
+  })
+
+  defschema(:profile, %{
+    user: {:custom, &user/1},
+    bio: :string
+  })
+
+  describe "unknown keys" do
+    test "drops unknown keys and validates correct data" do
+      data = %{name: "John", age: 30, email: "john@example.com", extra_key: "value"}
+      expected_data = %{name: "John", age: 30, email: "john@example.com"}
+      assert user(data) == {:ok, expected_data}
+    end
+
+    test "drops unknown keys and handles missing required field" do
+      data = %{name: "John", age: 30, extra_key: "value"}
+      assert user(data) == {:error, email: "is required"}
+    end
+
+    test "drops multiple unknown keys and validates correct data" do
+      data = %{
+        name: "Jane",
+        age: 25,
+        email: "jane@example.com",
+        extra_key1: "value1",
+        extra_key2: "value2"
+      }
+
+      expected_data = %{name: "Jane", age: 25, email: "jane@example.com"}
+
+      assert {:ok, ^expected_data} = user(data)
+    end
+
+    test "drops nested unknown keys and validates correct data" do
+      data = %{
+        user: %{name: "John", age: 30, email: "john@example.com", extra_key: "value"},
+        bio: "Developer",
+        extra_key2: "value2"
+      }
+
+      expected_data = %{
+        user: %{name: "John", age: 30, email: "john@example.com"},
+        bio: "Developer"
+      }
+
+      assert {:ok, ^expected_data} = profile(data)
+    end
+
+    test "drops nested unknown keys and handles missing required field" do
+      data = %{
+        user: %{name: "John", age: 30, extra_key: "value"},
+        bio: "Developer",
+        extra_key2: "value2"
+      }
+
+      assert profile(data) == {:error, [user: [email: "is required"]]}
+    end
+  end
 end

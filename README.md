@@ -121,6 +121,22 @@ case MySchemas.order(invalid_order_data) do
 end
 ```
 
+### Raw Schema Validation
+
+You don't even need to use the `defschema/2` macro, jsut define the schema as you want and pass them with data to `Peri/validate/2` (actually is exactly that the macro does: creates a local function with the name of the schema and pass along the schema, receiving data as extra argument.)
+
+```elixir
+defmodule MySchemas do
+  @raw_user_schema %{age: :integer, name: :string}
+
+  def create_user(data) do
+    with {:ok, data} <- Peri.validate(@raw_user_schema, data) do
+      # rest of function ....
+    end
+  end
+end
+```
+
 ### Nested Schema Validation
 
 ```elixir

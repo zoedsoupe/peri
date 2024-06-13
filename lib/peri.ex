@@ -113,6 +113,8 @@ defmodule Peri do
       # => {:error, [email: "is required"]}
   """
   def validate(schema, data) when is_map(schema) and is_map(data) do
+    data = Map.take(data, Map.keys(schema))
+
     case traverse_schema(schema, data) do
       [] -> {:ok, data}
       errors -> {:error, errors}
