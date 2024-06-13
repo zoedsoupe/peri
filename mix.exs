@@ -1,7 +1,7 @@
 defmodule Peri.MixProject do
   use Mix.Project
 
-  @version "0.1.0"
+  @version "0.1.1"
   @source_url "https://github.com/zoedsoupe/peri"
 
   def project do
@@ -36,7 +36,8 @@ defmodule Peri.MixProject do
       name: "peri",
       files: ~w(lib .formatter.exs LICENSE README.md),
       links: %{"GitHub" => @source_url},
-      licenses: ["MIT"]
+      licenses: ["MIT"],
+      main_module: "Peri"
     ]
   end
 end

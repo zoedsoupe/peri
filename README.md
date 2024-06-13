@@ -58,13 +58,18 @@ end
 
 Peri supports the following types for schema definitions:
 
-- `:string` - Validates that the field is a binary (string).
-- `:integer` - Validates that the field is an integer.
-- `:float` - Validates that the field is a float.
-- `:boolean` - Validates that the field is a boolean.
-- `{:required, type}` - Marks the field as required and validates it according to the specified type.
-- `:map` - Validates that the field is a map.
-- Nested maps - Allows for nested schema definitions.
+  - `:string` - Validates that the field is a binary (string).
+  - `:integer` - Validates that the field is an integer.
+  - `:float` - Validates that the field is a float.
+  - `:boolean` - Validates that the field is a boolean.
+  - `{:required, type}` - Marks the field as required and validates it according to the specified type.
+  - `:map` - Validates that the field is a map without checking nested schema.
+  - `{:list, type}` - Validates that the field is a list where elements belongs to a determined type.
+  - `{:tuple, types}` - Validates that the field is a tuple with determined size and each element have your own type validation (sequential).
+  - `{custom, anonymous_fun_arity_1}` - Validates that the field passes on the callback, the function needs to return either `:ok` or `{:error, reason}` where `reason` should be a string.
+  - `{:custom, {MyModule, :my_validation}}` - Same as `{custom, anonymous_fun_arity_1}` but you pass a remote module and a function name as atom.
+  - `{:custom, {MyModule, :my_validation, [arg1, arg2]}}` - Same as `{:custom, {MyModule, :my_validation}}` but you can pass extra arguments to your validation function. Note that the value of the field is always the first argument.
+  - Nested maps with schema defined
 
 ## Examples
 

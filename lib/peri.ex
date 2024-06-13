@@ -18,15 +18,22 @@ defmodule Peri do
       address: %{
         street: :string,
         city: :string
-      }
+      },
+      tags: {:list, :string},
+      role: {:enum, [:admin, :user, :guest]},
+      geolocation: {:tuple, [:float, :float]},
+      rating: {:custom, &validate_rating/1}
     }
+
+    defp validate_rating(n) when n < 10, do: :ok
+    defp validate_rating(_), do: {:error, "invalid rating"}
   end
   ```
 
   You can then use the schema to validate data:
 
   ```elixir
-  user_data = %{name: "John", age: 30, email: "john@example.com", address: %{street: "123 Main St", city: "Somewhere"}}
+  user_data = %{name: "John", age: 30, email: "john@example.com", address: %{street: "123 Main St", city: "Somewhere"}, tags: ["science", "funky"], role: :admin, geolocation: {12.2, 34.2}, rating: 9}
   case MySchemas.user(user_data) do
     {:ok, valid_data} -> IO.puts("Data is valid!")
     {:error, errors} -> IO.inspect(errors, label: "Validation errors")
@@ -41,6 +48,11 @@ defmodule Peri do
   - `:boolean` - Validates that the field is a boolean.
   - `{:required, type}` - Marks the field as required and validates it according to the specified type.
   - `:map` - Validates that the field is a map without checking nested schema.
+  - `{:list, type}` - Validates that the field is a list where elements belongs to a determined type.
+  - `{:tuple, types}` - Validates that the field is a tuple with determined size and each element have your own type validation (sequential).
+  - `{custom, anonymous_fun_arity_1}` - Validates that the field passes on the callback, the function needs to return either `:ok` or `{:error, reason}` where `reason` should be a string.
+  - `{:custom, {MyModule, :my_validation}}` - Same as `{custom, anonymous_fun_arity_1}` but you pass a remote module and a function name as atom.
+  - `{:custom, {MyModule, :my_validation, [arg1, arg2]}}` - Same as `{:custom, {MyModule, :my_validation}}` but you can pass extra arguments to your validation function. Note that the value of the field is always the first argument.
   """
 
   @doc """
@@ -128,6 +140,49 @@ defmodule Peri do
   defp validate_field(nil, {:required, _}), do: {:error, "is required"}
   defp validate_field(val, {:required, type}), do: validate_field(val, type)
   defp validate_field(nil, _), do: :ok
+
+  defp validate_field(val, {:custom, callback}) when is_function(callback, 1) do
+    callback.(val)
+  end
+
+  defp validate_field(val, {:custom, {mod, fun}}) do
+    apply(mod, fun, [val])
+  end
+
+  defp validate_field(val, {:custom, {mod, fun, args}}) do
+    apply(mod, fun, [val | args])
+  end
+
+  defp validate_field(val, {:tuple, types}) when is_tuple(val) do
+    if tuple_size(val) == length(types) do
+      Enum.with_index(types)
+      |> Enum.reduce_while(:ok, fn {type, index}, :ok ->
+        case validate_field(elem(val, index), type) do
+          :ok -> {:cont, :ok}
+          {:error, reason} -> {:halt, {:error, "tuple element #{index}: #{reason}"}}
+        end
+      end)
+    else
+      {:error, "expected tuple of size #{length(types)} received #{inspect(val)}"}
+    end
+  end
+
+  defp validate_field(val, {:enum, choices}) do
+    if to_string(val) in Enum.map(choices, &to_string/1) do
+      :ok
+    else
+      {:error, "expected one of #{inspect(choices, pretty: true)} received #{inspect(val)}"}
+    end
+  end
+
+  defp validate_field(data, {:list, type}) when is_list(data) do
+    Enum.reduce_while(data, :ok, fn el, :ok ->
+      case validate_field(el, type) do
+        :ok -> {:cont, :ok}
+        {:error, reason} -> {:halt, {:error, reason}}
+      end
+    end)
+  end
 
   defp validate_field(data, schema) when is_map(data) do
     case traverse_schema(schema, data) do
