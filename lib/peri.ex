@@ -119,6 +119,12 @@ defmodule Peri do
     end
   end
 
+  def validate(schema, data) do
+    with :ok <- validate_field(data, schema) do
+      {:ok, data}
+    end
+  end
+
   @doc false
   defp traverse_schema(schema, data) do
     Enum.reduce(schema, [], fn {key, type}, errors ->
@@ -137,20 +143,34 @@ defmodule Peri do
   defp validate_field(val, :integer) when is_integer(val), do: :ok
   defp validate_field(val, :float) when is_float(val), do: :ok
   defp validate_field(val, :boolean) when is_boolean(val), do: :ok
+  defp validate_field(val, :list) when is_list(val), do: :ok
   defp validate_field(nil, {:required, _}), do: {:error, "is required"}
+  defp validate_field([], {:required, {:list, _}}), do: {:error, "cannot be empty"}
   defp validate_field(val, {:required, type}), do: validate_field(val, type)
   defp validate_field(nil, _), do: :ok
 
   defp validate_field(val, {:custom, callback}) when is_function(callback, 1) do
-    callback.(val)
+    case callback.(val) do
+      :ok -> :ok
+      {:ok, _} -> :ok
+      err -> err
+    end
   end
 
   defp validate_field(val, {:custom, {mod, fun}}) do
-    apply(mod, fun, [val])
+    case apply(mod, fun, [val]) do
+      :ok -> :ok
+      {:ok, _} -> :ok
+      err -> err
+    end
   end
 
   defp validate_field(val, {:custom, {mod, fun, args}}) do
-    apply(mod, fun, [val | args])
+    case apply(mod, fun, [val | args]) do
+      :ok -> :ok
+      {:ok, _} -> :ok
+      err -> err
+    end
   end
 
   defp validate_field(val, {:tuple, types}) when is_tuple(val) do

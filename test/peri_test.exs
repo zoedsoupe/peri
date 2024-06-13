@@ -278,4 +278,61 @@ defmodule PeriTest do
       assert tuple_example(data) == {:ok, data}
     end
   end
+
+  defschema(:string_list, {:list, :string})
+  defschema(:string_scores, %{name: :string, score: :float})
+  defschema(:string_score_map, %{id: {:required, :integer}, scores: {:custom, &string_scores/1}})
+
+  defschema(:recursive_schema, %{
+    id: :integer,
+    children: {:list, {:custom, &recursive_schema/1}}
+  })
+
+  describe "composable schema validation" do
+    test "validates custom schema for list of strings" do
+      data = ["hello", "world"]
+      assert string_list(data) == {:ok, data}
+    end
+
+    test "validates custom schema for list of strings with invalid data" do
+      data = ["hello", 123]
+      assert string_list(data) == {:error, "expected string received 123"}
+    end
+
+    test "validates custom schema for map with nested schema" do
+      data = %{id: 1, scores: %{name: "test", score: 95.5}}
+      assert string_score_map(data) == {:ok, data}
+    end
+
+    test "validates custom schema for map with nested schema with invalid data" do
+      data = %{id: 1, scores: %{name: "test", score: "high"}}
+      assert string_score_map(data) == {:error, [scores: [score: "expected float received high"]]}
+    end
+
+    test "validates recursive schema with correct data" do
+      data = %{
+        id: 1,
+        children: [%{id: 2, children: []}, %{id: 3, children: [%{id: 4, children: []}]}]
+      }
+
+      assert recursive_schema(data) == {:ok, data}
+    end
+
+    test "validates recursive schema with incorrect data" do
+      data = %{id: 1, children: [%{id: 2, children: [%{id: "invalid", children: []}]}]}
+
+      assert recursive_schema(data) ==
+               {:error, [children: [children: [id: "expected integer received invalid"]]]}
+    end
+
+    test "validates schema with missing required fields" do
+      data = %{scores: %{name: "test", score: 95.5}}
+      assert string_score_map(data) == {:error, [id: "is required"]}
+    end
+
+    test "validates schema with extra fields" do
+      data = %{id: 1, scores: %{name: "test", score: 95.5, extra: "field"}}
+      assert string_score_map(data) == {:ok, data}
+    end
+  end
 end

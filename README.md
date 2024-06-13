@@ -66,7 +66,7 @@ Peri supports the following types for schema definitions:
   - `:map` - Validates that the field is a map without checking nested schema.
   - `{:list, type}` - Validates that the field is a list where elements belongs to a determined type.
   - `{:tuple, types}` - Validates that the field is a tuple with determined size and each element have your own type validation (sequential).
-  - `{custom, anonymous_fun_arity_1}` - Validates that the field passes on the callback, the function needs to return either `:ok` or `{:error, reason}` where `reason` should be a string.
+  - `{custom, anonymous_fun_arity_1}` - Validates that the field passes on the callback, the function needs to return either `:ok` or `{:error, reason}` where `reason` should be a string. This allow supporting composable schemas. See on the [Composable and Recursive Schemas](#composable-and-recursive-schemas) section.
   - `{:custom, {MyModule, :my_validation}}` - Same as `{custom, anonymous_fun_arity_1}` but you pass a remote module and a function name as atom.
   - `{:custom, {MyModule, :my_validation, [arg1, arg2]}}` - Same as `{:custom, {MyModule, :my_validation}}` but you can pass extra arguments to your validation function. Note that the value of the field is always the first argument.
   - Nested maps with schema defined
@@ -74,6 +74,28 @@ Peri supports the following types for schema definitions:
 ## Examples
 
 ### Simple Schema Validation
+
+```elixir
+defmodule MySchemas do
+  import Peri
+
+  defschema :tag, :string
+end
+
+data = "valid!"
+case MySchemas.order(data) do
+  {:ok, ^data} -> IO.puts("Data is valid!")
+  {:error, errors} -> IO.inspect(errors, label: "Validation errors")
+end
+
+invalid = 42
+case MySchemas.order(data) do
+  {:ok, valid} -> IO.puts("Data is valid!")
+  {:error, errors} -> IO.inspect(errors, label: "Validation errors")
+end
+```
+
+### Simple Map Schema Validation
 
 ```elixir
 defmodule MySchemas do
@@ -135,6 +157,100 @@ invalid_profile_data = %{
 case MySchemas.user_profile(invalid_profile_data) do
   {:ok, valid_data} -> IO.puts("Data is valid!")
   {:error, errors} -> IO.inspect(errors, label: "Validation errors")
+end
+```
+
+### Composable and Recursive Schemas
+
+#### Composable Schemas
+
+Composable schemas allow you to define reusable schema components and combine them to create more complex schemas. As Peri's schemas are just functions (and under the hoods simple elixir data), you can pass schemas around to another schemas.
+
+```elixir
+defmodule MySchemas do
+  import Peri
+
+  # Define reusable schemas
+  defschema :string_list, {:list, :string}
+  defschema :user_info, %{username: :string, email: {:required, {:custom, &string_list/1}}}
+  defschema :user_data, %{user_id: :integer, info: {:custom, &user_info/1}}
+
+  # Example usage
+  def example_usage do
+    data = ["hello", "world"]
+    case string_list(data) do
+      {:ok, valid_data} -> IO.puts("StringList is valid!")
+      {:error, errors} -> IO.inspect(errors, label: "Validation errors")
+    end
+
+    user_data_example = %{user_id: 1, info: %{username: "john_doe", email: "john@example.com"}}
+    case user_data(user_data_example) do
+      {:ok, valid_data} -> IO.puts("UserData is valid!")
+      {:error, errors} -> IO.inspect(errors, label: "Validation errors")
+    end
+  end
+end
+```
+
+Another way is to define those composable schemas as raw data maps (or even other data types)
+
+```elixir
+defmodule MySchemas do
+  import Peri
+
+  # Define reusable schemas
+  @string_list {:list, :string}
+  @user_info %{username: :string, email: {:required, @string_list}}
+  defschema :user_data, %{user_id: :integer, info: @user_info}
+
+  # Example usage
+  def example_usage do
+    data = ["hello", "world"]
+    case string_list(data) do
+      {:ok, valid_data} -> IO.puts("StringList is valid!")
+      {:error, errors} -> IO.inspect(errors, label: "Validation errors")
+    end
+
+    user_data_example = %{user_id: 1, info: %{username: "john_doe", email: "john@example.com"}}
+    case user_data(user_data_example) do
+      {:ok, valid_data} -> IO.puts("UserData is valid!")
+      {:error, errors} -> IO.inspect(errors, label: "Validation errors")
+    end
+  end
+end
+```
+
+#### Recursive Schemas
+
+Recursive schemas allow you to define schemas that reference themselves, enabling the validation of nested and hierarchical data structures.
+
+```elixir
+defmodule MySchemas do
+  import Peri
+
+  # Define a recursive schema
+  defschema :category, %{
+    id: :integer,
+    name: :string,
+    subcategories: {:list, {:custom, &category/1}}
+  }
+
+  # Example usage
+  def example_usage do
+    category_data = %{
+      id: 1,
+      name: "Electronics",
+      subcategories: [
+        %{id: 2, name: "Computers", subcategories: []},
+        %{id: 3, name: "Phones", subcategories: [%{id: 4, name: "Smartphones", subcategories: []}]}
+      ]
+    }
+
+    case category(category_data) do
+      {:ok, valid_data} -> IO.puts("Category is valid!")
+      {:error, errors} -> IO.inspect(errors, label: "Validation errors")
+    end
+  end
 end
 ```
 
