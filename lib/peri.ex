@@ -46,8 +46,12 @@ defmodule Peri do
   - `:integer` - Validates that the field is an integer.
   - `:float` - Validates that the field is a float.
   - `:boolean` - Validates that the field is a boolean.
+  - `:atom` - Validates that the field is an atom.
+  - `:any` - Allow any datatype.
   - `{:required, type}` - Marks the field as required and validates it according to the specified type.
   - `:map` - Validates that the field is a map without checking nested schema.
+  - `{:either, {type_1, type_2}}` - Validates that the field is either of `type_1` or `type_2`.
+  - `{:oneof, types}` - Validates that the field is at least one of the provided types.
   - `{:list, type}` - Validates that the field is a list where elements belongs to a determined type.
   - `{:tuple, types}` - Validates that the field is a tuple with determined size and each element have your own type validation (sequential).
   - `{custom, anonymous_fun_arity_1}` - Validates that the field passes on the callback, the function needs to return either `:ok` or `{:error, reason}` where `reason` should be a string.
@@ -140,6 +144,8 @@ defmodule Peri do
   end
 
   @doc false
+  defp validate_field(_, :any), do: :ok
+  defp validate_field(val, :atom) when is_atom(val), do: :ok
   defp validate_field(val, :map) when is_map(val), do: :ok
   defp validate_field(val, :string) when is_binary(val), do: :ok
   defp validate_field(val, :integer) when is_integer(val), do: :ok
@@ -173,6 +179,30 @@ defmodule Peri do
       {:ok, _} -> :ok
       err -> err
     end
+  end
+
+  defp validate_field(val, {:either, {type_1, type_2}}) do
+    with {:error, _} <- validate_field(val, type_1),
+         {:error, _} <- validate_field(val, type_2) do
+      {:error, "expected either #{type_1} or #{type_2}, got: #{inspect(val)}"}
+    end
+  end
+
+  defp validate_field(val, {:oneof, types}) do
+    types
+    |> Enum.reduce_while(:error, fn type, :error ->
+      case validate_field(val, type) do
+        :ok -> {:halt, :ok}
+        {:error, _reason} -> {:cont, :error}
+      end
+    end)
+    |> then(fn
+      :ok -> :ok
+      :error ->
+        expected = Enum.map_join(types, " or ", &to_string/1)
+
+        {:error, "expected one of #{expected}, got: #{inspect(val)}"}
+    end)
   end
 
   defp validate_field(val, {:tuple, types}) when is_tuple(val) do

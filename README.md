@@ -62,8 +62,12 @@ Peri supports the following types for schema definitions:
   - `:integer` - Validates that the field is an integer.
   - `:float` - Validates that the field is a float.
   - `:boolean` - Validates that the field is a boolean.
+  - `:atom` - Validates that the field is an atom.
+  - `:any` - Allow any datatype.
   - `{:required, type}` - Marks the field as required and validates it according to the specified type.
   - `:map` - Validates that the field is a map without checking nested schema.
+  - `{:either, {type_1, type_2}}` - Validates that the field is either of `type_1` or `type_2`.
+  - `{:oneof, types}` - Validates that the field is at least one of the provided types.
   - `{:list, type}` - Validates that the field is a list where elements belongs to a determined type.
   - `{:tuple, types}` - Validates that the field is a tuple with determined size and each element have your own type validation (sequential).
   - `{custom, anonymous_fun_arity_1}` - Validates that the field passes on the callback, the function needs to return either `:ok` or `{:error, reason}` where `reason` should be a string. This allow supporting composable schemas. See on the [Composable and Recursive Schemas](#composable-and-recursive-schemas) section.
