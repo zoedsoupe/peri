@@ -117,30 +117,66 @@ defmodule Peri do
       # => {:error, [email: "is required"]}
   """
   def validate(schema, data) when is_map(schema) and is_map(data) do
-    data = Map.take(data, Map.keys(schema))
+    data =
+      Map.new(schema, fn {k, _} ->
+        if v = Map.get(data, k) do
+          {k, v}
+        else
+          {to_string(k), Map.get(data, to_string(k))}
+        end
+      end)
 
     case traverse_schema(schema, data) do
-      [] -> {:ok, data}
-      errors -> {:error, errors}
+      {[], _path} -> {:ok, data}
+      {errors, _path} -> {:error, errors}
     end
   end
 
   def validate(schema, data) do
-    with :ok <- validate_field(data, schema) do
-      {:ok, data}
+    case validate_field(data, schema) do
+      :ok ->
+        {:ok, data}
+
+      {:error, reason, info} ->
+        msg = EEx.eval_string(reason, info)
+        err = %Peri.Error{message: msg, content: info}
+
+        {:error, err}
     end
   end
 
   @doc false
-  defp traverse_schema(schema, data) do
-    Enum.reduce(schema, [], fn {key, type}, errors ->
+  defp traverse_schema(schema, data, path \\ []) do
+    Enum.reduce(schema, {[], path}, fn {key, type}, {errors, path} ->
       value = Map.get(data, key) || Map.get(data, to_string(key))
 
       case validate_field(value, type) do
-        :ok -> errors
-        {:error, reason} -> [{key, reason} | errors]
+        :ok ->
+          {errors, path}
+
+        {:error, [%Peri.Error{} = nested_err | _]} ->
+          path = path ++ [key]
+          nested_error = update_error_paths(nested_err, path)
+          err = %Peri.Error{path: path, key: key, errors: [nested_error]}
+          {[err | errors], path}
+
+        {:error, reason, info} ->
+          msg = EEx.eval_string(reason, info)
+          path = path ++ [key]
+          err = %Peri.Error{path: path, message: msg, content: info, key: key}
+
+          {[err | errors], path}
       end
     end)
+  end
+
+  defp update_error_paths(%Peri.Error{path: path, errors: nil} = error, new_path) do
+    %Peri.Error{error | path: new_path ++ path}
+  end
+
+  defp update_error_paths(%Peri.Error{path: path, errors: errors} = error, new_path) do
+    updated_errors = Enum.map(errors, &update_error_paths(&1, new_path))
+    %Peri.Error{error | path: new_path ++ path, errors: updated_errors}
   end
 
   @doc false
@@ -152,8 +188,8 @@ defmodule Peri do
   defp validate_field(val, :float) when is_float(val), do: :ok
   defp validate_field(val, :boolean) when is_boolean(val), do: :ok
   defp validate_field(val, :list) when is_list(val), do: :ok
-  defp validate_field(nil, {:required, _}), do: {:error, "is required"}
-  defp validate_field([], {:required, {:list, _}}), do: {:error, "cannot be empty"}
+  defp validate_field(nil, {:required, _}), do: {:error, "is required", []}
+  defp validate_field([], {:required, {:list, _}}), do: {:error, "cannot be empty", []}
   defp validate_field(val, {:required, type}), do: validate_field(val, type)
   defp validate_field(nil, _), do: :ok
 
@@ -182,9 +218,11 @@ defmodule Peri do
   end
 
   defp validate_field(val, {:either, {type_1, type_2}}) do
-    with {:error, _} <- validate_field(val, type_1),
-         {:error, _} <- validate_field(val, type_2) do
-      {:error, "expected either #{type_1} or #{type_2}, got: #{inspect(val)}"}
+    with {:error, _, _} <- validate_field(val, type_1),
+         {:error, _, _} <- validate_field(val, type_2) do
+      info = [first_type: type_1, second_type: type_2, actual: inspect(val)]
+      template = "expected either <%= first_type %> or <%= second_type %>, got: <%= actual %>"
+      {:error, template, info}
     end
   end
 
@@ -193,15 +231,19 @@ defmodule Peri do
     |> Enum.reduce_while(:error, fn type, :error ->
       case validate_field(val, type) do
         :ok -> {:halt, :ok}
-        {:error, _reason} -> {:cont, :error}
+        {:error, _reason, _info} -> {:cont, :error}
       end
     end)
     |> then(fn
-      :ok -> :ok
+      :ok ->
+        :ok
+
       :error ->
         expected = Enum.map_join(types, " or ", &to_string/1)
+        info = [oneof: expected, actual: inspect(val)]
+        template = "expected one of <%= oneof %>, got: <%= actual %>"
 
-        {:error, "expected one of #{expected}, got: #{inspect(val)}"}
+        {:error, template, info}
     end)
   end
 
@@ -210,12 +252,18 @@ defmodule Peri do
       Enum.with_index(types)
       |> Enum.reduce_while(:ok, fn {type, index}, :ok ->
         case validate_field(elem(val, index), type) do
-          :ok -> {:cont, :ok}
-          {:error, reason} -> {:halt, {:error, "tuple element #{index}: #{reason}"}}
+          :ok ->
+            {:cont, :ok}
+
+          {:error, reason, nested_info} ->
+            info = [index: index] ++ nested_info
+            {:halt, {:error, "tuple element <%= index %>: #{reason}"}, info}
         end
       end)
     else
-      {:error, "expected tuple of size #{length(types)} received #{inspect(val)}"}
+      info = [length: length(types), actual: length(Tuple.to_list(val))]
+      template = "expected tuple of size <%= length %> received tuple wwith <%= actual %> length"
+      {:error, template, info}
     end
   end
 
@@ -223,7 +271,9 @@ defmodule Peri do
     if to_string(val) in Enum.map(choices, &to_string/1) do
       :ok
     else
-      {:error, "expected one of #{inspect(choices, pretty: true)} received #{inspect(val)}"}
+      info = [choices: inspect(choices, pretty: true), actual: inspect(val)]
+      template = "expected one of <%= choices %> received <%= actual %>"
+      {:error, template, info}
     end
   end
 
@@ -231,17 +281,21 @@ defmodule Peri do
     Enum.reduce_while(data, :ok, fn el, :ok ->
       case validate_field(el, type) do
         :ok -> {:cont, :ok}
-        {:error, reason} -> {:halt, {:error, reason}}
+        {:error, errors} -> {:halt, {:error, errors}}
+        {:error, reason, info} -> {:halt, {:error, reason, info}}
       end
     end)
   end
 
   defp validate_field(data, schema) when is_map(data) do
     case traverse_schema(schema, data) do
-      [] -> :ok
-      errors -> {:error, errors}
+      {[], _path} -> :ok
+      {errors, _path} -> {:error, errors}
     end
   end
 
-  defp validate_field(val, type), do: {:error, "expected #{type} received #{val}"}
+  defp validate_field(val, type) do
+    info = [expected: type, actual: inspect(val, pretty: true)]
+    {:error, "expected type of <%= expected %> received <%= actual %> value", info}
+  end
 end

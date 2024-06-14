@@ -48,14 +48,20 @@ defmodule PeriTest do
 
     test "validates simple schema with missing required field" do
       data = %{name: "John", age: 30}
-      assert {:error, errors} = simple(data)
-      assert "is required" == errors[:email]
+      assert {:error, [%Peri.Error{path: [:email], message: "is required"}]} = simple(data)
     end
 
     test "validates simple schema with invalid field type" do
       data = %{name: "John", age: "thirty", email: "john@example.com"}
-      assert {:error, errors} = simple(data)
-      assert "expected integer received thirty" == errors[:age]
+
+      assert {:error,
+              [
+                %Peri.Error{
+                  path: [:age],
+                  message: "expected type of integer received \"thirty\" value"
+                }
+              ]} =
+               simple(data)
     end
   end
 
@@ -67,14 +73,69 @@ defmodule PeriTest do
 
     test "validates nested schema with invalid data" do
       data = %{user: %{name: "Jane", profile: %{age: "twenty-five", email: "jane@example.com"}}}
-      assert {:error, errors} = nested(data)
-      assert "expected integer received twenty-five" == errors[:user][:profile][:age]
+
+      assert {
+               :error,
+               [
+                 %Peri.Error{
+                   message: nil,
+                   path: [:user],
+                   content: nil,
+                   errors: [
+                     %Peri.Error{
+                       path: [:user, :profile],
+                       key: :profile,
+                       content: nil,
+                       message: nil,
+                       errors: [
+                         %Peri.Error{
+                           path: [:user, :profile, :age],
+                           key: :age,
+                           content: [expected: :integer, actual: "\"twenty-five\""],
+                           message: "expected type of integer received \"twenty-five\" value",
+                           errors: nil
+                         }
+                       ]
+                     }
+                   ],
+                   key: :user
+                 }
+               ]
+             } = nested(data)
     end
 
     test "validates nested schema with missing required field" do
       data = %{user: %{name: "Jane", profile: %{age: 25}}}
-      assert {:error, errors} = nested(data)
-      assert "is required" == errors[:user][:profile][:email]
+
+      assert {
+               :error,
+               [
+                 %Peri.Error{
+                   message: nil,
+                   path: [:user],
+                   content: nil,
+                   errors: [
+                     %Peri.Error{
+                       path: [:user, :profile],
+                       key: :profile,
+                       content: nil,
+                       message: nil,
+                       errors: [
+                         %Peri.Error{
+                           path: [:user, :profile, :email],
+                           key: :email,
+                           content: [],
+                           message: "is required",
+                           errors: nil
+                         }
+                       ]
+                     }
+                   ],
+                   key: :user
+                 }
+               ]
+             } =
+               nested(data)
     end
   end
 
@@ -89,8 +150,15 @@ defmodule PeriTest do
 
     test "validates schema with optional fields and invalid optional field type" do
       data = %{name: "John", age: 30, email: "john@example.com", phone: 123_456}
-      assert {:error, errors} = optional_fields(data)
-      assert "expected string received 123456" == errors[:phone]
+
+      assert {:error,
+              [
+                %Peri.Error{
+                  path: [:phone],
+                  message: "expected type of string received 123456 value"
+                }
+              ]} =
+               optional_fields(data)
     end
   end
 
@@ -112,7 +180,10 @@ defmodule PeriTest do
 
     test "validates list of strings with incorrect data type in list" do
       data = %{tags: ["elixir", 42], scores: [1, 2, 3]}
-      assert list_example(data) == {:error, [tags: "expected string received 42"]}
+
+      assert {:error,
+              [%Peri.Error{path: [:tags], message: "expected type of string received 42 value"}]} =
+               list_example(data)
     end
 
     test "validates list of integers with correct data" do
@@ -122,7 +193,15 @@ defmodule PeriTest do
 
     test "validates list of integers with incorrect data type in list" do
       data = %{tags: ["tag1", "tag2"], scores: [10, "twenty", 30]}
-      assert list_example(data) == {:error, [scores: "expected integer received twenty"]}
+
+      assert {:error,
+              [
+                %Peri.Error{
+                  path: [:scores],
+                  message: "expected type of integer received \"twenty\" value"
+                }
+              ]} =
+               list_example(data)
     end
 
     test "handles empty lists correctly" do
@@ -145,15 +224,25 @@ defmodule PeriTest do
     test "validates enum with incorrect data" do
       data = %{role: :superuser, status: :active}
 
-      assert enum_example(data) ==
-               {:error, [role: "expected one of [:admin, :user, :guest] received :superuser"]}
+      assert {:error,
+              [
+                %Peri.Error{
+                  path: [:role],
+                  message: "expected one of [:admin, :user, :guest] received :superuser"
+                }
+              ]} = enum_example(data)
     end
 
     test "validates enum with another incorrect data" do
       data = %{role: :admin, status: :pending}
 
-      assert enum_example(data) ==
-               {:error, [status: "expected one of [:active, :inactive] received :pending"]}
+      assert {:error,
+              [
+                %Peri.Error{
+                  path: [:status],
+                  message: "expected one of [:active, :inactive] received :pending"
+                }
+              ]} = enum_example(data)
     end
 
     test "handles missing enum fields correctly" do
@@ -168,12 +257,7 @@ defmodule PeriTest do
   end
 
   defschema(:list_of_maps_example, %{
-    users:
-      {:list,
-       %{
-         name: {:required, :string},
-         age: {:required, :integer}
-       }}
+    users: {:list, %{name: {:required, :string}, age: {:required, :integer}}}
   })
 
   describe "list of maps validation" do
@@ -184,14 +268,54 @@ defmodule PeriTest do
 
     test "validates list of maps with missing required fields" do
       data = %{users: [%{name: "Alice", age: 30}, %{age: 25}]}
-      assert list_of_maps_example(data) == {:error, [users: [name: "is required"]]}
+
+      assert {
+               :error,
+               [
+                 %Peri.Error{
+                   message: nil,
+                   path: [:users],
+                   content: nil,
+                   errors: [
+                     %Peri.Error{
+                       path: [:users, :name],
+                       key: :name,
+                       content: [],
+                       message: "is required",
+                       errors: nil
+                     }
+                   ],
+                   key: :users
+                 }
+               ]
+             } =
+               list_of_maps_example(data)
     end
 
     test "validates list of maps with incorrect field types" do
       data = %{users: [%{name: "Alice", age: "thirty"}, %{name: "Bob", age: 25}]}
 
-      assert list_of_maps_example(data) ==
-               {:error, [users: [age: "expected integer received thirty"]]}
+      assert {
+               :error,
+               [
+                 %Peri.Error{
+                   message: nil,
+                   path: [:users],
+                   content: nil,
+                   errors: [
+                     %Peri.Error{
+                       path: [:users, :age],
+                       key: :age,
+                       content: [expected: :integer, actual: "\"thirty\""],
+                       message: "expected type of integer received \"thirty\" value",
+                       errors: nil
+                     }
+                   ],
+                   key: :users
+                 }
+               ]
+             } =
+               list_of_maps_example(data)
     end
 
     test "validates list of maps with extra fields" do
@@ -236,8 +360,11 @@ defmodule PeriTest do
     test "validates custom validation functions with incorrect data" do
       data = %{positive_number: -5, name: "bob"}
 
-      assert custom_example(data) ==
-               {:error, [positive_number: "must be positive", name: "must start with 'a'"]}
+      assert {:error,
+              [
+                %Peri.Error{path: [:positive_number], message: "must be positive"},
+                %Peri.Error{path: [:name], message: "must start with 'a'"}
+              ]} = custom_example(data)
     end
 
     test "handles missing custom validation fields correctly" do
@@ -255,22 +382,37 @@ defmodule PeriTest do
     test "validates tuple with incorrect data type" do
       data = %{coordinates: {10.5, "20.5"}}
 
-      assert tuple_example(data) ==
-               {:error, [coordinates: "tuple element 1: expected float received 20.5"]}
+      assert {:error,
+              [
+                %Peri.Error{
+                  path: [:coordinates],
+                  message: "tuple element 1: expected float received \"20.5\""
+                }
+              ]} = tuple_example(data)
     end
 
     test "validates tuple with incorrect size" do
       data = %{coordinates: {10.5}}
 
-      assert tuple_example(data) ==
-               {:error, [coordinates: "expected tuple of size 2 received {10.5}"]}
+      assert {:error,
+              [
+                %Peri.Error{
+                  path: [:coordinates],
+                  message: "expected tuple of size 2 received tuple wwith 1 length"
+                }
+              ]} = tuple_example(data)
     end
 
     test "validates tuple with extra elements" do
       data = %{coordinates: {10.5, 20.5, 30.5}}
 
-      assert tuple_example(data) ==
-               {:error, [coordinates: "expected tuple of size 2 received {10.5, 20.5, 30.5}"]}
+      assert {:error,
+              [
+                %Peri.Error{
+                  path: [:coordinates],
+                  message: "expected tuple of size 2 received tuple wwith 3 length"
+                }
+              ]} = tuple_example(data)
     end
 
     test "handles missing tuple correctly" do
@@ -296,7 +438,18 @@ defmodule PeriTest do
 
     test "validates custom schema for list of strings with invalid data" do
       data = ["hello", 123]
-      assert string_list(data) == {:error, "expected string received 123"}
+
+      assert {
+               :error,
+               %Peri.Error{
+                 path: nil,
+                 key: nil,
+                 content: [expected: :string, actual: "123"],
+                 message: "expected type of string received 123 value",
+                 errors: nil
+               }
+             } =
+               string_list(data)
     end
 
     test "validates custom schema for map with nested schema" do
@@ -306,7 +459,28 @@ defmodule PeriTest do
 
     test "validates custom schema for map with nested schema with invalid data" do
       data = %{id: 1, scores: %{name: "test", score: "high"}}
-      assert string_score_map(data) == {:error, [scores: [score: "expected float received high"]]}
+
+      assert {
+               :error,
+               [
+                 %Peri.Error{
+                   message: nil,
+                   path: [:scores],
+                   content: nil,
+                   errors: [
+                     %Peri.Error{
+                       path: [:scores, :score],
+                       key: :score,
+                       content: [expected: :float, actual: "\"high\""],
+                       message: "expected type of float received \"high\" value",
+                       errors: nil
+                     }
+                   ],
+                   key: :scores
+                 }
+               ]
+             } =
+               string_score_map(data)
     end
 
     test "validates recursive schema with correct data" do
@@ -321,13 +495,41 @@ defmodule PeriTest do
     test "validates recursive schema with incorrect data" do
       data = %{id: 1, children: [%{id: 2, children: [%{id: "invalid", children: []}]}]}
 
-      assert recursive_schema(data) ==
-               {:error, [children: [children: [id: "expected integer received invalid"]]]}
+      assert {
+               :error,
+               [
+                 %Peri.Error{
+                   message: nil,
+                   path: [:children],
+                   content: nil,
+                   errors: [
+                     %Peri.Error{
+                       path: [:children, :children],
+                       key: :children,
+                       content: nil,
+                       message: nil,
+                       errors: [
+                         %Peri.Error{
+                           path: [:children, :children, :id],
+                           key: :id,
+                           content: [expected: :integer, actual: "\"invalid\""],
+                           message: "expected type of integer received \"invalid\" value",
+                           errors: nil
+                         }
+                       ]
+                     }
+                   ],
+                   key: :children
+                 }
+               ]
+             } = recursive_schema(data)
     end
 
     test "validates schema with missing required fields" do
       data = %{scores: %{name: "test", score: 95.5}}
-      assert string_score_map(data) == {:error, [id: "is required"]}
+
+      assert string_score_map(data) ==
+               {:error, [%Peri.Error{path: [:id], message: "is required"}]}
     end
 
     test "validates schema with extra fields" do
@@ -356,7 +558,7 @@ defmodule PeriTest do
 
     test "drops unknown keys and handles missing required field" do
       data = %{name: "John", age: 30, extra_key: "value"}
-      assert user(data) == {:error, email: "is required"}
+      assert user(data) == {:error, [%Peri.Error{path: [:email], message: "is required"}]}
     end
 
     test "drops multiple unknown keys and validates correct data" do
@@ -369,7 +571,6 @@ defmodule PeriTest do
       }
 
       expected_data = %{name: "Jane", age: 25, email: "jane@example.com"}
-
       assert {:ok, ^expected_data} = user(data)
     end
 
@@ -395,7 +596,25 @@ defmodule PeriTest do
         extra_key2: "value2"
       }
 
-      assert profile(data) == {:error, [user: [email: "is required"]]}
+      assert profile(data) ==
+               {:error,
+                [
+                  %Peri.Error{
+                    content: nil,
+                    errors: [
+                      %Peri.Error{
+                        path: [:user, :email],
+                        key: :email,
+                        content: [],
+                        message: "is required",
+                        errors: nil
+                      }
+                    ],
+                    key: :user,
+                    message: nil,
+                    path: [:user]
+                  }
+                ]}
     end
   end
 end

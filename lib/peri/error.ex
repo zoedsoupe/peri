@@ -1,3 +1,3 @@
 defmodule Peri.Error do
-  defstruct [:path, :expected, :actual, :message, :errors]
+  defstruct [:path, :key, :content, :message, :errors]
 end
