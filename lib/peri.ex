@@ -84,6 +84,10 @@ defmodule Peri do
   """
   defmacro defschema(name, schema) do
     quote do
+      def get_schema(unquote(name)) do
+        unquote(schema)
+      end
+
       def unquote(name)(data) do
         Peri.validate(unquote(schema), data)
       end
@@ -117,14 +121,7 @@ defmodule Peri do
       # => {:error, [email: "is required"]}
   """
   def validate(schema, data) when is_map(schema) and is_map(data) do
-    data =
-      Map.new(schema, fn {k, _} ->
-        if v = Map.get(data, k) do
-          {k, v}
-        else
-          {to_string(k), Map.get(data, to_string(k))}
-        end
-      end)
+    data = filter_data(schema, data)
 
     case traverse_schema(schema, data) do
       {[], _path} -> {:ok, data}
@@ -145,6 +142,26 @@ defmodule Peri do
     end
   end
 
+  defp filter_data(schema, data, acc \\ %{}) do
+    Enum.reduce(schema, acc, fn {key, type}, acc ->
+      string_key = to_string(key)
+      original_key = if Map.has_key?(data, string_key), do: string_key, else: key
+      value = Map.get(data, original_key)
+
+      cond do
+        not (Map.has_key?(data, key) or Map.has_key?(data, string_key)) ->
+          acc
+
+        is_map(value) and is_map(type) ->
+          nested_filtered_value = filter_data(type, value)
+          Map.put(acc, original_key, nested_filtered_value)
+
+        true ->
+          Map.put(acc, original_key, value)
+      end
+    end)
+  end
+
   @doc false
   defp traverse_schema(schema, data, path \\ []) do
     Enum.reduce(schema, {[], path}, fn {key, type}, {errors, path} ->
@@ -152,18 +169,18 @@ defmodule Peri do
 
       case validate_field(value, type) do
         :ok ->
-          {errors, path}
+          {errors, []}
 
         {:error, [%Peri.Error{} = nested_err | _]} ->
-          path = path ++ [key]
-          nested_error = update_error_paths(nested_err, path)
-          err = %Peri.Error{path: path, key: key, errors: [nested_error]}
+          current_path = path ++ [key]
+          nested_error = update_error_paths(nested_err, current_path)
+          err = %Peri.Error{path: current_path, key: key, errors: [nested_error]}
           {[err | errors], path}
 
         {:error, reason, info} ->
           msg = EEx.eval_string(reason, info)
-          path = path ++ [key]
-          err = %Peri.Error{path: path, message: msg, content: info, key: key}
+          current_path = path ++ [key]
+          err = %Peri.Error{path: current_path, message: msg, content: info, key: key}
 
           {[err | errors], path}
       end
@@ -257,7 +274,7 @@ defmodule Peri do
 
           {:error, reason, nested_info} ->
             info = [index: index] ++ nested_info
-            {:halt, {:error, "tuple element <%= index %>: #{reason}"}, info}
+            {:halt, {:error, "tuple element <%= index %>: #{reason}", info}}
         end
       end)
     else

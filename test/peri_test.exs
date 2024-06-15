@@ -336,10 +336,10 @@ defmodule PeriTest do
 
   defmodule CustomValidations do
     def positive?(val) when is_integer(val) and val > 0, do: :ok
-    def positive?(_val), do: {:error, "must be positive"}
+    def positive?(_val), do: {:error, "must be positive", []}
 
     def starts_with_a?(<<"a", _::binary>>), do: :ok
-    def starts_with_a?(_val), do: {:error, "must start with 'a'"}
+    def starts_with_a?(_val), do: {:error, "must start with <%= prefix %>", [prefix: "'a'"]}
   end
 
   defschema(:custom_example, %{
@@ -360,11 +360,25 @@ defmodule PeriTest do
     test "validates custom validation functions with incorrect data" do
       data = %{positive_number: -5, name: "bob"}
 
-      assert {:error,
-              [
-                %Peri.Error{path: [:positive_number], message: "must be positive"},
-                %Peri.Error{path: [:name], message: "must start with 'a'"}
-              ]} = custom_example(data)
+      assert {
+               :error,
+               [
+                 %Peri.Error{
+                   message: "must be positive",
+                   path: [:positive_number],
+                   content: [],
+                   errors: nil,
+                   key: :positive_number
+                 },
+                 %Peri.Error{
+                   message: "must start with 'a'",
+                   path: [:name],
+                   content: [prefix: "'a'"],
+                   errors: nil,
+                   key: :name
+                 }
+               ]
+             } = custom_example(data)
     end
 
     test "handles missing custom validation fields correctly" do
@@ -382,13 +396,18 @@ defmodule PeriTest do
     test "validates tuple with incorrect data type" do
       data = %{coordinates: {10.5, "20.5"}}
 
-      assert {:error,
-              [
-                %Peri.Error{
-                  path: [:coordinates],
-                  message: "tuple element 1: expected float received \"20.5\""
-                }
-              ]} = tuple_example(data)
+      assert {
+               :error,
+               [
+                 %Peri.Error{
+                   message: "tuple element 1: expected type of float received \"20.5\" value",
+                   path: [:coordinates],
+                   content: [index: 1, expected: :float, actual: "\"20.5\""],
+                   errors: nil,
+                   key: :coordinates
+                 }
+               ]
+             } = tuple_example(data)
     end
 
     test "validates tuple with incorrect size" do
@@ -529,7 +548,18 @@ defmodule PeriTest do
       data = %{scores: %{name: "test", score: 95.5}}
 
       assert string_score_map(data) ==
-               {:error, [%Peri.Error{path: [:id], message: "is required"}]}
+               {
+                 :error,
+                 [
+                   %Peri.Error{
+                     content: [],
+                     errors: nil,
+                     key: :id,
+                     message: "is required",
+                     path: [:id]
+                   }
+                 ]
+               }
     end
 
     test "validates schema with extra fields" do
@@ -558,7 +588,19 @@ defmodule PeriTest do
 
     test "drops unknown keys and handles missing required field" do
       data = %{name: "John", age: 30, extra_key: "value"}
-      assert user(data) == {:error, [%Peri.Error{path: [:email], message: "is required"}]}
+
+      assert user(data) == {
+               :error,
+               [
+                 %Peri.Error{
+                   content: [],
+                   errors: nil,
+                   key: :email,
+                   message: "is required",
+                   path: [:email]
+                 }
+               ]
+             }
     end
 
     test "drops multiple unknown keys and validates correct data" do
