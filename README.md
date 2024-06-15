@@ -16,7 +16,7 @@ To use Peri in your project, add it to your dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:peri, "~> 0.1.0"}
+    {:peri, "~> 0.2"}
   ]
 end
 ```
@@ -70,7 +70,7 @@ Peri supports the following types for schema definitions:
   - `{:oneof, types}` - Validates that the field is at least one of the provided types.
   - `{:list, type}` - Validates that the field is a list where elements belongs to a determined type.
   - `{:tuple, types}` - Validates that the field is a tuple with determined size and each element have your own type validation (sequential).
-  - `{custom, anonymous_fun_arity_1}` - Validates that the field passes on the callback, the function needs to return either `:ok` or `{:error, reason}` where `reason` should be a string. This allow supporting composable schemas. See on the [Composable and Recursive Schemas](#composable-and-recursive-schemas) section.
+  - `{custom, anonymous_fun_arity_1}` - Validates that the field passes on the callback, the function needs to return either `:ok` or `{:error, template, info}` where `template` should be a string with optinal EEx directives and `info` is a list of EEx mapping (or an empty list). This allow supporting composable schemas. See on the [Composable and Recursive Schemas](#composable-and-recursive-schemas) section.
   - `{:custom, {MyModule, :my_validation}}` - Same as `{custom, anonymous_fun_arity_1}` but you pass a remote module and a function name as atom.
   - `{:custom, {MyModule, :my_validation, [arg1, arg2]}}` - Same as `{:custom, {MyModule, :my_validation}}` but you can pass extra arguments to your validation function. Note that the value of the field is always the first argument.
   - Nested maps with schema defined
@@ -182,6 +182,47 @@ end
 
 ### Composable and Recursive Schemas
 
+#### Custom Schemas validations
+
+You can provide another schemas or custom function validations as nested validations. The idea is to provide a function that receives a value and returns `:ok` in case of success and `{:error, template, info}` in case of error.
+
+Let's take a look into an example of this definition:
+
+```elixir
+defmodule CustomValidations do
+  @spec positive?(term) :: :ok | {:error, String.t(), keyword}
+  def positive?(val) when is_integer(val) and val > 0, do: :ok
+  def positive?(_val), do: {:error, "must be positive", []}
+
+  @spec starts_with_a?(term) :: :ok | {:error, String.t(), keyword}
+  def starts_with_a?(<<"a", _::binary>>), do: :ok
+  def starts_with_a?(_val), do: {:error, "must start with <%= prefix %>", [prefix: "'a'"]}
+end
+
+defmodule MySchemas do
+  import Peri
+
+  defschema :custom_example, %{
+    positive_number: {:custom, &CustomValidations.positive?/1},
+    name: {:custom, {CustomValidations, :starts_with_a?}}
+  }
+end
+
+data = %{positive_number: 5, name: "alice"}
+case MySchemas.custom_example(data) do
+  {:ok, valid_data} -> IO.puts("Data is valid!")
+  {:error, errors} -> IO.inspect(errors, label: "Validation errors")
+end
+
+invalid_data = %{positive_number: -5, name: "bob"}
+case MySchemas.custom_example(invalid_data) do
+  {:ok, valid_data} -> IO.puts("Data is valid!")
+  {:error, errors} -> IO.inspect(errors, label: "Validation errors")
+end
+```
+
+The `template` is a raw EEx string with directives that references any variable on the `info` payload, which is a keyword list that represents variables. You can know more about error handling on the [Error Handling](#error-handling) section.
+
 #### Composable Schemas
 
 Composable schemas allow you to define reusable schema components and combine them to create more complex schemas. As Peri's schemas are just functions (and under the hoods simple elixir data), you can pass schemas around to another schemas.
@@ -274,17 +315,31 @@ defmodule MySchemas do
 end
 ```
 
-### Comparison: Peri vs. Ecto
+## Error Handling
+
+For each error in you schema, it will be constructed a `%Peri.Error{}` struct, that is defined as:
+
+```elixir
+@type t :: %Peri.Error{
+  path: list(atom), # the "path" to the error key inside your data
+  key: atom, # the error key in your data
+  message: String.t(), # already evaluated EEx string defining the error message
+  content: keyword, # the data that filled the error message, variables and additonal data
+  errors: list(Peri.Error.t()) | nil # if your structure is nested, it can have nested errors on your data
+}
+```
+
+## Comparison: Peri vs. Ecto
 
 While both Peri and Ecto provide mechanisms for working with schemas in Elixir, they serve different purposes and are used in different contexts.
 
-#### Peri
+### Peri
 - **Purpose**: Peri is designed specifically for schema validation. It focuses on validating raw maps against defined schemas.
 - **Flexibility**: Peri allows for easy validation of nested structures and optional fields.
 - **Simplicity**: The syntax for defining schemas in Peri is simple and intuitive, making it easy to use for straightforward validation tasks.
 - **Use Case**: Ideal for validating data structures in contexts where you don't need the full power of a database ORM.
 
-#### Ecto
+### Ecto
 - **Purpose**: Ecto is a comprehensive database wrapper and query generator for Elixir. It provides tools for defining schemas, querying databases, and managing changesets.
 - **Complexity**: Ecto is more complex due to its broader feature set, which includes support for migrations, associations, and transactions.
 - **Schema Definitions**: Ecto schemas are typically tied to database tables, with a focus on struct-based data manipulation.

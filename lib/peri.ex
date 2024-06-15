@@ -26,7 +26,7 @@ defmodule Peri do
     }
 
     defp validate_rating(n) when n < 10, do: :ok
-    defp validate_rating(_), do: {:error, "invalid rating"}
+    defp validate_rating(_), do: {:error, "invalid rating", []}
   end
   ```
 

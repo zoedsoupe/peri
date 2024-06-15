@@ -10,6 +10,7 @@ defmodule Peri.MixProject do
       version: @version,
       elixir: "~> 1.16",
       start_permanent: Mix.env() == :prod,
+      docs: docs(),
       deps: deps(),
       package: package(),
       description: description(),
@@ -37,7 +38,15 @@ defmodule Peri.MixProject do
       files: ~w(lib .formatter.exs LICENSE README.md),
       links: %{"GitHub" => @source_url},
       licenses: ["MIT"],
-      main_module: "Peri"
+    ]
+  end
+
+  defp docs do
+    [
+      main: "readme",
+      extras: ["README.md"],
+      source_ref: "v#{@version}",
+      source_url: @source_url
     ]
   end
 end
