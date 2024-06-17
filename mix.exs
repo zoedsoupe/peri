@@ -36,7 +36,7 @@ defmodule Peri.MixProject do
     [
       name: "peri",
       links: %{"GitHub" => @source_url},
-      licenses: ["MIT"],
+      licenses: ["MIT"]
     ]
   end
 
