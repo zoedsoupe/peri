@@ -94,6 +94,15 @@ defmodule Peri do
     end
   end
 
+  defguardp is_enumerable(data) when is_map(data) or is_list(data)
+
+  def conforms?(schema, data) do
+    case validate(schema, data) do
+      {:ok, _} -> true
+      {:error, _errors} -> false
+    end
+  end
+
   @doc """
   Validates a given data map against a schema.
 
