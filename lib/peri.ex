@@ -129,7 +129,7 @@ defmodule Peri do
       Peri.validate(schema, invalid_data)
       # => {:error, [email: "is required"]}
   """
-  def validate(schema, data) when is_map(schema) and is_map(data) do
+  def validate(schema, data) when is_enumerable(schema) and is_enumerable(data) do
     data = filter_data(schema, data)
 
     case traverse_schema(schema, data) do
@@ -151,30 +151,44 @@ defmodule Peri do
     end
   end
 
-  defp filter_data(schema, data, acc \\ %{}) do
+  defp filter_data(schema, data) do
+    acc = if is_map(schema), do: %{}, else: []
+
     Enum.reduce(schema, acc, fn {key, type}, acc ->
       string_key = to_string(key)
-      original_key = if Map.has_key?(data, string_key), do: string_key, else: key
-      value = Map.get(data, original_key)
+      value = get_enumerable_value(data, key)
+      original_key = if enumerable_has_key?(data, key), do: key, else: string_key
 
       cond do
-        not (Map.has_key?(data, key) or Map.has_key?(data, string_key)) ->
+        is_enumerable(data) and not enumerable_has_key?(data, key) ->
           acc
 
-        is_map(value) and is_map(type) ->
+        is_enumerable(value) and is_enumerable(type) ->
           nested_filtered_value = filter_data(type, value)
-          Map.put(acc, original_key, nested_filtered_value)
+          put_in(acc[original_key], nested_filtered_value)
 
         true ->
-          Map.put(acc, original_key, value)
+          put_in(acc[original_key], value)
       end
     end)
+    |> then(fn
+      %{} = data -> data
+      data when is_list(data) -> Enum.reverse(data)
+    end)
+  end
+
+  defp enumerable_has_key?(data, key) when is_map(data) do
+    Map.has_key?(data, key) or Map.has_key?(data, Atom.to_string(key))
+  end
+
+  defp enumerable_has_key?(data, key) when is_list(data) do
+    Keyword.has_key?(data, key)
   end
 
   @doc false
   defp traverse_schema(schema, data, path \\ []) do
     Enum.reduce(schema, {[], path}, fn {key, type}, {errors, path} ->
-      value = Map.get(data, key) || Map.get(data, to_string(key))
+      value = get_enumerable_value(data, key)
 
       case validate_field(value, type) do
         :ok ->
@@ -194,6 +208,13 @@ defmodule Peri do
           {[err | errors], path}
       end
     end)
+  end
+
+  defp get_enumerable_value(enum, key) do
+    case Access.get(enum, key) do
+      nil when is_map(enum) -> Map.get(enum, Atom.to_string(key))
+      val -> val
+    end
   end
 
   defp update_error_paths(%Peri.Error{path: path, errors: nil} = error, new_path) do
@@ -313,7 +334,7 @@ defmodule Peri do
     end)
   end
 
-  defp validate_field(data, schema) when is_map(data) do
+  defp validate_field(data, schema) when is_enumerable(data) do
     case traverse_schema(schema, data) do
       {[], _path} -> :ok
       {errors, _path} -> {:error, errors}

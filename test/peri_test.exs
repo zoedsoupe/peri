@@ -659,4 +659,288 @@ defmodule PeriTest do
                 ]}
     end
   end
+
+  defschema(:simple_keyword, [
+    {:name, :string},
+    {:age, :integer},
+    {:email, {:required, :string}}
+  ])
+
+  defschema(:nested_keyword, [
+    {:user,
+     [
+       {:name, :string},
+       {:profile,
+        [
+          {:age, {:required, :integer}},
+          {:email, {:required, :string}}
+        ]}
+     ]}
+  ])
+
+  defschema(:optional_fields_keyword, [
+    {:name, :string},
+    {:age, {:required, :integer}},
+    {:email, {:required, :string}},
+    {:phone, :string}
+  ])
+
+  describe "simple keyword list schema validation" do
+    test "validates simple keyword list schema with valid data" do
+      data = [name: "John", age: 30, email: "john@example.com"]
+      assert {:ok, ^data} = simple_keyword(data)
+    end
+
+    test "validates simple keyword list schema with missing required field" do
+      data = [name: "John", age: 30]
+
+      assert {:error, [%Peri.Error{path: [:email], message: "is required"}]} =
+               simple_keyword(data)
+    end
+
+    test "validates simple keyword list schema with invalid field type" do
+      data = [name: "John", age: "thirty", email: "john@example.com"]
+
+      assert {:error,
+              [
+                %Peri.Error{
+                  path: [:age],
+                  message: "expected type of integer received \"thirty\" value"
+                }
+              ]} =
+               simple_keyword(data)
+    end
+  end
+
+  describe "nested keyword list schema validation" do
+    test "validates nested keyword list schema with valid data" do
+      data = [user: [name: "Jane", profile: [age: 25, email: "jane@example.com"]]]
+      assert {:ok, ^data} = nested_keyword(data)
+    end
+
+    test "validates nested keyword list schema with invalid data" do
+      data = [user: [name: "Jane", profile: [age: "twenty-five", email: "jane@example.com"]]]
+
+      assert {
+               :error,
+               [
+                 %Peri.Error{
+                   message: nil,
+                   path: [:user],
+                   content: nil,
+                   errors: [
+                     %Peri.Error{
+                       path: [:user, :profile],
+                       key: :profile,
+                       content: nil,
+                       message: nil,
+                       errors: [
+                         %Peri.Error{
+                           path: [:user, :profile, :age],
+                           key: :age,
+                           content: [expected: :integer, actual: "\"twenty-five\""],
+                           message: "expected type of integer received \"twenty-five\" value",
+                           errors: nil
+                         }
+                       ]
+                     }
+                   ],
+                   key: :user
+                 }
+               ]
+             } = nested_keyword(data)
+    end
+
+    test "validates nested keyword list schema with missing required field" do
+      data = [user: [name: "Jane", profile: [age: 25]]]
+
+      assert {
+               :error,
+               [
+                 %Peri.Error{
+                   message: nil,
+                   path: [:user],
+                   content: nil,
+                   errors: [
+                     %Peri.Error{
+                       path: [:user, :profile],
+                       key: :profile,
+                       content: nil,
+                       message: nil,
+                       errors: [
+                         %Peri.Error{
+                           path: [:user, :profile, :email],
+                           key: :email,
+                           content: [],
+                           message: "is required",
+                           errors: nil
+                         }
+                       ]
+                     }
+                   ],
+                   key: :user
+                 }
+               ]
+             } =
+               nested_keyword(data)
+    end
+  end
+
+  describe "optional fields keyword list validation" do
+    test "validates keyword list schema with optional fields" do
+      data = [name: "John", age: 30, email: "john@example.com"]
+      assert {:ok, ^data} = optional_fields_keyword(data)
+
+      data_with_optional = [name: "John", age: 30, email: "john@example.com", phone: "123-456"]
+      assert {:ok, ^data_with_optional} = optional_fields_keyword(data_with_optional)
+    end
+
+    test "validates keyword list schema with optional fields and invalid optional field type" do
+      data = [name: "John", age: 30, email: "john@example.com", phone: 123_456]
+
+      assert {:error,
+              [
+                %Peri.Error{
+                  path: [:phone],
+                  message: "expected type of string received 123456 value"
+                }
+              ]} =
+               optional_fields_keyword(data)
+    end
+  end
+
+  defschema(:mixed_schema, %{
+    user_info: [
+      avatar: %{
+        url: :string
+      },
+      username: {:required, :string},
+      role: {:required, {:enum, [:admin, :user]}}
+    ]
+  })
+
+  describe "mixed schema validation" do
+    test "validates mixed schema with valid data" do
+      data = %{
+        user_info: [
+          avatar: %{url: "http://example.com/avatar.jpg"},
+          username: "john_doe",
+          role: :admin
+        ]
+      }
+
+      assert {:ok, ^data} = mixed_schema(data)
+    end
+
+    test "validates mixed schema with missing required field" do
+      data = %{user_info: %{avatar: %{url: "http://example.com/avatar.jpg"}, role: :admin}}
+
+      assert {
+               :error,
+               [
+                 %Peri.Error{
+                   message: nil,
+                   path: [:user_info],
+                   content: nil,
+                   errors: [
+                     %Peri.Error{
+                       path: [:user_info, :username],
+                       key: :username,
+                       content: [],
+                       message: "is required",
+                       errors: nil
+                     }
+                   ],
+                   key: :user_info
+                 }
+               ]
+             } =
+               mixed_schema(data)
+    end
+
+    test "validates mixed schema with invalid enum value" do
+      data = %{
+        user_info: %{
+          avatar: %{url: "http://example.com/avatar.jpg"},
+          username: "john_doe",
+          role: :superuser
+        }
+      }
+
+      assert {
+               :error,
+               [
+                 %Peri.Error{
+                   message: nil,
+                   path: [:user_info],
+                   content: nil,
+                   errors: [
+                     %Peri.Error{
+                       path: [:user_info, :role],
+                       key: :role,
+                       content: [choices: "[:admin, :user]", actual: ":superuser"],
+                       message: "expected one of [:admin, :user] received :superuser",
+                       errors: nil
+                     }
+                   ],
+                   key: :user_info
+                 }
+               ]
+             } = mixed_schema(data)
+    end
+
+    test "validates mixed schema with invalid field type" do
+      data = %{user_info: %{avatar: %{url: 12345}, username: "john_doe", role: :admin}}
+
+      assert {
+               :error,
+               [
+                 %Peri.Error{
+                   message: nil,
+                   path: [:user_info],
+                   content: nil,
+                   errors: [
+                     %Peri.Error{
+                       path: [:user_info, :avatar],
+                       key: :avatar,
+                       content: nil,
+                       message: nil,
+                       errors: [
+                         %Peri.Error{
+                           path: [:user_info, :avatar, :url],
+                           key: :url,
+                           content: [expected: :string, actual: "12345"],
+                           message: "expected type of string received 12345 value",
+                           errors: nil
+                         }
+                       ]
+                     }
+                   ],
+                   key: :user_info
+                 }
+               ]
+             } = mixed_schema(data)
+    end
+
+    test "validates mixed schema with extra fields" do
+      data = %{
+        user_info: %{
+          avatar: %{url: "http://example.com/avatar.jpg", size: "large"},
+          username: "john_doe",
+          role: :admin,
+          extra_field: "extra"
+        }
+      }
+
+      expected_data = %{
+        user_info: [
+          avatar: %{url: "http://example.com/avatar.jpg"},
+          username: "john_doe",
+          role: :admin
+        ]
+      }
+
+      assert {:ok, ^expected_data} = mixed_schema(data)
+    end
+  end
 end
