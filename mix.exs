@@ -26,7 +26,6 @@ defmodule Peri.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
-      {:stream_data, "~> 1.0"},
       {:credo, "~> 1.7", only: :dev, runtime: false},
       {:ex_doc, "~> 0.14", only: :dev, runtime: false}
     ]
