@@ -890,7 +890,7 @@ defmodule PeriTest do
     end
 
     test "validates mixed schema with invalid field type" do
-      data = %{user_info: %{avatar: %{url: 12345}, username: "john_doe", role: :admin}}
+      data = %{user_info: %{avatar: %{url: 12_345}, username: "john_doe", role: :admin}}
 
       assert {
                :error,
@@ -941,6 +941,181 @@ defmodule PeriTest do
       }
 
       assert {:ok, ^expected_data} = mixed_schema(data)
+    end
+  end
+
+  describe "validate_schema/1" do
+    test "validates a correct schema" do
+      schema = %{
+        name: :string,
+        age: :integer,
+        email: {:required, :string},
+        address: %{
+          street: :string,
+          city: :string
+        },
+        tags: {:list, :string},
+        role: {:enum, [:admin, :user, :guest]},
+        geolocation: {:tuple, [:float, :float]}
+      }
+
+      assert {:ok, ^schema} = Peri.validate_schema(schema)
+    end
+
+    test "detects an incorrect schema with invalid key" do
+      schema = %{
+        name: :str,
+        age: :integer,
+        email: {:required, :string}
+      }
+
+      assert {
+               :error,
+               [
+                 %Peri.Error{
+                   path: [:name],
+                   key: :name,
+                   content: [
+                     schema: %{name: :str, age: :integer, email: {:required, :string}},
+                     invalid: ":str"
+                   ],
+                   message: "invalid schema definition: :str",
+                   errors: nil
+                 }
+               ]
+             } =
+               Peri.validate_schema(schema)
+    end
+
+    test "detects an incorrect schema with invalid nested key" do
+      schema = %{
+        address: %{
+          street: :str,
+          city: :string
+        }
+      }
+
+      assert {
+               :error,
+               [
+                 %Peri.Error{
+                   path: [:address],
+                   key: :address,
+                   content: nil,
+                   message: nil,
+                   errors: [
+                     %Peri.Error{
+                       path: [:address, :street],
+                       key: :street,
+                       content: [schema: %{street: :str, city: :string}, invalid: ":str"],
+                       message: "invalid schema definition: :str",
+                       errors: nil
+                     }
+                   ]
+                 }
+               ]
+             } =
+               Peri.validate_schema(schema)
+    end
+
+    test "detects an incorrect schema with invalid custom validation" do
+      schema = %{
+        custom_field: {:custom, "not_a_function"}
+      }
+
+      assert {:error,
+              [
+                %Peri.Error{
+                  path: [:custom_field],
+                  message: "invalid schema definition: {:custom, \"not_a_function\"}"
+                }
+              ]} =
+               Peri.validate_schema(schema)
+    end
+
+    test "detects an incorrect schema with invalid either types" do
+      schema = %{
+        field: {:either, {:string, 123}}
+      }
+
+      assert {
+               :error,
+               [
+                 %Peri.Error{
+                   path: [:field],
+                   key: :field,
+                   content: [schema: %{field: {:either, {:string, 123}}}, invalid: "123"],
+                   message: "invalid schema definition: 123",
+                   errors: nil
+                 }
+               ]
+             } =
+               Peri.validate_schema(schema)
+    end
+
+    test "detects an incorrect schema with invalid oneof types" do
+      schema = %{
+        field: {:oneof, [:string, 123]}
+      }
+
+      assert {
+               :error,
+               [
+                 %Peri.Error{
+                   path: [:field],
+                   key: :field,
+                   content: [schema: %{field: {:oneof, [:string, 123]}}, invalid: "123"],
+                   message: "invalid schema definition: 123",
+                   errors: nil
+                 }
+               ]
+             } =
+               Peri.validate_schema(schema)
+    end
+
+    test "detects an incorrect schema with invalid tuple types" do
+      schema = %{
+        geolocation: {:tuple, [:float, "string"]}
+      }
+
+      assert {
+               :error,
+               [
+                 %Peri.Error{
+                   path: [:geolocation],
+                   key: :geolocation,
+                   content: [
+                     schema: %{geolocation: {:tuple, [:float, "string"]}},
+                     invalid: "\"string\""
+                   ],
+                   message: "invalid schema definition: \"string\"",
+                   errors: nil
+                 }
+               ]
+             } =
+               Peri.validate_schema(schema)
+    end
+
+    test "handles valid conditional types" do
+      schema = %{
+        conditional_field: {:cond, fn x -> x > 0 end, :integer, :string}
+      }
+
+      assert {:ok, ^schema} = Peri.validate_schema(schema)
+    end
+
+    test "handles valid dependent types" do
+      schema = %{
+        dependent_field: {:dependent, :string, fn _ -> true end, :integer}
+      }
+
+      assert {:ok, ^schema} = Peri.validate_schema(schema)
+    end
+
+    test "handles an empty schema" do
+      schema = %{}
+
+      assert {:ok, ^schema} = Peri.validate_schema(schema)
     end
   end
 end

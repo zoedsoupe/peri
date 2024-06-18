@@ -1,7 +1,7 @@
 defmodule Peri.MixProject do
   use Mix.Project
 
-  @version "0.2.2"
+  @version "0.2.3"
   @source_url "https://github.com/zoedsoupe/peri"
 
   def project do
@@ -25,7 +25,11 @@ defmodule Peri.MixProject do
 
   # Run "mix help deps" to learn about dependencies.
   defp deps do
-    [{:ex_doc, "~> 0.14", only: :dev, runtime: false}]
+    [
+      {:stream_data, "~> 1.0"},
+      {:credo, "~> 1.7", only: :dev, runtime: false},
+      {:ex_doc, "~> 0.14", only: :dev, runtime: false}
+    ]
   end
 
   defp description do

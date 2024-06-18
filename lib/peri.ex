@@ -83,13 +83,26 @@ defmodule Peri do
       # => {:error, [email: "is required"]}
   """
   defmacro defschema(name, schema) do
+    bang = :"#{name}!"
+
     quote do
       def get_schema(unquote(name)) do
         unquote(schema)
       end
 
       def unquote(name)(data) do
-        Peri.validate(unquote(schema), data)
+        with {:ok, schema} <- Peri.validate_schema(unquote(schema)) do
+          Peri.validate(schema, data)
+        end
+      end
+
+      def unquote(bang)(data) do
+        with {:ok, valid_schema} <- Peri.validate_schema(unquote(schema)),
+             {:ok, valid_data} <- Peri.validate(valid_schema, data) do
+          valid_data
+        else
+          {:error, errors} -> raise Peri.InvalidSchema, errors
+        end
       end
     end
   end
@@ -139,7 +152,7 @@ defmodule Peri do
   end
 
   def validate(schema, data) do
-    case validate_field(data, schema) do
+    case validate_field(data, schema, data) do
       :ok ->
         {:ok, data}
 
@@ -190,7 +203,7 @@ defmodule Peri do
     Enum.reduce(schema, {[], path}, fn {key, type}, {errors, path} ->
       value = get_enumerable_value(data, key)
 
-      case validate_field(value, type) do
+      case validate_field(value, type, data) do
         :ok ->
           {errors, []}
 
@@ -227,20 +240,21 @@ defmodule Peri do
   end
 
   @doc false
-  defp validate_field(_, :any), do: :ok
-  defp validate_field(val, :atom) when is_atom(val), do: :ok
-  defp validate_field(val, :map) when is_map(val), do: :ok
-  defp validate_field(val, :string) when is_binary(val), do: :ok
-  defp validate_field(val, :integer) when is_integer(val), do: :ok
-  defp validate_field(val, :float) when is_float(val), do: :ok
-  defp validate_field(val, :boolean) when is_boolean(val), do: :ok
-  defp validate_field(val, :list) when is_list(val), do: :ok
-  defp validate_field(nil, {:required, _}), do: {:error, "is required", []}
-  defp validate_field([], {:required, {:list, _}}), do: {:error, "cannot be empty", []}
-  defp validate_field(val, {:required, type}), do: validate_field(val, type)
-  defp validate_field(nil, _), do: :ok
+  defp validate_field(nil, nil, _data), do: :ok
+  defp validate_field(_, :any, _data), do: :ok
+  defp validate_field(val, :atom, _data) when is_atom(val), do: :ok
+  defp validate_field(val, :map, _data) when is_map(val), do: :ok
+  defp validate_field(val, :string, _data) when is_binary(val), do: :ok
+  defp validate_field(val, :integer, _data) when is_integer(val), do: :ok
+  defp validate_field(val, :float, _data) when is_float(val), do: :ok
+  defp validate_field(val, :boolean, _data) when is_boolean(val), do: :ok
+  defp validate_field(val, :list, _data) when is_list(val), do: :ok
+  defp validate_field(nil, {:required, _}, _data), do: {:error, "is required", []}
+  defp validate_field([], {:required, {:list, _}}, _data), do: {:error, "cannot be empty", []}
+  defp validate_field(val, {:required, type}, data), do: validate_field(val, type, data)
+  defp validate_field(nil, _, _data), do: :ok
 
-  defp validate_field(val, {:custom, callback}) when is_function(callback, 1) do
+  defp validate_field(val, {:custom, callback}, _data) when is_function(callback, 1) do
     case callback.(val) do
       :ok -> :ok
       {:ok, _} -> :ok
@@ -248,7 +262,7 @@ defmodule Peri do
     end
   end
 
-  defp validate_field(val, {:custom, {mod, fun}}) do
+  defp validate_field(val, {:custom, {mod, fun}}, _data) do
     case apply(mod, fun, [val]) do
       :ok -> :ok
       {:ok, _} -> :ok
@@ -256,7 +270,7 @@ defmodule Peri do
     end
   end
 
-  defp validate_field(val, {:custom, {mod, fun, args}}) do
+  defp validate_field(val, {:custom, {mod, fun, args}}, _data) do
     case apply(mod, fun, [val | args]) do
       :ok -> :ok
       {:ok, _} -> :ok
@@ -264,19 +278,35 @@ defmodule Peri do
     end
   end
 
-  defp validate_field(val, {:either, {type_1, type_2}}) do
-    with {:error, _, _} <- validate_field(val, type_1),
-         {:error, _, _} <- validate_field(val, type_2) do
+  defp validate_field(val, {:cond, condition, true_type, else_type}, data) do
+    if condition.(data) do
+      validate_field(val, true_type, data)
+    else
+      validate_field(val, else_type, data)
+    end
+  end
+
+  defp validate_field(val, {:dependent, field, condition, type}, data) do
+    dependent_val = get_enumerable_value(data, field)
+
+    with :ok <- condition.(val, dependent_val) do
+      validate_field(val, type, data)
+    end
+  end
+
+  defp validate_field(val, {:either, {type_1, type_2}}, data) do
+    with {:error, _, _} <- validate_field(val, type_1, data),
+         {:error, _, _} <- validate_field(val, type_2, data) do
       info = [first_type: type_1, second_type: type_2, actual: inspect(val)]
       template = "expected either <%= first_type %> or <%= second_type %>, got: <%= actual %>"
       {:error, template, info}
     end
   end
 
-  defp validate_field(val, {:oneof, types}) do
+  defp validate_field(val, {:oneof, types}, data) do
     types
     |> Enum.reduce_while(:error, fn type, :error ->
-      case validate_field(val, type) do
+      case validate_field(val, type, data) do
         :ok -> {:halt, :ok}
         {:error, _reason, _info} -> {:cont, :error}
       end
@@ -294,11 +324,11 @@ defmodule Peri do
     end)
   end
 
-  defp validate_field(val, {:tuple, types}) when is_tuple(val) do
+  defp validate_field(val, {:tuple, types}, data) when is_tuple(val) do
     if tuple_size(val) == length(types) do
       Enum.with_index(types)
       |> Enum.reduce_while(:ok, fn {type, index}, :ok ->
-        case validate_field(elem(val, index), type) do
+        case validate_field(elem(val, index), type, data) do
           :ok ->
             {:cont, :ok}
 
@@ -314,7 +344,7 @@ defmodule Peri do
     end
   end
 
-  defp validate_field(val, {:enum, choices}) do
+  defp validate_field(val, {:enum, choices}, _data) do
     if to_string(val) in Enum.map(choices, &to_string/1) do
       :ok
     else
@@ -324,9 +354,9 @@ defmodule Peri do
     end
   end
 
-  defp validate_field(data, {:list, type}) when is_list(data) do
+  defp validate_field(data, {:list, type}, source) when is_list(data) do
     Enum.reduce_while(data, :ok, fn el, :ok ->
-      case validate_field(el, type) do
+      case validate_field(el, type, source) do
         :ok -> {:cont, :ok}
         {:error, errors} -> {:halt, {:error, errors}}
         {:error, reason, info} -> {:halt, {:error, reason, info}}
@@ -334,15 +364,124 @@ defmodule Peri do
     end)
   end
 
-  defp validate_field(data, schema) when is_enumerable(data) do
+  defp validate_field(data, schema, _data) when is_enumerable(data) do
     case traverse_schema(schema, data) do
       {[], _path} -> :ok
       {errors, _path} -> {:error, errors}
     end
   end
 
-  defp validate_field(val, type) do
+  defp validate_field(val, type, _data) do
     info = [expected: type, actual: inspect(val, pretty: true)]
     {:error, "expected type of <%= expected %> received <%= actual %> value", info}
+  end
+
+  def validate_schema(schema) when is_enumerable(schema) do
+    case traverse_definition(schema) do
+      {[], _path} -> {:ok, schema}
+      {errors, _path} -> {:error, errors}
+    end
+  end
+
+  def validate_schema(schema) do
+    case validate_type(schema) do
+      :ok ->
+        {:ok, schema}
+
+      {:error, reason, info} ->
+        msg = EEx.eval_string(reason, info)
+        err = %Peri.Error{message: msg, content: info}
+
+        {:error, err}
+    end
+  end
+
+  defp traverse_definition(schema) when is_enumerable(schema) do
+    Enum.reduce(schema, {[], []}, fn {key, type}, {errors, path} ->
+      case validate_type(type) do
+        :ok ->
+          {errors, []}
+
+        {:error, [%Peri.Error{} = nested_err | _]} ->
+          current_path = path ++ [key]
+          nested_error = update_error_paths(nested_err, current_path)
+          err = %Peri.Error{path: current_path, key: key, errors: [nested_error]}
+          {[err | errors], path}
+
+        {:error, reason, info} ->
+          msg = EEx.eval_string(reason, info)
+          current_path = path ++ [key]
+          info = [{:schema, schema} | info]
+          err = %Peri.Error{path: current_path, message: msg, content: info, key: key}
+
+          {[err | errors], path}
+      end
+    end)
+  end
+
+  defp validate_type(nil), do: :ok
+  defp validate_type(:any), do: :ok
+  defp validate_type(:atom), do: :ok
+  defp validate_type(:integer), do: :ok
+  defp validate_type(:map), do: :ok
+  defp validate_type(:float), do: :ok
+  defp validate_type(:boolean), do: :ok
+  defp validate_type(:string), do: :ok
+  defp validate_type({:enum, choices}) when is_list(choices), do: :ok
+  defp validate_type({:required, type}), do: validate_type(type)
+  defp validate_type({:list, type}), do: validate_type(type)
+  defp validate_type({:custom, cb}) when is_function(cb, 1), do: :ok
+  defp validate_type({:custom, {mod, fun}}) when is_atom(mod) and is_atom(fun), do: :ok
+
+  defp validate_type({:custom, {mod, fun, args}})
+       when is_atom(mod) and is_atom(fun) and is_list(args),
+       do: :ok
+
+  defp validate_type({:cond, cb, type, else_type}) when is_function(cb, 1) do
+    with :ok <- validate_type(type) do
+      validate_type(else_type)
+    end
+  end
+
+  defp validate_type({:dependent, _, cb, type}) when is_function(cb, 1) do
+    validate_type(type)
+  end
+
+  defp validate_type({:tuple, types}) do
+    Enum.reduce_while(types, :ok, fn type, :ok ->
+      case validate_type(type) do
+        :ok -> {:cont, :ok}
+        {:error, errors} -> {:halt, {:error, errors}}
+        {:error, template, info} -> {:halt, {:error, template, info}}
+      end
+    end)
+  end
+
+  defp validate_type({:either, {type_1, type_2}}) do
+    with :ok <- validate_type(type_1) do
+      validate_type(type_2)
+    end
+  end
+
+  defp validate_type({:oneof, types}) do
+    Enum.reduce_while(types, :ok, fn type, :ok ->
+      case validate_type(type) do
+        :ok -> {:cont, :ok}
+        {:error, errors} -> {:halt, {:error, errors}}
+        {:error, template, info} -> {:halt, {:error, template, info}}
+      end
+    end)
+  end
+
+  defp validate_type(schema) when is_enumerable(schema) do
+    case traverse_definition(schema) do
+      {[], _path} -> :ok
+      {errors, _path} -> {:error, errors}
+    end
+  end
+
+  defp validate_type(invalid) do
+    invalid = inspect(invalid, pretty: true)
+    {:error, "invalid schema definition: <%= invalid %>", invalid: invalid}
   end
 end
