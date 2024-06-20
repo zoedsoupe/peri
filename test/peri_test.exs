@@ -54,13 +54,18 @@ defmodule PeriTest do
     test "validates simple schema with invalid field type" do
       data = %{name: "John", age: "thirty", email: "john@example.com"}
 
-      assert {:error,
-              [
-                %Peri.Error{
-                  path: [:age],
-                  message: "expected type of integer received \"thirty\" value"
-                }
-              ]} =
+      assert {
+               :error,
+               [
+                 %Peri.Error{
+                   path: [:age],
+                   key: :age,
+                   content: %{actual: "\"thirty\"", expected: :integer},
+                   message: "expected type of :integer received \"thirty\" value",
+                   errors: nil
+                 }
+               ]
+             } =
                simple(data)
     end
   end
@@ -91,8 +96,8 @@ defmodule PeriTest do
                          %Peri.Error{
                            path: [:user, :profile, :age],
                            key: :age,
-                           content: [expected: :integer, actual: "\"twenty-five\""],
-                           message: "expected type of integer received \"twenty-five\" value",
+                           content: %{expected: :integer, actual: "\"twenty-five\""},
+                           message: "expected type of :integer received \"twenty-five\" value",
                            errors: nil
                          }
                        ]
@@ -124,7 +129,7 @@ defmodule PeriTest do
                          %Peri.Error{
                            path: [:user, :profile, :email],
                            key: :email,
-                           content: [],
+                           content: %{},
                            message: "is required",
                            errors: nil
                          }
@@ -151,13 +156,18 @@ defmodule PeriTest do
     test "validates schema with optional fields and invalid optional field type" do
       data = %{name: "John", age: 30, email: "john@example.com", phone: 123_456}
 
-      assert {:error,
-              [
-                %Peri.Error{
-                  path: [:phone],
-                  message: "expected type of string received 123456 value"
-                }
-              ]} =
+      assert {
+               :error,
+               [
+                 %Peri.Error{
+                   path: [:phone],
+                   key: :phone,
+                   content: %{actual: "123456", expected: :string},
+                   message: "expected type of :string received 123456 value",
+                   errors: nil
+                 }
+               ]
+             } =
                optional_fields(data)
     end
   end
@@ -181,8 +191,18 @@ defmodule PeriTest do
     test "validates list of strings with incorrect data type in list" do
       data = %{tags: ["elixir", 42], scores: [1, 2, 3]}
 
-      assert {:error,
-              [%Peri.Error{path: [:tags], message: "expected type of string received 42 value"}]} =
+      assert {
+               :error,
+               [
+                 %Peri.Error{
+                   path: [:tags],
+                   key: :tags,
+                   content: %{actual: "42", expected: :string},
+                   message: "expected type of :string received 42 value",
+                   errors: nil
+                 }
+               ]
+             } =
                list_example(data)
     end
 
@@ -194,13 +214,18 @@ defmodule PeriTest do
     test "validates list of integers with incorrect data type in list" do
       data = %{tags: ["tag1", "tag2"], scores: [10, "twenty", 30]}
 
-      assert {:error,
-              [
-                %Peri.Error{
-                  path: [:scores],
-                  message: "expected type of integer received \"twenty\" value"
-                }
-              ]} =
+      assert {
+               :error,
+               [
+                 %Peri.Error{
+                   path: [:scores],
+                   key: :scores,
+                   content: %{actual: "\"twenty\"", expected: :integer},
+                   message: "expected type of :integer received \"twenty\" value",
+                   errors: nil
+                 }
+               ]
+             } =
                list_example(data)
     end
 
@@ -280,7 +305,7 @@ defmodule PeriTest do
                      %Peri.Error{
                        path: [:users, :name],
                        key: :name,
-                       content: [],
+                       content: %{},
                        message: "is required",
                        errors: nil
                      }
@@ -306,8 +331,8 @@ defmodule PeriTest do
                      %Peri.Error{
                        path: [:users, :age],
                        key: :age,
-                       content: [expected: :integer, actual: "\"thirty\""],
-                       message: "expected type of integer received \"thirty\" value",
+                       content: %{expected: :integer, actual: "\"thirty\""},
+                       message: "expected type of :integer received \"thirty\" value",
                        errors: nil
                      }
                    ],
@@ -339,7 +364,7 @@ defmodule PeriTest do
     def positive?(_val), do: {:error, "must be positive", []}
 
     def starts_with_a?(<<"a", _::binary>>), do: :ok
-    def starts_with_a?(_val), do: {:error, "must start with <%= prefix %>", [prefix: "'a'"]}
+    def starts_with_a?(_val), do: {:error, "must start with %{prefix}", [prefix: "'a'"]}
   end
 
   defschema(:custom_example, %{
@@ -366,14 +391,14 @@ defmodule PeriTest do
                  %Peri.Error{
                    message: "must be positive",
                    path: [:positive_number],
-                   content: [],
+                   content: %{},
                    errors: nil,
                    key: :positive_number
                  },
                  %Peri.Error{
                    message: "must start with 'a'",
                    path: [:name],
-                   content: [prefix: "'a'"],
+                   content: %{prefix: "'a'"},
                    errors: nil,
                    key: :name
                  }
@@ -400,9 +425,9 @@ defmodule PeriTest do
                :error,
                [
                  %Peri.Error{
-                   message: "tuple element 1: expected type of float received \"20.5\" value",
+                   message: "tuple element 1: expected type of :float received \"20.5\" value",
                    path: [:coordinates],
-                   content: [index: 1, expected: :float, actual: "\"20.5\""],
+                   content: %{index: 1, expected: :float, actual: "\"20.5\""},
                    errors: nil,
                    key: :coordinates
                  }
@@ -463,8 +488,8 @@ defmodule PeriTest do
                %Peri.Error{
                  path: nil,
                  key: nil,
-                 content: [expected: :string, actual: "123"],
-                 message: "expected type of string received 123 value",
+                 content: %{expected: :string, actual: "123"},
+                 message: "expected type of :string received 123 value",
                  errors: nil
                }
              } =
@@ -490,8 +515,8 @@ defmodule PeriTest do
                      %Peri.Error{
                        path: [:scores, :score],
                        key: :score,
-                       content: [expected: :float, actual: "\"high\""],
-                       message: "expected type of float received \"high\" value",
+                       content: %{expected: :float, actual: "\"high\""},
+                       message: "expected type of :float received \"high\" value",
                        errors: nil
                      }
                    ],
@@ -531,8 +556,8 @@ defmodule PeriTest do
                          %Peri.Error{
                            path: [:children, :children, :id],
                            key: :id,
-                           content: [expected: :integer, actual: "\"invalid\""],
-                           message: "expected type of integer received \"invalid\" value",
+                           content: %{expected: :integer, actual: "\"invalid\""},
+                           message: "expected type of :integer received \"invalid\" value",
                            errors: nil
                          }
                        ]
@@ -552,7 +577,7 @@ defmodule PeriTest do
                  :error,
                  [
                    %Peri.Error{
-                     content: [],
+                     content: %{},
                      errors: nil,
                      key: :id,
                      message: "is required",
@@ -593,7 +618,7 @@ defmodule PeriTest do
                :error,
                [
                  %Peri.Error{
-                   content: [],
+                   content: %{},
                    errors: nil,
                    key: :email,
                    message: "is required",
@@ -647,7 +672,7 @@ defmodule PeriTest do
                       %Peri.Error{
                         path: [:user, :email],
                         key: :email,
-                        content: [],
+                        content: %{},
                         message: "is required",
                         errors: nil
                       }
@@ -701,13 +726,18 @@ defmodule PeriTest do
     test "validates simple keyword list schema with invalid field type" do
       data = [name: "John", age: "thirty", email: "john@example.com"]
 
-      assert {:error,
-              [
-                %Peri.Error{
-                  path: [:age],
-                  message: "expected type of integer received \"thirty\" value"
-                }
-              ]} =
+      assert {
+               :error,
+               [
+                 %Peri.Error{
+                   path: [:age],
+                   key: :age,
+                   content: %{actual: "\"thirty\"", expected: :integer},
+                   message: "expected type of :integer received \"thirty\" value",
+                   errors: nil
+                 }
+               ]
+             } =
                simple_keyword(data)
     end
   end
@@ -738,8 +768,8 @@ defmodule PeriTest do
                          %Peri.Error{
                            path: [:user, :profile, :age],
                            key: :age,
-                           content: [expected: :integer, actual: "\"twenty-five\""],
-                           message: "expected type of integer received \"twenty-five\" value",
+                           content: %{expected: :integer, actual: "\"twenty-five\""},
+                           message: "expected type of :integer received \"twenty-five\" value",
                            errors: nil
                          }
                        ]
@@ -771,7 +801,7 @@ defmodule PeriTest do
                          %Peri.Error{
                            path: [:user, :profile, :email],
                            key: :email,
-                           content: [],
+                           content: %{},
                            message: "is required",
                            errors: nil
                          }
@@ -798,13 +828,18 @@ defmodule PeriTest do
     test "validates keyword list schema with optional fields and invalid optional field type" do
       data = [name: "John", age: 30, email: "john@example.com", phone: 123_456]
 
-      assert {:error,
-              [
-                %Peri.Error{
-                  path: [:phone],
-                  message: "expected type of string received 123456 value"
-                }
-              ]} =
+      assert {
+               :error,
+               [
+                 %Peri.Error{
+                   path: [:phone],
+                   key: :phone,
+                   content: %{actual: "123456", expected: :string},
+                   message: "expected type of :string received 123456 value",
+                   errors: nil
+                 }
+               ]
+             } =
                optional_fields_keyword(data)
     end
   end
@@ -846,7 +881,7 @@ defmodule PeriTest do
                      %Peri.Error{
                        path: [:user_info, :username],
                        key: :username,
-                       content: [],
+                       content: %{},
                        message: "is required",
                        errors: nil
                      }
@@ -878,7 +913,7 @@ defmodule PeriTest do
                      %Peri.Error{
                        path: [:user_info, :role],
                        key: :role,
-                       content: [choices: "[:admin, :user]", actual: ":superuser"],
+                       content: %{choices: "[:admin, :user]", actual: ":superuser"},
                        message: "expected one of [:admin, :user] received :superuser",
                        errors: nil
                      }
@@ -909,8 +944,8 @@ defmodule PeriTest do
                          %Peri.Error{
                            path: [:user_info, :avatar, :url],
                            key: :url,
-                           content: [expected: :string, actual: "12345"],
-                           message: "expected type of string received 12345 value",
+                           content: %{expected: :string, actual: "12345"},
+                           message: "expected type of :string received 12345 value",
                            errors: nil
                          }
                        ]
@@ -975,10 +1010,10 @@ defmodule PeriTest do
                  %Peri.Error{
                    path: [:name],
                    key: :name,
-                   content: [
+                   content: %{
                      schema: %{name: :str, age: :integer, email: {:required, :string}},
                      invalid: ":str"
-                   ],
+                   },
                    message: "invalid schema definition: :str",
                    errors: nil
                  }
@@ -1007,7 +1042,7 @@ defmodule PeriTest do
                      %Peri.Error{
                        path: [:address, :street],
                        key: :street,
-                       content: [schema: %{street: :str, city: :string}, invalid: ":str"],
+                       content: %{schema: %{street: :str, city: :string}, invalid: ":str"},
                        message: "invalid schema definition: :str",
                        errors: nil
                      }
@@ -1044,7 +1079,7 @@ defmodule PeriTest do
                  %Peri.Error{
                    path: [:field],
                    key: :field,
-                   content: [schema: %{field: {:either, {:string, 123}}}, invalid: "123"],
+                   content: %{schema: %{field: {:either, {:string, 123}}}, invalid: "123"},
                    message: "invalid schema definition: 123",
                    errors: nil
                  }
@@ -1064,7 +1099,7 @@ defmodule PeriTest do
                  %Peri.Error{
                    path: [:field],
                    key: :field,
-                   content: [schema: %{field: {:oneof, [:string, 123]}}, invalid: "123"],
+                   content: %{invalid: "123"},
                    message: "invalid schema definition: 123",
                    errors: nil
                  }
@@ -1084,10 +1119,10 @@ defmodule PeriTest do
                  %Peri.Error{
                    path: [:geolocation],
                    key: :geolocation,
-                   content: [
+                   content: %{
                      schema: %{geolocation: {:tuple, [:float, "string"]}},
                      invalid: "\"string\""
-                   ],
+                   },
                    message: "invalid schema definition: \"string\"",
                    errors: nil
                  }

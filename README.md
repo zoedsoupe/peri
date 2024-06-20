@@ -1,13 +1,17 @@
-# Peri
+# Peri - Schema Validation Library for Elixir
 
-Peri is a schema validation library for Elixir, inspired by Clojure's Plumatic Schema. It focuses on validating raw maps and supports nested schemas and optional fields. With Peri, you can define schemas and validate data structures in a concise and readable manner.
+## General Description
+
+Peri is a schema validation library for Elixir, inspired by Clojure's Plumatic Schema. It allows developers to define schemas for validating various data structures, supporting nested schemas, optional fields, and custom validation types. Peri aims to provide an intuitive and flexible way to ensure data integrity in Elixir applications.
 
 ## Features
 
-- Define schemas using a simple and intuitive syntax.
-- Validate data structures against schemas.
-- Support for nested schemas.
+- Simple and intuitive syntax for defining schemas.
+- Validation of data structures against schemas.
+- Support for nested, composable, and recursive schemas.
 - Optional and required fields.
+- Comprehensive error handling with detailed messages.
+- Flexible validation types, including custom and conditional validations.
 
 ## Installation
 
@@ -16,7 +20,7 @@ To use Peri in your project, add it to your dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:peri, "~> 0.2"}
+    {:peri, "~> 0.2.3"}
   ]
 end
 ```
@@ -25,109 +29,84 @@ Then, run `mix deps.get` to fetch the dependencies.
 
 ## Usage
 
-### Defining Schemas
-
-To define a schema, use the `defschema` macro. By default, all fields in the schema are optional unless specified as `{:required, type}`.
-
-```elixir
-defmodule MySchemas do
-  import Peri
-
-  defschema :product, %{
-    id: {:required, :integer},
-    name: {:required, :string},
-    price: :float,
-    in_stock: :boolean
-  }
-end
-```
-
-### Validating Data
-
-You can then use the schema to validate data:
-
-```elixir
-product_data = %{id: 1, name: "Laptop", price: 999.99, in_stock: true}
-case MySchemas.product(product_data) do
-  {:ok, valid_data} -> IO.puts("Data is valid!")
-  {:error, errors} -> IO.inspect(errors, label: "Validation errors")
-end
-```
-
 ### Available Types
 
-Peri supports the following types for schema definitions:
+Peri supports a variety of types to ensure your data is validated accurately. Below is a table summarizing the available types and their descriptions:
 
-  - `:string` - Validates that the field is a binary (string).
-  - `:integer` - Validates that the field is an integer.
-  - `:float` - Validates that the field is a float.
-  - `:boolean` - Validates that the field is a boolean.
-  - `:atom` - Validates that the field is an atom.
-  - `:any` - Allow any datatype.
-  - `{:required, type}` - Marks the field as required and validates it according to the specified type.
-  - `:map` - Validates that the field is a map without checking nested schema.
-  - `{:either, {type_1, type_2}}` - Validates that the field is either of `type_1` or `type_2`.
-  - `{:oneof, types}` - Validates that the field is at least one of the provided types.
-  - `{:list, type}` - Validates that the field is a list where elements belongs to a determined type.
-  - `{:tuple, types}` - Validates that the field is a tuple with determined size and each element have your own type validation (sequential).
-  - `{custom, anonymous_fun_arity_1}` - Validates that the field passes on the callback, the function needs to return either `:ok` or `{:error, template, info}` where `template` should be a string with optinal EEx directives and `info` is a list of EEx mapping (or an empty list). This allow supporting composable schemas. See on the [Composable and Recursive Schemas](#composable-and-recursive-schemas) section.
-  - `{:custom, {MyModule, :my_validation}}` - Same as `{custom, anonymous_fun_arity_1}` but you pass a remote module and a function name as atom.
-  - `{:custom, {MyModule, :my_validation, [arg1, arg2]}}` - Same as `{:custom, {MyModule, :my_validation}}` but you can pass extra arguments to your validation function. Note that the value of the field is always the first argument.
-  - Nested maps with schema defined
+| Type                                      | Description                                                                                     |
+|-------------------------------------------|-------------------------------------------------------------------------------------------------|
+| `:string`                                 | Validates that the field is a binary (string).                                                  |
+| `:integer`                                | Validates that the field is an integer.                                                         |
+| `:float`                                  | Validates that the field is a float.                                                            |
+| `:boolean`                                | Validates that the field is a boolean.                                                          |
+| `:atom`                                   | Validates that the field is an atom.                                                            |
+| `:any`                                    | Allows any datatype.                                                                            |
+| `{:required, type}`                       | Marks the field as required and validates it according to the specified type.                   |
+| `:map`                                    | Validates that the field is a map without checking nested schema.                               |
+| `{:either, {type_1, type_2}}`             | Validates that the field is either of `type_1` or `type_2`.                                     |
+| `{:oneof, types}`                         | Validates that the field is at least one of the provided types.                                 |
+| `{:list, type}`                           | Validates that the field is a list where elements belong to a determined type.                  |
+| `{:tuple, types}`                         | Validates that the field is a tuple with a determined size, and each element has its own type validation. |
+| `{:custom, anonymous_fun_arity_1}`        | Validates that the field passes the callback. The function needs to return either `:ok` or `{:error, template, info}` where `template` is an EEx string and `info` is a keyword list or map. |
+| `{:custom, {MyModule, :my_validation}}`   | Same as `{custom, anonymous_fun_arity_1}` but you pass a remote module and a function name as an atom. |
+| `{:custom, {MyModule, :my_validation, [arg1, arg2]}}` | Same as `{:custom, {MyModule, :my_validation}}` but you can pass extra arguments to your validation function. Note that the value of the field is always the first argument. |
+| `{:cond, condition, true_type, else_type}` | Conditionally validates a field based on the result of a condition function.                    |
+| `{:dependent, field, condition, type}`    | Validates a field based on the value of another field.                                          |
 
-## Examples
+These types provide flexibility and control over how data is validated, enabling robust and precise schema definitions.
 
-### Simple Schema Validation
+### Defining and Validating Schemas
 
-```elixir
-defmodule MySchemas do
-  import Peri
+Schemas can be defined using the `defschema` macro. By default, all fields in the schema are optional unless specified as `{:required, type}`.
 
-  defschema :tag, :string
-end
-
-data = "valid!"
-case MySchemas.order(data) do
-  {:ok, ^data} -> IO.puts("Data is valid!")
-  {:error, errors} -> IO.inspect(errors, label: "Validation errors")
-end
-
-invalid = 42
-case MySchemas.order(data) do
-  {:ok, valid} -> IO.puts("Data is valid!")
-  {:error, errors} -> IO.inspect(errors, label: "Validation errors")
-end
-```
-
-### Simple Map Schema Validation
+#### Example
 
 ```elixir
 defmodule MySchemas do
   import Peri
 
-  defschema :order, %{
-    order_id: {:required, :integer},
-    customer_name: {:required, :string},
-    total_amount: :float
+  defschema :user, %{
+    name: :string,
+    age: :integer,
+    email: {:required, :string},
+    address: %{
+      street: :string,
+      city: :string
+    },
+    tags: {:list, :string},
+    role: {:enum, [:admin, :user, :guest]},
+    geolocation: {:tuple, [:float, :float]},
+    rating: {:custom, &validate_rating/1}
   }
+
+  defp validate_rating(n) when n < 10, do: :ok
+  defp validate_rating(_), do: {:error, "invalid rating", []}
 end
 
-order_data = %{order_id: 123, customer_name: "Alice", total_amount: 59.99}
-case MySchemas.order(order_data) do
-  {:ok, valid_data} -> IO.puts("Data is valid!")
-  {:error, errors} -> IO.inspect(errors, label: "Validation errors")
-end
+user_data = %{
+  name: "John",
+  age: 30,
+  email: "john@example.com",
+  address: %{street: "123 Main St", city: "Somewhere"},
+  tags: ["science", "funky"],
+  role: :admin,
+  geolocation: {12.2, 34.2},
+  rating: 9
+}
 
-invalid_order_data = %{order_id: 123}
-case MySchemas.order(invalid_order_data) do
+case MySchemas.user(user_data) do
   {:ok, valid_data} -> IO.puts("Data is valid!")
   {:error, errors} -> IO.inspect(errors, label: "Validation errors")
 end
 ```
 
-### Raw Schema Validation
+### `defschema` Macro General Explanation
 
-You don't even need to use the `defschema/2` macro, jsut define the schema as you want and pass them with data to `Peri/validate/2` (actually is exactly that the macro does: creates a local function with the name of the schema and pass along the schema, receiving data as extra argument.)
+The `defschema` macro allows you to define a schema with a given name and schema definition. This macro injects functions that can validate data against the defined schema. 
+
+### Defining Schemas Without Macro
+
+You can also define schemas without using the `defschema` macro by directly passing the schema definition to the `Peri.validate/2` function.
 
 ```elixir
 defmodule MySchemas do
@@ -135,153 +114,74 @@ defmodule MySchemas do
 
   def create_user(data) do
     with {:ok, data} <- Peri.validate(@raw_user_schema, data) do
-      # rest of function ....
+      # rest of the function ...
     end
   end
 end
 ```
 
-### Nested Schema Validation
+### Dynamic Schemas
+
+Dynamic schemas can be generated based on runtime conditions.
 
 ```elixir
 defmodule MySchemas do
   import Peri
 
-  defschema :user_profile, %{
-    username: {:required, :string},
+  def generate_schema(is_admin) do
+    if is_admin do
+      %{
+        role: {:required, :string},
+        permissions: {:list, :string}
+      }
+    else
+      %{
+        role: {:required, :string}
+      }
+    end
+  end
+
+  def validate_user(data, is_admin) do
+    schema = generate_schema(is_admin)
+    Peri.validate(schema, data)
+  end
+end
+
+data = %{role: "admin", permissions: ["read", "write"]}
+case MySchemas.validate_user(data, true) do
+  {:ok, valid_data} -> IO.puts("Data is valid!")
+  {:error, errors} -> IO.inspect(errors, label: "Validation errors")
+end
+```
+
+### Nested and Composable Schemas
+
+Peri supports nested schemas, allowing for validation of complex data structures.
+
+```elixir
+defmodule MySchemas do
+  import Peri
+
+  defschema :address, %{
+    street: :string,
+    city: :string
+  }
+
+  defschema :user, %{
+    name: :string,
     email: {:required, :string},
-    details: %{
-      age: :integer,
-      bio: :string
-    }
+    address: {:custom, &address/1}
   }
 end
 
-profile_data = %{
-  username: "bob_smith",
-  email: "bob@example.com",
-  details: %{age: 30, bio: "Software developer"}
-}
-
-case MySchemas.user_profile(profile_data) do
-  {:ok, valid_data} -> IO.puts("Data is valid!")
-  {:error, errors} -> IO.inspect(errors, label: "Validation errors")
-end
-
-invalid_profile_data = %{
-  username: "bob_smith",
-  email: "bob@example.com",
-  details: %{age: "thirty"}
-}
-
-case MySchemas.user_profile(invalid_profile_data) do
+data = %{name: "John", email: "john@example.com", address: %{street: "123 Main St", city: "Somewhere"}}
+case MySchemas.user(data) do
   {:ok, valid_data} -> IO.puts("Data is valid!")
   {:error, errors} -> IO.inspect(errors, label: "Validation errors")
 end
 ```
 
-### Composable and Recursive Schemas
-
-#### Custom Schemas validations
-
-You can provide another schemas or custom function validations as nested validations. The idea is to provide a function that receives a value and returns `:ok` in case of success and `{:error, template, info}` in case of error.
-
-Let's take a look into an example of this definition:
-
-```elixir
-defmodule CustomValidations do
-  @spec positive?(term) :: :ok | {:error, String.t(), keyword}
-  def positive?(val) when is_integer(val) and val > 0, do: :ok
-  def positive?(_val), do: {:error, "must be positive", []}
-
-  @spec starts_with_a?(term) :: :ok | {:error, String.t(), keyword}
-  def starts_with_a?(<<"a", _::binary>>), do: :ok
-  def starts_with_a?(_val), do: {:error, "must start with <%= prefix %>", [prefix: "'a'"]}
-end
-
-defmodule MySchemas do
-  import Peri
-
-  defschema :custom_example, %{
-    positive_number: {:custom, &CustomValidations.positive?/1},
-    name: {:custom, {CustomValidations, :starts_with_a?}}
-  }
-end
-
-data = %{positive_number: 5, name: "alice"}
-case MySchemas.custom_example(data) do
-  {:ok, valid_data} -> IO.puts("Data is valid!")
-  {:error, errors} -> IO.inspect(errors, label: "Validation errors")
-end
-
-invalid_data = %{positive_number: -5, name: "bob"}
-case MySchemas.custom_example(invalid_data) do
-  {:ok, valid_data} -> IO.puts("Data is valid!")
-  {:error, errors} -> IO.inspect(errors, label: "Validation errors")
-end
-```
-
-The `template` is a raw EEx string with directives that references any variable on the `info` payload, which is a keyword list that represents variables. You can know more about error handling on the [Error Handling](#error-handling) section.
-
-#### Composable Schemas
-
-Composable schemas allow you to define reusable schema components and combine them to create more complex schemas. As Peri's schemas are just functions (and under the hoods simple elixir data), you can pass schemas around to another schemas.
-
-```elixir
-defmodule MySchemas do
-  import Peri
-
-  # Define reusable schemas
-  defschema :string_list, {:list, :string}
-  defschema :user_info, %{username: :string, email: {:required, {:custom, &string_list/1}}}
-  defschema :user_data, %{user_id: :integer, info: {:custom, &user_info/1}}
-
-  # Example usage
-  def example_usage do
-    data = ["hello", "world"]
-    case string_list(data) do
-      {:ok, valid_data} -> IO.puts("StringList is valid!")
-      {:error, errors} -> IO.inspect(errors, label: "Validation errors")
-    end
-
-    user_data_example = %{user_id: 1, info: %{username: "john_doe", email: "john@example.com"}}
-    case user_data(user_data_example) do
-      {:ok, valid_data} -> IO.puts("UserData is valid!")
-      {:error, errors} -> IO.inspect(errors, label: "Validation errors")
-    end
-  end
-end
-```
-
-Another way is to define those composable schemas as raw data maps (or even other data types)
-
-```elixir
-defmodule MySchemas do
-  import Peri
-
-  # Define reusable schemas
-  @string_list {:list, :string}
-  @user_info %{username: :string, email: {:required, @string_list}}
-  defschema :user_data, %{user_id: :integer, info: @user_info}
-
-  # Example usage
-  def example_usage do
-    data = ["hello", "world"]
-    case string_list(data) do
-      {:ok, valid_data} -> IO.puts("StringList is valid!")
-      {:error, errors} -> IO.inspect(errors, label: "Validation errors")
-    end
-
-    user_data_example = %{user_id: 1, info: %{username: "john_doe", email: "john@example.com"}}
-    case user_data(user_data_example) do
-      {:ok, valid_data} -> IO.puts("UserData is valid!")
-      {:error, errors} -> IO.inspect(errors, label: "Validation errors")
-    end
-  end
-end
-```
-
-#### Recursive Schemas
+### Recursive Schemas
 
 Recursive schemas allow you to define schemas that reference themselves, enabling the validation of nested and hierarchical data structures.
 
@@ -289,80 +189,123 @@ Recursive schemas allow you to define schemas that reference themselves, enablin
 defmodule MySchemas do
   import Peri
 
-  # Define a recursive schema
   defschema :category, %{
     id: :integer,
     name: :string,
     subcategories: {:list, {:custom, &category/1}}
   }
 
-  # Example usage
-  def example_usage do
-    category_data = %{
-      id: 1,
-      name: "Electronics",
-      subcategories: [
-        %{id: 2, name: "Computers", subcategories: []},
-        %{id: 3, name: "Phones", subcategories: [%{id: 4, name: "Smartphones", subcategories: []}]}
-      ]
-    }
+  category_data = %{
+    id: 1,
+    name: "Electronics",
+    subcategories: [
+      %{id: 2, name: "Computers", subcategories: []},
+      %{id: 3, name: "Phones", subcategories: [%{id: 4, name: "Smartphones", subcategories: []}]}
+    ]
+  }
 
-    case category(category_data) do
-      {:ok, valid_data} -> IO.puts("Category is valid!")
-      {:error, errors} -> IO.inspect(errors, label: "Validation errors")
-    end
+  case MySchemas.category(category_data) do
+    {:ok, valid_data} -> IO.puts("Category is valid!")
+    {:error, errors} -> IO.inspect(errors, label: "Validation errors")
   end
 end
 ```
 
-## Error Handling
+### Schemas on Raw Data Structures
 
-For each error in you schema, it will be constructed a `%Peri.Error{}` struct, that is defined as:
+Peri allows you to define schemas for various data structures, including lists, tuples, keyword lists, and primitive types.
+
+#### Lists
 
 ```elixir
-@type t :: %Peri.Error{
-  path: list(atom), # the "path" to the error key inside your data
-  key: atom, # the error key in your data
-  message: String.t(), # already evaluated EEx string defining the error message
-  content: keyword, # the data that filled the error message, variables and additonal data
-  errors: list(Peri.Error.t()) | nil # if your structure is nested, it can have nested errors on your data
-}
+defmodule MySchemas do
+  import Peri
+
+  defschema :string_list, {:list, :string}
+
+  data = ["hello", "world"]
+  case MySchemas.string_list(data) do
+    {:ok, valid_data} -> IO.puts("Data is valid!")
+    {:error, errors} -> IO.inspect(errors, label: "Validation errors")
+  end
+end
 ```
 
-## Comparison: Peri vs. Ecto
+#### Tuples
 
-While both Peri and Ecto provide mechanisms for working with schemas in Elixir, they serve different purposes and are used in different contexts.
+```elixir
+defmodule MySchemas do
+  import Peri
+
+  defschema :coordinates, {:tuple, [:float, :float]}
+
+  data = {12.34, 56.78}
+  case MySchemas.coordinates(data) do
+    {:ok, valid_data} -> IO.puts("Data is valid!")
+    {:error, errors} -> IO.inspect(errors, label: "Validation errors")
+  end
+end
+```
+
+#### Keyword Lists
+
+```elixir
+defmodule MySchemas do
+  import Peri
+
+  defschema :settings, [{:key, :string}, {:value, :any}]
+
+  data = [key: "theme", value: "dark"]
+  case MySchemas.settings(data) do
+    {:ok, valid_data} -> IO.puts("Data is valid!")
+    {:error, errors} -> IO.inspect(errors, label: "Validation errors")
+  end
+end
+```
+
+### Error Handling
+
+Peri provides detailed error messages that can be easily inspected and transformed. Each error includes a message, content, path, key, and nested errors for detailed information about nested validation errors.
+
+```elixir
+defmodule MySchemas do
+  import Peri
+
+  defschema :user, %{
+    name: :string,
+    age: {:required, :integer}
+  }
+
+  data = %{name: "Jane"}
+  case MySchemas.user(data) do
+    {:ok, valid_data} -> IO.puts("Data is valid!")
+    {:error, errors} -> IO.inspect(errors, label: "Validation errors")
+  end
+end
+```
+
+### InvalidSchema Exception
+
+Peri raises an `InvalidSchema` exception when an invalid schema is encountered. This exception contains a list of `Peri.Error` structs, providing a readable message overview of the validation errors.
+
+## Comparison with Ecto Schemaless Changesets and Embedded Schemas
 
 ### Peri
-- **Purpose**: Peri is designed specifically for schema validation. It focuses on validating raw maps against defined schemas.
-- **Flexibility**: Peri allows for easy validation of nested structures and optional fields.
-- **Simplicity**: The syntax for defining schemas in Peri is simple and intuitive, making it easy to use for straightforward validation tasks.
+
+- **Purpose**: Designed specifically for schema validation. Focuses on validating raw maps against defined schemas.
+- **Flexibility**: Allows easy validation of nested structures, optional fields, and dynamic schemas.
+- **Simplicity**: The syntax for defining schemas is straightforward and intuitive.
 - **Use Case**: Ideal for validating data structures in contexts where you don't need the full power of a database ORM.
 
-### Ecto
-- **Purpose**: Ecto is a comprehensive database wrapper and query generator for Elixir. It provides tools for defining schemas, querying databases, and managing changesets.
-- **Complexity**: Ecto is more complex due to its broader feature set, which includes support for migrations, associations, and transactions.
-- **Schema Definitions**: Ecto schemas are typically tied to database tables, with a focus on struct-based data manipulation.
-- **Use Case**: Ideal for applications that require robust interaction with a database, including data validation, querying, and persistence.
+### Ecto Schemaless Changesets
 
-#### Summary
+- **Purpose**: Provides mechanisms for validating and casting data without persisting it to a database.
+- **Complexity**: More complex due to its integration with Ecto and the need to handle changesets.
+- **Schema Definitions**: Uses Ecto changesets and embedded schemas, which are typically tied to database schemas.
+- **Use Case**: Ideal for applications that require validation and casting of data, even when it’s not being persisted to a database.
+
+### Summary
+
 - Use **Peri** if you need a lightweight, flexible library for validating raw maps and nested data structures without the overhead of database interactions.
-- Use **Ecto** if you need a powerful tool for managing database schemas, querying, and data persistence, and if you require comprehensive features like associations, migrations, and transactions.
+- Use **Ecto Schemaless Changesets** if you need to validate and cast data in an Ecto-based application, leveraging the full power of Ecto’s changeset functionality.
 
-By understanding the different strengths and use cases of Peri and Ecto, you can choose the right tool for your specific needs, ensuring efficient and effective data handling in your Elixir applications.
-
-## Why "Peri"?
-
-The name "Peri" is derived from the prefix "peri-" which means "around" or "surrounding". This reflects the library's purpose of providing a protective layer around your data structures, ensuring they conform to specified schemas. Just as a perimeter protects and defines boundaries, Peri ensures that your data is validated and well-defined according to your schemas.
-
-## Contributing
-
-We welcome contributions to Peri! If you have suggestions for improvements or find bugs, please open an issue or submit a pull request on GitHub.
-
-## License
-
-Peri is released under the MIT License. See the LICENSE file for more details.
-
----
-
-Peri makes it easy to define and validate data structures in Elixir, providing a powerful tool for ensuring data integrity in your applications. Start using Peri today and enjoy simple, reliable schema validation!

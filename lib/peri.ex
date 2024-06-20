@@ -144,10 +144,11 @@ defmodule Peri do
   """
   def validate(schema, data) when is_enumerable(schema) and is_enumerable(data) do
     data = filter_data(schema, data)
+    state = Peri.Parser.new(data)
 
-    case traverse_schema(schema, data) do
-      {[], _path} -> {:ok, data}
-      {errors, _path} -> {:error, errors}
+    case traverse_schema(schema, state) do
+      %Peri.Parser{errors: [], data: result} -> {:ok, result}
+      %Peri.Parser{errors: errors} -> {:error, errors}
     end
   end
 
@@ -157,10 +158,7 @@ defmodule Peri do
         {:ok, data}
 
       {:error, reason, info} ->
-        msg = EEx.eval_string(reason, info)
-        err = %Peri.Error{message: msg, content: info}
-
-        {:error, err}
+        {:error, Peri.Error.new_single(reason, info)}
     end
   end
 
@@ -199,26 +197,26 @@ defmodule Peri do
   end
 
   @doc false
-  defp traverse_schema(schema, data, path \\ []) do
-    Enum.reduce(schema, {[], path}, fn {key, type}, {errors, path} ->
-      value = get_enumerable_value(data, key)
+  defp traverse_schema(schema, %Peri.Parser{} = state, path \\ []) do
+    Enum.reduce(schema, state, fn {key, type}, parser ->
+      value = get_enumerable_value(parser.data, key)
 
-      case validate_field(value, type, data) do
+      case validate_field(value, type, parser) do
         :ok ->
-          {errors, []}
+          parser
+
+        {:ok, value} ->
+          Peri.Parser.update_data(parser, key, value)
 
         {:error, [%Peri.Error{} = nested_err | _]} ->
-          current_path = path ++ [key]
-          nested_error = update_error_paths(nested_err, current_path)
-          err = %Peri.Error{path: current_path, key: key, errors: [nested_error]}
-          {[err | errors], path}
+          nested_err
+          |> Peri.Error.update_error_paths(path ++ [key])
+          |> then(&Peri.Error.new_parent(path, key, [&1]))
+          |> then(&Peri.Parser.add_error(parser, &1))
 
         {:error, reason, info} ->
-          msg = EEx.eval_string(reason, info)
-          current_path = path ++ [key]
-          err = %Peri.Error{path: current_path, message: msg, content: info, key: key}
-
-          {[err | errors], path}
+          err = Peri.Error.new_child(path, key, reason, info)
+          Peri.Parser.add_error(parser, err)
       end
     end)
   end
@@ -228,15 +226,6 @@ defmodule Peri do
       nil when is_map(enum) -> Map.get(enum, Atom.to_string(key))
       val -> val
     end
-  end
-
-  defp update_error_paths(%Peri.Error{path: path, errors: nil} = error, new_path) do
-    %Peri.Error{error | path: new_path ++ path}
-  end
-
-  defp update_error_paths(%Peri.Error{path: path, errors: errors} = error, new_path) do
-    updated_errors = Enum.map(errors, &update_error_paths(&1, new_path))
-    %Peri.Error{error | path: new_path ++ path, errors: updated_errors}
   end
 
   @doc false
@@ -298,7 +287,7 @@ defmodule Peri do
     with {:error, _, _} <- validate_field(val, type_1, data),
          {:error, _, _} <- validate_field(val, type_2, data) do
       info = [first_type: type_1, second_type: type_2, actual: inspect(val)]
-      template = "expected either <%= first_type %> or <%= second_type %>, got: <%= actual %>"
+      template = "expected either %{first_type} or %{second_type}, got: %{actual}"
       {:error, template, info}
     end
   end
@@ -318,7 +307,7 @@ defmodule Peri do
       :error ->
         expected = Enum.map_join(types, " or ", &to_string/1)
         info = [oneof: expected, actual: inspect(val)]
-        template = "expected one of <%= oneof %>, got: <%= actual %>"
+        template = "expected one of %{oneof}, got: %{actual}"
 
         {:error, template, info}
     end)
@@ -334,12 +323,12 @@ defmodule Peri do
 
           {:error, reason, nested_info} ->
             info = [index: index] ++ nested_info
-            {:halt, {:error, "tuple element <%= index %>: #{reason}", info}}
+            {:halt, {:error, "tuple element %{index}: #{reason}", info}}
         end
       end)
     else
       info = [length: length(types), actual: length(Tuple.to_list(val))]
-      template = "expected tuple of size <%= length %> received tuple wwith <%= actual %> length"
+      template = "expected tuple of size %{length} received tuple wwith %{actual} length"
       {:error, template, info}
     end
   end
@@ -349,7 +338,7 @@ defmodule Peri do
       :ok
     else
       info = [choices: inspect(choices, pretty: true), actual: inspect(val)]
-      template = "expected one of <%= choices %> received <%= actual %>"
+      template = "expected one of %{choices} received %{actual}"
       {:error, template, info}
     end
   end
@@ -365,91 +354,91 @@ defmodule Peri do
   end
 
   defp validate_field(data, schema, _data) when is_enumerable(data) do
-    case traverse_schema(schema, data) do
-      {[], _path} -> :ok
-      {errors, _path} -> {:error, errors}
+    case traverse_schema(schema, Peri.Parser.new(data)) do
+      %Peri.Parser{errors: []} -> :ok
+      %Peri.Parser{errors: errors} -> {:error, errors}
     end
   end
 
   defp validate_field(val, type, _data) do
     info = [expected: type, actual: inspect(val, pretty: true)]
-    {:error, "expected type of <%= expected %> received <%= actual %> value", info}
+    {:error, "expected type of %{expected} received %{actual} value", info}
   end
 
   def validate_schema(schema) when is_enumerable(schema) do
-    case traverse_definition(schema) do
-      {[], _path} -> {:ok, schema}
-      {errors, _path} -> {:error, errors}
+    case traverse_definition(schema, Peri.Parser.new(schema)) do
+      %Peri.Parser{errors: [], data: data} -> {:ok, data}
+      %Peri.Parser{errors: errors} -> {:error, errors}
     end
   end
 
   def validate_schema(schema) do
-    case validate_type(schema) do
+    case validate_type(schema, Peri.Parser.new(schema)) do
       :ok ->
         {:ok, schema}
 
       {:error, reason, info} ->
-        msg = EEx.eval_string(reason, info)
-        err = %Peri.Error{message: msg, content: info}
-
-        {:error, err}
+        {:error, Peri.Error.new_single(reason, info)}
     end
   end
 
-  defp traverse_definition(schema) when is_enumerable(schema) do
-    Enum.reduce(schema, {[], []}, fn {key, type}, {errors, path} ->
-      case validate_type(type) do
+  defp traverse_definition(schema, state) when is_enumerable(schema) do
+    Enum.reduce(schema, state, fn {key, type}, %{path: path} = parser ->
+      case validate_type(type, parser) do
         :ok ->
-          {errors, []}
+          parser
 
         {:error, [%Peri.Error{} = nested_err | _]} ->
-          current_path = path ++ [key]
-          nested_error = update_error_paths(nested_err, current_path)
-          err = %Peri.Error{path: current_path, key: key, errors: [nested_error]}
-          {[err | errors], path}
+          nested_err
+          |> Peri.Error.update_error_paths(path ++ [key])
+          |> then(&Peri.Error.new_parent(path, key, [&1]))
+          |> then(&Peri.Parser.add_error(parser, &1))
 
         {:error, reason, info} ->
-          msg = EEx.eval_string(reason, info)
-          current_path = path ++ [key]
-          info = [{:schema, schema} | info]
-          err = %Peri.Error{path: current_path, message: msg, content: info, key: key}
-
-          {[err | errors], path}
+          err = Peri.Error.new_child(path, key, reason, [{:schema, schema} | info])
+          Peri.Parser.add_error(parser, err)
       end
     end)
   end
 
-  defp validate_type(nil), do: :ok
-  defp validate_type(:any), do: :ok
-  defp validate_type(:atom), do: :ok
-  defp validate_type(:integer), do: :ok
-  defp validate_type(:map), do: :ok
-  defp validate_type(:float), do: :ok
-  defp validate_type(:boolean), do: :ok
-  defp validate_type(:string), do: :ok
-  defp validate_type({:enum, choices}) when is_list(choices), do: :ok
-  defp validate_type({:required, type}), do: validate_type(type)
-  defp validate_type({:list, type}), do: validate_type(type)
-  defp validate_type({:custom, cb}) when is_function(cb, 1), do: :ok
-  defp validate_type({:custom, {mod, fun}}) when is_atom(mod) and is_atom(fun), do: :ok
+  defp validate_type(nil, _parser), do: :ok
+  defp validate_type(:any, _parser), do: :ok
+  defp validate_type(:atom, _parser), do: :ok
+  defp validate_type(:integer, _parser), do: :ok
+  defp validate_type(:map, _parser), do: :ok
+  defp validate_type(:float, _parser), do: :ok
+  defp validate_type(:boolean, _parser), do: :ok
+  defp validate_type(:string, _parser), do: :ok
+  defp validate_type({type, {:default, _val}}, p), do: validate_type(type, p)
+  defp validate_type({:enum, choices}, _) when is_list(choices), do: :ok
 
-  defp validate_type({:custom, {mod, fun, args}})
+  defp validate_type({:required, {type, {:default, val}}}, _) do
+    template = "cannot set default value of %{value} for required field of type %{type}"
+    {:error, template, [value: val, type: type]}
+  end
+
+  defp validate_type({:required, type}, p), do: validate_type(type, p)
+  defp validate_type({:list, type}, p), do: validate_type(type, p)
+  defp validate_type({:custom, cb}, _) when is_function(cb, 1), do: :ok
+  defp validate_type({:custom, {mod, fun}}, _) when is_atom(mod) and is_atom(fun), do: :ok
+
+  defp validate_type({:custom, {mod, fun, args}}, _)
        when is_atom(mod) and is_atom(fun) and is_list(args),
        do: :ok
 
-  defp validate_type({:cond, cb, type, else_type}) when is_function(cb, 1) do
-    with :ok <- validate_type(type) do
-      validate_type(else_type)
+  defp validate_type({:cond, cb, type, else_type}, p) when is_function(cb, 1) do
+    with :ok <- validate_type(type, p) do
+      validate_type(else_type, p)
     end
   end
 
-  defp validate_type({:dependent, _, cb, type}) when is_function(cb, 1) do
-    validate_type(type)
+  defp validate_type({:dependent, _, cb, type}, p) when is_function(cb, 1) do
+    validate_type(type, p)
   end
 
-  defp validate_type({:tuple, types}) do
+  defp validate_type({:tuple, types}, p) do
     Enum.reduce_while(types, :ok, fn type, :ok ->
-      case validate_type(type) do
+      case validate_type(type, p) do
         :ok -> {:cont, :ok}
         {:error, errors} -> {:halt, {:error, errors}}
         {:error, template, info} -> {:halt, {:error, template, info}}
@@ -457,15 +446,15 @@ defmodule Peri do
     end)
   end
 
-  defp validate_type({:either, {type_1, type_2}}) do
-    with :ok <- validate_type(type_1) do
-      validate_type(type_2)
+  defp validate_type({:either, {type_1, type_2}}, p) do
+    with :ok <- validate_type(type_1, p) do
+      validate_type(type_2, p)
     end
   end
 
-  defp validate_type({:oneof, types}) do
+  defp validate_type({:oneof, types}, p) do
     Enum.reduce_while(types, :ok, fn type, :ok ->
-      case validate_type(type) do
+      case validate_type(type, p) do
         :ok -> {:cont, :ok}
         {:error, errors} -> {:halt, {:error, errors}}
         {:error, template, info} -> {:halt, {:error, template, info}}
@@ -473,15 +462,15 @@ defmodule Peri do
     end)
   end
 
-  defp validate_type(schema) when is_enumerable(schema) do
-    case traverse_definition(schema) do
-      {[], _path} -> :ok
-      {errors, _path} -> {:error, errors}
+  defp validate_type(schema, p) when is_enumerable(schema) do
+    case traverse_definition(schema, p) do
+      %Peri.Parser{errors: []} -> :ok
+      %Peri.Parser{errors: errors} -> {:error, errors}
     end
   end
 
-  defp validate_type(invalid) do
+  defp validate_type(invalid, _p) do
     invalid = inspect(invalid, pretty: true)
-    {:error, "invalid schema definition: <%= invalid %>", invalid: invalid}
+    {:error, "invalid schema definition: %{invalid}", invalid: invalid}
   end
 end
