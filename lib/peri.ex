@@ -1,11 +1,20 @@
 defmodule Peri do
   @moduledoc """
   Peri is a schema validation library for Elixir, inspired by Clojure's Plumatic Schema.
-  It focuses on validating raw maps and supports nested schemas and optional fields.
+  It provides a flexible and powerful way to define and validate data structures using schemas. 
+  The library supports nested schemas, optional fields, custom validation functions, and various type constraints.
+
+  ## Key Features
+
+  - **Simple and Nested Schemas**: Define schemas that can handle complex, nested data structures.
+  - **Optional and Required Fields**: Specify fields as optional or required with type constraints.
+  - **Custom Validation Functions**: Use custom functions to validate fields.
+  - **Comprehensive Error Handling**: Provides detailed error messages for validation failures.
+  - **Type Constraints**: Supports various types including enums, lists, tuples, and more.
 
   ## Usage
 
-  To define a schema, use the `defschema` macro. By default, all fields in the schema are optional unless specified as `{:required, type}`.
+  To define a schema, use the `defschema` macro. By default, all fields in the schema are optional unless specified otherwise.
 
   ```elixir
   defmodule MySchemas do
@@ -33,7 +42,13 @@ defmodule Peri do
   You can then use the schema to validate data:
 
   ```elixir
-  user_data = %{name: "John", age: 30, email: "john@example.com", address: %{street: "123 Main St", city: "Somewhere"}, tags: ["science", "funky"], role: :admin, geolocation: {12.2, 34.2}, rating: 9}
+  user_data = %{
+    name: "John", age: 30, email: "john@example.com",
+    address: %{street: "123 Main St", city: "Somewhere"},
+    tags: ["science", "funky"], role: :admin,
+    geolocation: {12.2, 34.2}, rating: 9
+  }
+
   case MySchemas.user(user_data) do
     {:ok, valid_data} -> IO.puts("Data is valid!")
     {:error, errors} -> IO.inspect(errors, label: "Validation errors")
@@ -47,16 +62,49 @@ defmodule Peri do
   - `:float` - Validates that the field is a float.
   - `:boolean` - Validates that the field is a boolean.
   - `:atom` - Validates that the field is an atom.
-  - `:any` - Allow any datatype.
+  - `:any` - Allows any datatype.
   - `{:required, type}` - Marks the field as required and validates it according to the specified type.
-  - `:map` - Validates that the field is a map without checking nested schema.
+  - `:map` - Validates that the field is a map.
   - `{:either, {type_1, type_2}}` - Validates that the field is either of `type_1` or `type_2`.
   - `{:oneof, types}` - Validates that the field is at least one of the provided types.
-  - `{:list, type}` - Validates that the field is a list where elements belongs to a determined type.
-  - `{:tuple, types}` - Validates that the field is a tuple with determined size and each element have your own type validation (sequential).
-  - `{custom, anonymous_fun_arity_1}` - Validates that the field passes on the callback, the function needs to return either `:ok` or `{:error, reason}` where `reason` should be a string.
-  - `{:custom, {MyModule, :my_validation}}` - Same as `{custom, anonymous_fun_arity_1}` but you pass a remote module and a function name as atom.
-  - `{:custom, {MyModule, :my_validation, [arg1, arg2]}}` - Same as `{:custom, {MyModule, :my_validation}}` but you can pass extra arguments to your validation function. Note that the value of the field is always the first argument.
+  - `{:list, type}` - Validates that the field is a list with elements of the specified type.
+  - `{:tuple, types}` - Validates that the field is a tuple with the specified types in sequence.
+  - `{:custom, anonymous_fun_arity_1}` - Validates that the field passes the callback function.
+  - `{:custom, {MyModule, :my_validation}}` - Validates using a function from a specific module.
+  - `{:custom, {MyModule, :my_validation, [arg1, arg2]}}` - Same as above but allows extra arguments.
+  -	`{:cond, condition, true_type, else_type}` - Validates the field based on a condition.
+  -	`{:dependent, field, condition, type}` - Validates the field based on another field’s value.
+  -	`{type, {:default, default}}` - Sets a default value for a field if it is nil.
+
+  ## Error Handling
+
+  Peri provides detailed error messages that include the path to the invalid data, the expected and actual values, and custom error messages for custom validations.
+
+  ## Functions
+
+  - `validate/2` - Validates data against a schema.
+  - `conforms?/2` - Checks if data conforms to a schema.
+  - `validate_schema/1` - Validates the schema definition.
+
+  ## Example
+
+  ```elixir
+  defmodule MySchemas do
+    import Peri
+
+    defschema :user, %{
+      name: :string,
+      age: :integer,
+      email: {:required, :string}
+    }
+  end
+
+  user_data = %{name: "John", age: 30, email: "john@example.com"}
+  case MySchemas.user(user_data) do
+    {:ok, valid_data} -> IO.puts("Data is valid!")
+    {:error, errors} -> IO.inspect(errors, label: "Validation errors")
+  end
+  ```
   """
 
   @doc """
@@ -157,6 +205,9 @@ defmodule Peri do
       :ok ->
         {:ok, data}
 
+      {:ok, result} ->
+        {:ok, result}
+
       {:error, reason, info} ->
         {:error, Peri.Error.new_single(reason, info)}
     end
@@ -240,6 +291,13 @@ defmodule Peri do
   defp validate_field(val, :list, _data) when is_list(val), do: :ok
   defp validate_field(nil, {:required, _}, _data), do: {:error, "is required", []}
 
+  defp validate_field(_val, {:required, {type, {:default, _}}}, _data) do
+    template =
+      "cannot set default value of default@example.com for required field of type %{type}"
+
+    {:ok, template, [type: type]}
+  end
+
   defp validate_field(m, {:required, :map}, _data) when m == %{},
     do: {:error, "cannot be empty", []}
 
@@ -248,6 +306,15 @@ defmodule Peri do
 
   defp validate_field([], {:required, {:list, _}}, _data), do: {:error, "cannot be empty", []}
   defp validate_field(val, {:required, type}, data), do: validate_field(val, type, data)
+
+  defp validate_field(val, {type, {:default, default}}, data) do
+    val = if is_nil(val), do: default, else: val
+
+    with :ok <- validate_field(val, type, data) do
+      {:ok, val}
+    end
+  end
+
   defp validate_field(nil, _, _data), do: :ok
 
   defp validate_field(val, {:custom, callback}, _data) when is_function(callback, 1) do
@@ -310,21 +377,30 @@ defmodule Peri do
     end)
   end
 
-  defp validate_field(val, {:tuple, types}, data) when is_tuple(val) do
-    if tuple_size(val) == length(types) do
+  defp validate_field(source, {:tuple, types}, data) when is_tuple(source) do
+    if tuple_size(source) == length(types) do
       Enum.with_index(types)
-      |> Enum.reduce_while(:ok, fn {type, index}, :ok ->
-        case validate_field(elem(val, index), type, data) do
+      |> Enum.reduce_while({:ok, []}, fn {type, index}, {:ok, vals} ->
+        case validate_field(elem(source, index), type, data) do
           :ok ->
-            {:cont, :ok}
+            {:cont, {:ok, vals}}
+
+          {:ok, val} ->
+            {:cont, {:ok, [val | vals]}}
 
           {:error, reason, nested_info} ->
             info = [index: index] ++ nested_info
             {:halt, {:error, "tuple element %{index}: #{reason}", info}}
         end
       end)
+      |> then(fn
+        :ok -> :ok
+        {:ok, []} -> :ok
+        {:ok, vals} -> {:ok, List.to_tuple(Enum.reverse(vals))}
+        {:error, reason, info} -> {:error, reason, info}
+      end)
     else
-      info = [length: length(types), actual: length(Tuple.to_list(val))]
+      info = [length: length(types), actual: length(Tuple.to_list(source))]
       template = "expected tuple of size %{length} received tuple with %{actual} length"
       {:error, template, info}
     end
@@ -357,7 +433,7 @@ defmodule Peri do
 
   defp validate_field(data, schema, _data) when is_enumerable(data) do
     case traverse_schema(schema, Peri.Parser.new(data)) do
-      %Peri.Parser{errors: []} -> :ok
+      %Peri.Parser{errors: []} = parser -> {:ok, parser.data}
       %Peri.Parser{errors: errors} -> {:error, errors}
     end
   end
@@ -367,6 +443,59 @@ defmodule Peri do
     {:error, "expected type of %{expected} received %{actual} value", info}
   end
 
+  @doc """
+  Validates a schema definition to ensure it adheres to the expected structure and types.
+
+  This function can handle both simple and complex schema definitions, including nested schemas, custom validation functions, and various type constraints.
+
+  ## Parameters
+
+    - `schema` - The schema definition to be validated. It can be a map or a keyword list representing the schema.
+
+  ## Returns
+
+    - `{:ok, schema}` - If the schema is valid, returns the original schema.
+    - `{:error, errors}` - If the schema is invalid, returns an error tuple with detailed error information.
+
+  ## Examples
+
+    Validating a simple schema:
+    
+    ```elixir
+    schema = %{
+      name: :string,
+      age: :integer,
+      email: {:required, :string}
+    }
+    assert {:ok, ^schema} = validate_schema(schema)
+    ```
+
+    Validating a nested schema:
+
+    ```elixir
+    schema = %{
+      user: %{
+        name: :string,
+        profile: %{
+          age: {:required, :integer},
+          email: {:required, :string}
+        }
+      }
+    }
+    assert {:ok, ^schema} = validate_schema(schema)
+    ```
+
+    Handling invalid schema definition:
+
+    ```elixir
+    schema = %{
+      name: :str,
+      age: :integer,
+      email: {:required, :string}
+    }
+    assert {:error, _errors} = validate_schema(schema)
+    ```
+  """
   def validate_schema(schema) when is_enumerable(schema) do
     case traverse_definition(schema, Peri.Parser.new(schema)) do
       %Peri.Parser{errors: [], data: data} -> {:ok, data}

@@ -52,6 +52,7 @@ Peri supports a variety of types to ensure your data is validated accurately. Be
 | `{:custom, {MyModule, :my_validation, [arg1, arg2]}}` | Same as `{:custom, {MyModule, :my_validation}}` but you can pass extra arguments to your validation function. Note that the value of the field is always the first argument. |
 | `{:cond, condition, true_type, else_type}` | Conditionally validates a field based on the result of a condition function.                    |
 | `{:dependent, field, condition, type}`    | Validates a field based on the value of another field.                                          |
+| `{type, {:default, default}}`             | Validates a field exists based on `type`, if not, return the `default` value                                          |
 
 These types provide flexibility and control over how data is validated, enabling robust and precise schema definitions.
 
