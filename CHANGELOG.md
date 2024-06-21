@@ -2,6 +2,10 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.4] - 2024-06-21
+- Implemented new type `{type, {:default, default}}`. [a569ecf, 821935f]
+- Implemented new type `{type, {:transform, mapper}}`. [785179d]
+
 ## [0.2.3] - 2024-06-18
 
 ### Added

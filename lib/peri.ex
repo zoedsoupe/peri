@@ -317,6 +317,13 @@ defmodule Peri do
 
   defp validate_field(nil, _, _data), do: :ok
 
+  defp validate_field(val, {type, {:transform, mapper}}, data)
+       when is_function(mapper, 1) do
+    with :ok <- validate_field(val, type, data) do
+      {:ok, mapper.(val)}
+    end
+  end
+
   defp validate_field(val, {:custom, callback}, _data) when is_function(callback, 1) do
     callback.(val)
   end
@@ -361,6 +368,7 @@ defmodule Peri do
     |> Enum.reduce_while(:error, fn type, :error ->
       case validate_field(val, type, data) do
         :ok -> {:halt, :ok}
+        {:ok, val} -> {:halt, {:ok, val}}
         {:error, _reason, _info} -> {:cont, :error}
       end
     end)
@@ -368,8 +376,11 @@ defmodule Peri do
       :ok ->
         :ok
 
+      {:ok, val} ->
+        {:ok, val}
+
       :error ->
-        expected = Enum.map_join(types, " or ", &to_string/1)
+        expected = Enum.map_join(types, " or ", &inspect/1)
         info = [oneof: expected, actual: inspect(val)]
         template = "expected one of %{oneof}, got: %{actual}"
 
@@ -417,18 +428,24 @@ defmodule Peri do
   end
 
   defp validate_field(data, {:list, type}, source) when is_list(data) do
-    Enum.reduce_while(data, {:ok, nil}, fn el, {:ok, val} ->
+    Enum.reduce_while(data, {:ok, []}, fn el, {:ok, vals} ->
       case validate_field(el, type, source) do
-        :ok -> {:cont, {:ok, val}}
-        {:ok, val} -> {:cont, {:ok, val}}
+        :ok -> {:cont, {:ok, vals}}
+        {:ok, val} -> {:cont, {:ok, [val | vals]}}
         {:error, errors} -> {:halt, {:error, errors}}
         {:error, reason, info} -> {:halt, {:error, reason, info}}
       end
     end)
     |> then(fn
-      {:ok, _} -> :ok
+      {:ok, []} -> :ok
+      {:ok, val} -> {:ok, Enum.reverse(val)}
       err -> err
     end)
+  end
+
+  defp validate_field(data, schema, _data)
+       when is_enumerable(data) and not is_enumerable(schema) do
+    {:error, "expected a nested schema but received schema: %{type}", [type: schema]}
   end
 
   defp validate_field(data, schema, _data) when is_enumerable(data) do
@@ -542,6 +559,9 @@ defmodule Peri do
   defp validate_type(:string, _parser), do: :ok
   defp validate_type({type, {:default, _val}}, p), do: validate_type(type, p)
   defp validate_type({:enum, choices}, _) when is_list(choices), do: :ok
+
+  defp validate_type({type, {:transform, mapper}}, p) when is_function(mapper, 1),
+    do: validate_type(type, p)
 
   defp validate_type({:required, {type, {:default, val}}}, _) do
     template = "cannot set default value of %{value} for required field of type %{type}"

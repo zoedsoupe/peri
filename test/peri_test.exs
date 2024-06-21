@@ -1342,4 +1342,174 @@ defmodule PeriTest do
       assert {:ok, ^data} = simple_tuple(data)
     end
   end
+
+  defp double(x), do: x * 2
+  defp upcase(str), do: String.upcase(str)
+
+  defschema(:basic_transform, %{
+    number: {:integer, {:transform, &double/1}},
+    name: {:string, {:transform, &upcase/1}}
+  })
+
+  defschema(:nested_transform, %{
+    user: %{
+      age: {:integer, {:transform, &double/1}},
+      profile: %{
+        nickname: {:string, {:transform, &upcase/1}}
+      }
+    }
+  })
+
+  defschema(:list_transform, %{
+    scores: {:list, {:integer, {:transform, &double/1}}}
+  })
+
+  describe "basic transform schema" do
+    test "applies transform function correctly" do
+      data = %{number: 5, name: "john"}
+      expected = %{number: 10, name: "JOHN"}
+      assert {:ok, ^expected} = basic_transform(data)
+    end
+  end
+
+  describe "nested transform schema" do
+    test "applies transform function correctly in nested schema" do
+      data = %{user: %{age: 5, profile: %{nickname: "john"}}}
+      expected = %{user: %{age: 10, profile: %{nickname: "JOHN"}}}
+      assert {:ok, ^expected} = nested_transform(data)
+    end
+  end
+
+  describe "list transform schema" do
+    test "applies transform function correctly in list schema" do
+      data = %{scores: [1, 2, 3]}
+      expected = %{scores: [2, 4, 6]}
+      assert {:ok, ^expected} = list_transform(data)
+    end
+  end
+
+  defschema(:either_transform, %{
+    value: {:either, {{:integer, {:transform, &double/1}}, {:string, {:transform, &upcase/1}}}}
+  })
+
+  defschema(:either_transform_mixed, %{
+    value: {:either, {{:integer, {:transform, &double/1}}, :string}}
+  })
+
+  defschema(:oneof_transform, %{
+    value: {:oneof, [{:integer, {:transform, &double/1}}, {:string, {:transform, &upcase/1}}]}
+  })
+
+  describe "either transform schema" do
+    test "applies transform function correctly for integer type" do
+      data = %{value: 5}
+      expected = %{value: 10}
+      assert {:ok, ^expected} = either_transform(data)
+    end
+
+    test "applies transform function correctly for string type" do
+      data = %{value: "john"}
+      expected = %{value: "JOHN"}
+      assert {:ok, ^expected} = either_transform(data)
+    end
+  end
+
+  describe "either transform mixed schema" do
+    test "applies transform function correctly for integer type" do
+      data = %{value: 5}
+      expected = %{value: 10}
+      assert {:ok, ^expected} = either_transform_mixed(data)
+    end
+
+    test "applies transform function correctly for string type" do
+      data = %{value: "john"}
+      assert {:ok, ^data} = either_transform_mixed(data)
+    end
+  end
+
+  describe "oneof transform schema" do
+    test "applies transform function correctly for integer type" do
+      data = %{value: 5}
+      expected = %{value: 10}
+      assert {:ok, ^expected} = oneof_transform(data)
+    end
+
+    test "applies transform function correctly for string type" do
+      data = %{value: "john"}
+      expected = %{value: "JOHN"}
+      assert {:ok, ^expected} = oneof_transform(data)
+    end
+  end
+
+  defschema(:mixed, %{
+    id: {:integer, {:transform, &(&1 * 2)}},
+    name:
+      {:either,
+       {{:string, {:transform, &String.upcase/1}}, {:atom, {:transform, &Atom.to_string/1}}}},
+    tags: {:list, :string},
+    info:
+      {:oneof,
+       [
+         {:string, {:transform, &String.upcase/1}},
+         %{
+           age: {:integer, {:transform, &(&1 + 1)}},
+           address: %{
+             street: :string,
+             number: :integer
+           }
+         }
+       ]}
+  })
+
+  describe "massive mixed schema validation" do
+    test "validates and transforms mixed schema with integer id and string info" do
+      data = %{id: 5, name: :john, tags: ["elixir", "programming"], info: "some info"}
+
+      expected = %{
+        id: 10,
+        name: "john",
+        tags: ["elixir", "programming"],
+        info: "SOME INFO"
+      }
+
+      assert {:ok, ^expected} = mixed(data)
+    end
+
+    test "validates and transforms mixed schema with integer id and map info" do
+      data = %{
+        id: 7,
+        name: "jane",
+        tags: ["elixir", "programming"],
+        info: %{age: 25, address: %{street: "Main St", number: 123}}
+      }
+
+      expected = %{
+        id: 14,
+        name: "JANE",
+        tags: ["elixir", "programming"],
+        info: %{age: 26, address: %{street: "Main St", number: 123}}
+      }
+
+      assert {:ok, ^expected} = mixed(data)
+    end
+
+    test "validates and transforms mixed schema with atom name" do
+      data = %{id: 8, name: :doe, tags: ["elixir"], info: "details"}
+
+      expected = %{
+        id: 16,
+        name: "doe",
+        tags: ["elixir"],
+        info: "DETAILS"
+      }
+
+      assert {:ok, ^expected} = mixed(data)
+    end
+
+    test "returns error for invalid info type in mixed schema" do
+      data = %{id: 8, name: "doe", tags: ["elixir"], info: 123}
+      assert {:error, errors} = mixed(data)
+      assert [%Peri.Error{path: [:info], message: _}] = errors
+    end
+  end
 end

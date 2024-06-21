@@ -53,6 +53,7 @@ Peri supports a variety of types to ensure your data is validated accurately. Be
 | `{:cond, condition, true_type, else_type}` | Conditionally validates a field based on the result of a condition function.                    |
 | `{:dependent, field, condition, type}`    | Validates a field based on the value of another field.                                          |
 | `{type, {:default, default}}`             | Validates a field exists based on `type`, if not, return the `default` value                                          |
+| `{type, {:transform, mapper}}`             | Validates a field have valid `type`, if yes, return the return of the `mapper/1` function passing the value                                         |
 
 These types provide flexibility and control over how data is validated, enabling robust and precise schema definitions.
 
