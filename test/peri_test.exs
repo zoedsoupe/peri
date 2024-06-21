@@ -438,25 +438,35 @@ defmodule PeriTest do
     test "validates tuple with incorrect size" do
       data = %{coordinates: {10.5}}
 
-      assert {:error,
-              [
-                %Peri.Error{
-                  path: [:coordinates],
-                  message: "expected tuple of size 2 received tuple wwith 1 length"
-                }
-              ]} = tuple_example(data)
+      assert {
+               :error,
+               [
+                 %Peri.Error{
+                   path: [:coordinates],
+                   key: :coordinates,
+                   content: %{length: 2, actual: 1},
+                   message: "expected tuple of size 2 received tuple with 1 length",
+                   errors: nil
+                 }
+               ]
+             } = tuple_example(data)
     end
 
     test "validates tuple with extra elements" do
       data = %{coordinates: {10.5, 20.5, 30.5}}
 
-      assert {:error,
-              [
-                %Peri.Error{
-                  path: [:coordinates],
-                  message: "expected tuple of size 2 received tuple wwith 3 length"
-                }
-              ]} = tuple_example(data)
+      assert {
+               :error,
+               [
+                 %Peri.Error{
+                   path: [:coordinates],
+                   key: :coordinates,
+                   content: %{length: 2, actual: 3},
+                   message: "expected tuple of size 2 received tuple with 3 length",
+                   errors: nil
+                 }
+               ]
+             } = tuple_example(data)
     end
 
     test "handles missing tuple correctly" do
@@ -589,7 +599,9 @@ defmodule PeriTest do
 
     test "validates schema with extra fields" do
       data = %{id: 1, scores: %{name: "test", score: 95.5, extra: "field"}}
-      assert string_score_map(data) == {:ok, data}
+      expected = %{id: 1, scores: %{name: "test", score: 95.5}}
+
+      assert {:ok, ^expected} = string_score_map(data)
     end
   end
 
@@ -1153,4 +1165,181 @@ defmodule PeriTest do
       assert {:ok, ^schema} = Peri.validate_schema(schema)
     end
   end
+
+  # defschema(:default_values, %{
+  #   name: {:string, {:default, "Anonymous"}},
+  #   age: {:integer, {:default, 0}},
+  #   email: {:required, :string}
+  # })
+
+  # defschema(:nested_default_values, %{
+  #   user: %{
+  #     name: {:string, {:default, "John Doe"}},
+  #     profile:
+  #       {:required,
+  #        %{
+  #          email: {:string, {:default, "default@example.com"}},
+  #          address:
+  #            {:required,
+  #             %{
+  #               street: {:string, {:default, "123 Main St"}},
+  #               number: {:integer, {:default, 1}}
+  #             }}
+  #        }}
+  #   }
+  # })
+
+  # defschema(:invalid_nested_default_values, %{
+  #   user: %{
+  #     name: {:string, {:default, "John Doe"}},
+  #     profile:
+  #       {:required,
+  #        %{
+  #          age: {:required, :integer},
+  #          email: {:required, {:string, {:default, "default@example.com"}}},
+  #          address: %{
+  #            street: {:string, {:default, "123 Main St"}},
+  #            number: {:integer, {:default, 1}}
+  #          }
+  #        }}
+  #   }
+  # })
+
+  # describe "default values schema validation" do
+  #   test "applies default values when fields are missing" do
+  #     data = %{email: "user@example.com"}
+  #     expected_data = %{name: "Anonymous", age: 0, email: "user@example.com"}
+  #     assert {:ok, ^expected_data} = default_values(data)
+  #   end
+
+  #   test "does not override provided values with defaults" do
+  #     data = %{name: "Alice", age: 25, email: "alice@example.com"}
+  #     assert {:ok, ^data} = default_values(data)
+  #   end
+
+  #   test "handles missing required fields" do
+  #     data = %{name: "Alice", age: 25}
+
+  #     assert {:error, [%Peri.Error{path: [:email], message: "is required"}]} =
+  #              default_values(data)
+  #   end
+  # end
+
+  # describe "nested default values schema validation" do
+  #   test "applies default values in nested schema" do
+  #     data = %{user: %{profile: %{email: nil, address: %{number: nil, street: nil}}}}
+
+  #     expected_data = %{
+  #       user: %{
+  #         name: "John Doe",
+  #         profile: %{
+  #           email: "default@example.com",
+  #           address: %{street: "123 Main St", number: 1}
+  #         }
+  #       }
+  #     }
+
+  #     assert {:ok, ^expected_data} = nested_default_values(data)
+  #   end
+
+  #   test "does not override provided values in nested schema" do
+  #     data = %{
+  #       user: %{
+  #         name: "Jane Doe",
+  #         profile: %{
+  #           email: "jane@example.com",
+  #           address: %{street: "456 Elm St", number: 99}
+  #         }
+  #       }
+  #     }
+
+  #     assert {:ok, ^data} = nested_default_values(data)
+  #   end
+
+  #   test "required fields should not receive default values" do
+  #     data = %{user: %{profile: %{age: 30}}}
+
+  #     assert {
+  #              :error,
+  #              [
+  #                %Peri.Error{
+  #                  path: [:user],
+  #                  key: :user,
+  #                  content: nil,
+  #                  message: nil,
+  #                  errors: [
+  #                    %Peri.Error{
+  #                      path: [:user, :profile],
+  #                      key: :profile,
+  #                      content: nil,
+  #                      message: nil,
+  #                      errors: [
+  #                        %Peri.Error{
+  #                          path: [:user, :profile, :email],
+  #                          key: :email,
+  #                          content: %{
+  #                            type: :string,
+  #                            value: "default@example.com",
+  #                            schema: %{
+  #                              address: %{
+  #                                number: {:integer, {:default, 1}},
+  #                                street: {:string, {:default, "123 Main St"}}
+  #                              },
+  #                              age: {:required, :integer},
+  #                              email: {:required, {:string, {:default, "default@example.com"}}}
+  #                            }
+  #                          },
+  #                          message:
+  #                            "cannot set default value of default@example.com for required field of type :string",
+  #                          errors: nil
+  #                        }
+  #                      ]
+  #                    }
+  #                  ]
+  #                }
+  #              ]
+  #            } = invalid_nested_default_values(data)
+  #   end
+  # end
+
+  # defschema(:simple_list, [
+  #   {:name, {:string, {:default, "Default Name"}}},
+  #   {:age, {:integer, {:default, 18}}},
+  #   {:email, {:required, :string}}
+  # ])
+
+  # defschema(
+  #   :simple_tuple,
+  #   {:tuple,
+  #    [
+  #      {:integer, {:default, 0}},
+  #      {:string, {:default, "Unknown"}}
+  #    ]}
+  # )
+
+  # describe "simple list schema validation" do
+  #   test "applies default values for missing fields in keyword list schema" do
+  #     data = [email: "user@example.com"]
+  #     expected_data = [age: 18, name: "Default Name", email: "user@example.com"]
+  #     assert {:ok, ^expected_data} = simple_list(data)
+  #   end
+
+  #   test "does not override provided values in keyword list schema" do
+  #     data = [name: "Alice", age: 25, email: "alice@example.com"]
+  #     assert {:ok, ^data} = simple_list(data)
+  #   end
+  # end
+
+  # describe "simple tuple schema validation" do
+  #   test "applies default values for missing elements in tuple schema" do
+  #     data = {nil, nil}
+  #     expected_data = {0, "Unknown"}
+  #     assert {:ok, ^expected_data} = simple_tuple(data)
+  #   end
+
+  #   test "does not override provided values in tuple schema" do
+  #     data = {42, "Provided"}
+  #     assert {:ok, ^data} = simple_tuple(data)
+  #   end
+  # end
 end

@@ -44,7 +44,7 @@ defmodule Peri.Parser do
       %Peri.Parser{data: %{name: "Alice", age: 30}, errors: [], path: []}
   """
   def update_data(%__MODULE__{} = state, key, val) do
-    %{state | data: put_in(state.data[key], val)}
+    %{state | data: put_in(state.data[key], val).data}
   end
 
   @doc """

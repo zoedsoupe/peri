@@ -239,32 +239,29 @@ defmodule Peri do
   defp validate_field(val, :boolean, _data) when is_boolean(val), do: :ok
   defp validate_field(val, :list, _data) when is_list(val), do: :ok
   defp validate_field(nil, {:required, _}, _data), do: {:error, "is required", []}
+
+  defp validate_field(m, {:required, :map}, _data) when m == %{},
+    do: {:error, "cannot be empty", []}
+
+  defp validate_field(m, {:required, s}, _data) when m == %{} and is_map(s),
+    do: {:error, "cannot be empty", []}
+
   defp validate_field([], {:required, {:list, _}}, _data), do: {:error, "cannot be empty", []}
   defp validate_field(val, {:required, type}, data), do: validate_field(val, type, data)
   defp validate_field(nil, _, _data), do: :ok
 
   defp validate_field(val, {:custom, callback}, _data) when is_function(callback, 1) do
-    case callback.(val) do
-      :ok -> :ok
-      {:ok, _} -> :ok
-      err -> err
-    end
+    callback.(val)
   end
 
-  defp validate_field(val, {:custom, {mod, fun}}, _data) do
-    case apply(mod, fun, [val]) do
-      :ok -> :ok
-      {:ok, _} -> :ok
-      err -> err
-    end
+  defp validate_field(val, {:custom, {mod, fun}}, _data)
+       when is_atom(mod) and is_atom(fun) do
+    apply(mod, fun, [val])
   end
 
-  defp validate_field(val, {:custom, {mod, fun, args}}, _data) do
-    case apply(mod, fun, [val | args]) do
-      :ok -> :ok
-      {:ok, _} -> :ok
-      err -> err
-    end
+  defp validate_field(val, {:custom, {mod, fun, args}}, _data)
+       when is_atom(mod) and is_atom(fun) and is_list(args) do
+    apply(mod, fun, [val | args])
   end
 
   defp validate_field(val, {:cond, condition, true_type, else_type}, data) do
@@ -328,7 +325,7 @@ defmodule Peri do
       end)
     else
       info = [length: length(types), actual: length(Tuple.to_list(val))]
-      template = "expected tuple of size %{length} received tuple wwith %{actual} length"
+      template = "expected tuple of size %{length} received tuple with %{actual} length"
       {:error, template, info}
     end
   end
@@ -344,12 +341,17 @@ defmodule Peri do
   end
 
   defp validate_field(data, {:list, type}, source) when is_list(data) do
-    Enum.reduce_while(data, :ok, fn el, :ok ->
+    Enum.reduce_while(data, {:ok, nil}, fn el, {:ok, val} ->
       case validate_field(el, type, source) do
-        :ok -> {:cont, :ok}
+        :ok -> {:cont, {:ok, val}}
+        {:ok, val} -> {:cont, {:ok, val}}
         {:error, errors} -> {:halt, {:error, errors}}
         {:error, reason, info} -> {:halt, {:error, reason, info}}
       end
+    end)
+    |> then(fn
+      {:ok, _} -> :ok
+      err -> err
     end)
   end
 
