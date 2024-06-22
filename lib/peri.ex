@@ -279,9 +279,16 @@ defmodule Peri do
     end
   end
 
+  defguardp is_numeric(n) when is_integer(n) or is_float(n)
+  defguardp is_numeric_type(t) when t in [:integer, :float]
+
   @doc false
   defp validate_field(nil, nil, _data), do: :ok
   defp validate_field(_, :any, _data), do: :ok
+  defp validate_field(%Date{}, :date, _data), do: :ok
+  defp validate_field(%Time{}, :time, _data), do: :ok
+  defp validate_field(%DateTime{}, :datetime, _data), do: :ok
+  defp validate_field(%NaiveDateTime{}, :naive_datetime, _data), do: :ok
   defp validate_field(val, :atom, _data) when is_atom(val), do: :ok
   defp validate_field(val, :map, _data) when is_map(val), do: :ok
   defp validate_field(val, :string, _data) when is_binary(val), do: :ok
@@ -306,6 +313,104 @@ defmodule Peri do
 
   defp validate_field([], {:required, {:list, _}}, _data), do: {:error, "cannot be empty", []}
   defp validate_field(val, {:required, type}, data), do: validate_field(val, type, data)
+
+  defp validate_field(val, {:string, {:regex, regex}}, _data) when is_binary(val) do
+    if Regex.match?(regex, val) do
+      :ok
+    else
+      {:error, "should match the %{regex} pattern", [regex: regex]}
+    end
+  end
+
+  defp validate_field(val, {:string, {:eq, eq}}, _data) when is_binary(val) do
+    if val === eq do
+      :ok
+    else
+      {:error, "should be equal to literal %{literal}", [literal: eq]}
+    end
+  end
+
+  defp validate_field(val, {:string, {:min, min}}, _data) when is_binary(val) do
+    if String.length(val) >= min do
+      :ok
+    else
+      {:error, "should have the minimum length of %{length}", [length: min]}
+    end
+  end
+
+  defp validate_field(val, {:string, {:max, max}}, _data) when is_binary(val) do
+    if String.length(val) <= max do
+      :ok
+    else
+      {:error, "should have the maximum length of %{length}", [length: max]}
+    end
+  end
+
+  defp validate_field(val, {type, {:eq, value}}, _data)
+       when is_numeric_type(type) and is_numeric(val) do
+    if val == value do
+      :ok
+    else
+      {:error, "should be equal to %{value}", [value: value]}
+    end
+  end
+
+  defp validate_field(val, {type, {:neq, value}}, _data)
+       when is_numeric_type(type) and is_numeric(val) do
+    if val != value do
+      :ok
+    else
+      {:error, "should be not equal to %{value}", [value: value]}
+    end
+  end
+
+  defp validate_field(val, {type, {:gt, value}}, _data)
+       when is_numeric_type(type) and is_numeric(val) do
+    if val > value do
+      :ok
+    else
+      {:error, "should be greater then %{value}", [value: value]}
+    end
+  end
+
+  defp validate_field(val, {type, {:gte, value}}, _data)
+       when is_numeric_type(type) and is_numeric(val) do
+    if val >= value do
+      :ok
+    else
+      {:error, "should be greater then or equal to %{value}", [value: value]}
+    end
+  end
+
+  defp validate_field(val, {type, {:lte, value}}, _data)
+       when is_numeric_type(type) and is_numeric(val) do
+    if val <= value do
+      :ok
+    else
+      {:error, "should be less then or equal to %{value}", [value: value]}
+    end
+  end
+
+  defp validate_field(val, {type, {:lt, value}}, _data)
+       when is_numeric_type(type) and is_numeric(val) do
+    if val < value do
+      :ok
+    else
+      {:error, "should be less then %{value}", [value: value]}
+    end
+  end
+
+  defp validate_field(val, {type, {:range, {min, max}}}, _data)
+       when is_numeric_type(type) and is_numeric(val) do
+    info = [min: min, max: max]
+    template = "should be in the range of %{min}..%{max} (inclusive)"
+
+    cond do
+      val < min -> {:error, template, info}
+      val > max -> {:error, template, info}
+      true -> :ok
+    end
+  end
 
   defp validate_field(val, {type, {:default, default}}, data) do
     val = if is_nil(val), do: default, else: val
@@ -559,6 +664,39 @@ defmodule Peri do
   defp validate_type(:string, _parser), do: :ok
   defp validate_type({type, {:default, _val}}, p), do: validate_type(type, p)
   defp validate_type({:enum, choices}, _) when is_list(choices), do: :ok
+
+  defp validate_type({:string, {:regex, %Regex{}}}, _p), do: :ok
+  defp validate_type({:string, {:eq, eq}}, _p) when is_binary(eq), do: :ok
+  defp validate_type({:string, {:min, min}}, _p) when is_integer(min), do: :ok
+  defp validate_type({:string, {:max, max}}, _p) when is_integer(max), do: :ok
+
+  defp validate_type({type, {:eq, val}}, _parer)
+       when is_numeric_type(type) and is_numeric(val),
+       do: :ok
+
+  defp validate_type({type, {:neq, val}}, _parer)
+       when is_numeric_type(type) and is_numeric(val),
+       do: :ok
+
+  defp validate_type({type, {:lt, val}}, _parer)
+       when is_numeric_type(type) and is_numeric(val),
+       do: :ok
+
+  defp validate_type({type, {:lte, val}}, _parer)
+       when is_numeric_type(type) and is_numeric(val),
+       do: :ok
+
+  defp validate_type({type, {:gt, val}}, _parer)
+       when is_numeric_type(type) and is_numeric(val),
+       do: :ok
+
+  defp validate_type({type, {:gte, val}}, _parer)
+       when is_numeric_type(type) and is_numeric(val),
+       do: :ok
+
+  defp validate_type({type, {:range, {min, max}}}, _parer)
+       when is_numeric_type(type) and is_numeric(min) and is_numeric(max),
+       do: :ok
 
   defp validate_type({type, {:transform, mapper}}, p) when is_function(mapper, 1),
     do: validate_type(type, p)

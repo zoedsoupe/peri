@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.5] - 2024-06-22
+
+### Added
+
+-	Numeric and String Validations: Implemented new validation types for numeric and string data, including regex patterns, equality, inequality, range, and length validations. This allows for more granular and specific data validations. [a54a558]
+
 ## [0.2.4] - 2024-06-21
 - Implemented new type `{type, {:default, default}}`. [a569ecf, 821935f]
 - Implemented new type `{type, {:transform, mapper}}`. [785179d]

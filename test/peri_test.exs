@@ -1512,4 +1512,152 @@ defmodule PeriTest do
       assert [%Peri.Error{path: [:info], message: _}] = errors
     end
   end
+
+  defschema(:regex_validation, %{
+    username: {:string, {:regex, ~r/^[a-zA-Z0-9_]+$/}}
+  })
+
+  defschema(:string_eq_validation, %{
+    exact_name: {:string, {:eq, "Elixir"}}
+  })
+
+  defschema(:string_min_validation, %{
+    short_text: {:string, {:min, 5}}
+  })
+
+  defschema(:string_max_validation, %{
+    long_text: {:string, {:max, 20}}
+  })
+
+  defschema(:numeric_eq_validation, %{
+    exact_number: {:integer, {:eq, 42}}
+  })
+
+  defschema(:numeric_neq_validation, %{
+    not_this_number: {:integer, {:neq, 42}}
+  })
+
+  defschema(:numeric_gt_validation, %{
+    greater_than: {:integer, {:gt, 10}}
+  })
+
+  defschema(:numeric_gte_validation, %{
+    greater_than_or_equal: {:integer, {:gte, 10}}
+  })
+
+  defschema(:numeric_lt_validation, %{
+    less_than: {:integer, {:lt, 10}}
+  })
+
+  defschema(:numeric_lte_validation, %{
+    less_than_or_equal: {:integer, {:lte, 10}}
+  })
+
+  defschema(:numeric_range_validation, %{
+    in_range: {:integer, {:range, {5, 15}}}
+  })
+
+  describe "regex validation" do
+    test "validates a string against a regex pattern" do
+      assert {:ok, %{username: "valid_user"}} = regex_validation(%{username: "valid_user"})
+
+      assert {:error, [%Peri.Error{message: "should match the ~r/^[a-zA-Z0-9_]+$/ pattern"}]} =
+               regex_validation(%{username: "invalid user"})
+    end
+  end
+
+  describe "string equal validation" do
+    test "validates a string to be exactly equal to a value" do
+      assert {:ok, %{exact_name: "Elixir"}} = string_eq_validation(%{exact_name: "Elixir"})
+
+      assert {:error, [%Peri.Error{message: "should be equal to literal Elixir"}]} =
+               string_eq_validation(%{exact_name: "Phoenix"})
+    end
+  end
+
+  describe "string minimum length validation" do
+    test "validates a string to have a minimum length" do
+      assert {:ok, %{short_text: "Hello"}} = string_min_validation(%{short_text: "Hello"})
+
+      assert {:error, [%Peri.Error{message: "should have the minimum length of 5"}]} =
+               string_min_validation(%{short_text: "Hi"})
+    end
+  end
+
+  describe "string maximum length validation" do
+    test "validates a string to have a maximum length" do
+      assert {:ok, %{long_text: "This is a test"}} =
+               string_max_validation(%{long_text: "This is a test"})
+
+      assert {:error, [%Peri.Error{message: "should have the maximum length of 20"}]} =
+               string_max_validation(%{long_text: "This text is too long for validation"})
+    end
+  end
+
+  describe "numeric equal validation" do
+    test "validates a number to be exactly equal to a value" do
+      assert {:ok, %{exact_number: 42}} = numeric_eq_validation(%{exact_number: 42})
+
+      assert {:error, [%Peri.Error{message: "should be equal to 42"}]} =
+               numeric_eq_validation(%{exact_number: 43})
+    end
+  end
+
+  describe "numeric not equal validation" do
+    test "validates a number to not be equal to a value" do
+      assert {:ok, %{not_this_number: 43}} = numeric_neq_validation(%{not_this_number: 43})
+
+      assert {:error, [%Peri.Error{message: "should be not equal to 42"}]} =
+               numeric_neq_validation(%{not_this_number: 42})
+    end
+  end
+
+  describe "numeric greater than validation" do
+    test "validates a number to be greater than a value" do
+      assert {:ok, %{greater_than: 11}} = numeric_gt_validation(%{greater_than: 11})
+
+      assert {:error, [%Peri.Error{message: "should be greater then 10"}]} =
+               numeric_gt_validation(%{greater_than: 10})
+    end
+  end
+
+  describe "numeric greater than or equal validation" do
+    test "validates a number to be greater than or equal to a value" do
+      assert {:ok, %{greater_than_or_equal: 10}} =
+               numeric_gte_validation(%{greater_than_or_equal: 10})
+
+      assert {:error, [%Peri.Error{message: "should be greater then or equal to 10"}]} =
+               numeric_gte_validation(%{greater_than_or_equal: 9})
+    end
+  end
+
+  describe "numeric less than validation" do
+    test "validates a number to be less than a value" do
+      assert {:ok, %{less_than: 9}} = numeric_lt_validation(%{less_than: 9})
+
+      assert {:error, [%Peri.Error{message: "should be less then 10"}]} =
+               numeric_lt_validation(%{less_than: 10})
+    end
+  end
+
+  describe "numeric less than or equal validation" do
+    test "validates a number to be less than or equal to a value" do
+      assert {:ok, %{less_than_or_equal: 10}} = numeric_lte_validation(%{less_than_or_equal: 10})
+
+      assert {:error, [%Peri.Error{message: "should be less then or equal to 10"}]} =
+               numeric_lte_validation(%{less_than_or_equal: 11})
+    end
+  end
+
+  describe "numeric range validation" do
+    test "validates a number to be within a range" do
+      assert {:ok, %{in_range: 10}} = numeric_range_validation(%{in_range: 10})
+
+      assert {:error, [%Peri.Error{message: "should be in the range of 5..15 (inclusive)"}]} =
+               numeric_range_validation(%{in_range: 4})
+
+      assert {:error, [%Peri.Error{message: "should be in the range of 5..15 (inclusive)"}]} =
+               numeric_range_validation(%{in_range: 16})
+    end
+  end
 end
