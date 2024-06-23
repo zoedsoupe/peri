@@ -155,12 +155,93 @@ defmodule Peri do
     end
   end
 
-  defguardp is_enumerable(data) when is_map(data) or is_list(data)
+  @doc """
+  Checks if the given data is an enumerable, specifically a map or a list.
 
+  ## Parameters
+
+    - `data`: The data to check.
+
+  ## Examples
+
+      iex> is_enumerable(%{})
+      true
+
+      iex> is_enumerable([])
+      true
+
+      iex> is_enumerable(123)
+      false
+
+      iex> is_enumerable("string")
+      false
+  """
+  defguard is_enumerable(data) when is_map(data) or is_list(data)
+
+  @doc """
+  Checks if the given data conforms to the specified schema.
+
+  ## Parameters
+
+    - `schema`: The schema definition to validate against.
+    - `data`: The data to be validated.
+
+  ## Returns
+
+    - `true` if the data conforms to the schema.
+    - `false` if the data does not conform to the schema.
+
+  ## Examples
+
+      iex> schema = %{name: :string, age: :integer}
+      iex> data = %{name: "Alice", age: 30}
+      iex> Peri.conforms?(schema, data)
+      true
+
+      iex> invalid_data = %{name: "Alice", age: "thirty"}
+      iex> Peri.conforms?(schema, invalid_data)
+      false
+  """
   def conforms?(schema, data) do
     case validate(schema, data) do
       {:ok, _} -> true
       {:error, _errors} -> false
+    end
+  end
+
+  if Code.ensure_loaded?(StreamData) do
+    @doc """
+    Generates sample data based on the given schema definition using `StreamData`.
+
+    This function validates the schema first, and if the schema is valid, it uses the
+    `Peri.Generatable.gen/1` function to generate data according to the schema.
+
+    Note that this function returns a `Stream`, so you traverse easily the data generations.
+
+    ## Parameters
+
+      - `schema`: The schema definition to generate data for.
+
+    ## Returns
+
+      - `{:ok, stream}` if the data is successfully generated.
+      - `{:error, errors}` if there are validation errors in the schema.
+
+    ## Examples
+
+        iex> schema = %{name: :string, age: {:integer, {:range, {18, 65}}}}
+        iex> {:ok, stream} = Peri.generate(schema)
+        iex> [data] = Enum.take(stream, 1)
+        iex> is_map(data)
+        true
+        iex> data[:age] in 18..65
+        true
+
+    """
+    def generate(schema) do
+      with {:ok, schema} <- validate_schema(schema) do
+        {:ok, Peri.Generatable.gen(schema)}
+      end
     end
   end
 
@@ -279,8 +360,54 @@ defmodule Peri do
     end
   end
 
-  defguardp is_numeric(n) when is_integer(n) or is_float(n)
-  defguardp is_numeric_type(t) when t in [:integer, :float]
+  @doc """
+  Checks if the given data is a numeric value, specifically a integer or a float.
+
+  ## Parameters
+
+    - `data`: The data to check.
+
+  ## Examples
+
+      iex> is_numeric(123)
+      true
+
+      iex> is_numeric(0xFF)
+      true
+
+      iex> is_numeric(12.12)
+      true
+
+      iex> is_numeric("string")
+      false
+
+      iex> is_numeric(%{})
+      false
+  """
+  defguard is_numeric(n) when is_integer(n) or is_float(n)
+
+  @doc """
+  Checks if the given type as an atom is a numeric (integer or float).
+
+  ## Parameters
+
+    - `data`: The data to check.
+
+  ## Examples
+
+      iex> is_numeric(:integer)
+      true
+
+      iex> is_numeric(:float)
+      true
+
+      iex> is_numeric(:list)
+      false
+
+      iex> is_numeric({:enum, _})
+      false
+  """
+  defguard is_numeric_type(t) when t in [:integer, :float]
 
   @doc false
   defp validate_field(nil, nil, _data), do: :ok
