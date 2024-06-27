@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.6] - 2024-06-27
+
+### Added
+
+- Data generation with based on `StreamData` provided as the `Peri.generate/1` function that receives a schema and returns a stream of generated data that matches this schema.
+
 ## [0.2.5] - 2024-06-22
 
 ### Added
