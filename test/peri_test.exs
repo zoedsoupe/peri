@@ -1775,4 +1775,93 @@ defmodule PeriTest do
                TypeDependentSchema.info(data)
     end
   end
+
+  defmodule CondSchema do
+    import Peri
+
+    defschema(:details, %{
+      email: {:required, :string},
+      country: {:required, :string}
+    })
+
+    defschema(:info, %{
+      name: {:required, :string},
+      provide_details: {:required, :boolean},
+      details:
+        {:cond,
+         fn %{provide_details: pd} ->
+           pd
+         end, get_schema(:details), nil}
+    })
+  end
+
+  describe "CondSchema.info/1" do
+    test "validates correctly when provide_details is true" do
+      data = %{
+        name: "John Doe",
+        provide_details: true,
+        details: %{email: "john@example.com", country: "USA"}
+      }
+
+      assert {:ok, valid_data} = CondSchema.info(data)
+
+      assert valid_data == data
+    end
+
+    test "validates correctly when provide_details is false" do
+      data = %{name: "Jane Doe", provide_details: false}
+
+      assert {:ok, valid_data} = CondSchema.info(data)
+      assert valid_data == data
+    end
+
+    test "returns error when provide_details is true but details are missing" do
+      data = %{name: "John Doe", provide_details: true}
+
+      assert {:error, errors} = CondSchema.info(data)
+      assert length(errors) == 1
+
+      assert [
+               %Peri.Error{
+                 path: [:details],
+                 key: :details,
+                 content: %{
+                   actual: "nil",
+                   expected: %{email: {:required, :string}, country: {:required, :string}}
+                 },
+                 message:
+                   "expected type of %{email: {:required, :string}, country: {:required, :string}} received nil value",
+                 errors: nil
+               }
+             ] = errors
+    end
+
+    test "returns error when provide_details is true but only partial details are provided" do
+      data = %{
+        name: "John Doe",
+        provide_details: true,
+        details: %{email: "john@example.com"}
+      }
+
+      assert {:error, errors} = CondSchema.info(data)
+
+      assert [
+               %Peri.Error{
+                 path: [:details],
+                 key: :details,
+                 content: nil,
+                 message: nil,
+                 errors: [
+                   %Peri.Error{
+                     path: [:details, :country],
+                     key: :country,
+                     content: %{},
+                     message: "is required",
+                     errors: nil
+                   }
+                 ]
+               }
+             ] = errors
+    end
+  end
 end

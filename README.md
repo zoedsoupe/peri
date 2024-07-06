@@ -52,9 +52,9 @@ end
 - `{:custom, callback}` - Validates that the field passes the custom validation function.
 - `{:custom, {mod, fun}}` - Validates that the field passes the custom validation function.
 - `{:custom, {mod, fun, args}}` - Validates that the field passes the custom validation function.
-- `{:dependent, field, condition, type}` - Validates the field based on the value of another field.
-- `{:dependent, condition}` - Validates the field based on the value of multiple data values.
-- `{:cond, condition, type, else_type}` - Conditional validation based on a condition function.
+- `{:dependent, field, condition, type}` - Validates the field based on the value of another field. Check the [dependent schema examples](#dependent-schemas) section for more info.
+- `{:dependent, condition}` - Validates the field based on the value of multiple data values. Check the [dependent schema examples](#dependent-schemas) section for more info.
+- `{:cond, condition, type, else_type}` - Conditional validation based on a condition function. Check the [conditional schema examples](#conditional-schemas) section for more info.
 
 ## Defining Schemas
 
@@ -120,6 +120,109 @@ defmodule MySchemas do
   }
 end
 ```
+
+### Conditional Schemas
+
+You can define conditional types for a schema based on a callback condition, let's see an example:
+
+```elixir
+defmodule CondSchema do
+  import Peri
+
+  defschema(:details, %{
+    email: {:required, :string},
+    country: {:required, :string}
+  })
+
+  defschema(:info, %{
+    name: {:required, :string},
+    provide_details: {:required, :boolean},
+    details:
+      {:cond,
+       fn %{provide_details: pd} ->
+         pd
+       end, get_schema(:details), nil}
+  })
+end
+```
+
+In this example we can read the `info.details` field schema definition as: "if the `provide_details` field is `true` then the `info.details` field should be parsed as the `details` schema, else, it should be parsed as `nil`".
+
+> Notice that the condition callback should return boolean
+
+### Dependent Schemas
+
+You can parse fields that depend on onther fields, let's check some examples
+
+#### Single field dependency
+
+```elixir
+defmodule UserSchemas do
+  import Peri
+
+  defschema :user_registration, %{
+    username: {:required, :string},
+    password: {:required, :string},
+    password_confirmation: {:dependent, :password, &validate_confirmation/2, :string}
+  }
+
+  # if confirmation has the same value of password, the validation is ok
+  defp validate_confirmation(%{password: password}, password), do: :ok
+  
+  defp validate_confirmation(_confirmation, _password) do
+    {:error, "confirmation should be equal to password", []}
+  end
+end
+```
+
+In this example we say that "the `user_registration.password_confirmation` field should be parsed as `string` only if it passes the `validate_confirmation/2` function, which in this case asserts that the `user_registration.password` field should be equal to the confirmation one."
+
+The callback passed to this type definition should be a 2 arity function that will receive the current nest level data as first argument and the value of the current field as the second argument and it should return only `:ok` or `{:error, template, context}`.
+
+#### Multiple fields dependencies and custom parsing
+
+A more complex dependent type schema definition would be:
+
+```elixir
+defmodule TypeDependentSchema do
+  import Peri
+
+  defschema(:email_details, %{email: {:required, :string}})
+
+  defschema(:country_details, %{country: {:required, :string}})
+
+  defschema(:details, Map.merge(get_schema(:email_details), get_schema(:country_details)))
+
+  defschema(:info, %{
+    name: {:required, :string},
+    provide_email: {:required, :boolean},
+    provide_country: {:required, :boolean},
+    details: {:dependent, &verify_details/1}
+  })
+
+  defp verify_details(%{data: data}) do
+    %{provide_email: pe, provide_country: pc} = data
+
+    provide = {pe, pc}
+
+    case provide do
+      {true, true} -> {:ok, get_schema(:details)}
+      {true, false} -> {:ok, get_schema(:email_details)}
+      {false, true} -> {:ok, get_schema(:country_details)}
+      {false, false} -> {:ok, nil}
+    end
+  end
+end
+```
+
+In this example we have different schemas parsing rules based on the structure and values of the given data. Basically this type deifinition could be read as: 
+
+- if the field `info.provide_email` and `info.provide_country` is both `true`, then the `info.details` field is required to provide both `email` and `country` fields.
+- if the field `info.provide_email` is `true` but `info.provide_country` is `false`, so `info.details` should only contains the `info.details.email` field.
+- if the field `info.provide_email` is `false` but `info.provide_country` is `true`, so `info.details` should only contains the `info.details.country` field.
+- if both `info.provide_email` and `info.provide_country` are `false`, so `info.details` should be parsed as `nil`.
+
+Notice that this kind of dependent type definition should return `{:ok, type}` whereas `type` is a valid Peri schema, or `{:error, template, context}`.
 
 ## Custom Validation Functions
 
