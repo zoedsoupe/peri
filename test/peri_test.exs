@@ -1660,4 +1660,119 @@ defmodule PeriTest do
                numeric_range_validation(%{in_range: 16})
     end
   end
+
+  defmodule TypeDependentSchema do
+    import Peri
+
+    defschema(:email_details, %{email: {:required, :string}})
+    defschema(:country_details, %{country: {:required, :string}})
+    defschema(:details, Map.merge(get_schema(:email_details), get_schema(:country_details)))
+
+    defschema(:info, %{
+      name: {:required, :string},
+      provide_email: {:required, :boolean},
+      provide_country: {:required, :boolean},
+      details: {:dependent, &verify_details/1}
+    })
+
+    defp verify_details(data) do
+      %{provide_email: pe, provide_country: pc} = data
+
+      provide = {pe, pc}
+
+      case provide do
+        {true, true} -> {:ok, get_schema(:details)}
+        {true, false} -> {:ok, get_schema(:email_details)}
+        {false, true} -> {:ok, get_schema(:country_details)}
+        {false, false} -> {:ok, nil}
+      end
+    end
+  end
+
+  describe "TypeDependentSchema.info/1" do
+    test "validates correctly when both email and country are provided" do
+      data = %{
+        name: "John Doe",
+        provide_email: true,
+        provide_country: true,
+        details: %{
+          email: "john@example.com",
+          country: "USA"
+        }
+      }
+
+      assert {:ok, valid_data} = TypeDependentSchema.info(data)
+      assert valid_data == data
+    end
+
+    test "validates correctly when only email is provided" do
+      data = %{
+        name: "Jane Doe",
+        provide_email: true,
+        provide_country: false,
+        details: %{
+          email: "jane@example.com"
+        }
+      }
+
+      assert {:ok, valid_data} = TypeDependentSchema.info(data)
+      assert valid_data == data
+    end
+
+    test "validates correctly when only country is provided" do
+      data = %{
+        name: "Jake Doe",
+        provide_email: false,
+        provide_country: true,
+        details: %{country: "Canada"}
+      }
+
+      assert {:ok, valid_data} = TypeDependentSchema.info(data)
+      assert valid_data == data
+    end
+
+    test "validates correctly when neither email nor country is provided" do
+      data = %{name: "Jenny Doe", provide_email: false, provide_country: false}
+
+      assert {:ok, valid_data} = TypeDependentSchema.info(data)
+      assert valid_data == data
+    end
+
+    test "returns an error when email is required but not provided" do
+      data = %{name: "John Doe", provide_email: true, provide_country: false}
+
+      assert {
+               :error,
+               [
+                 %Peri.Error{
+                   path: [:details],
+                   key: :details,
+                   content: %{actual: "nil", expected: %{email: {:required, :string}}},
+                   message: "expected type of %{email: {:required, :string}} received nil value",
+                   errors: nil
+                 }
+               ]
+             } =
+               TypeDependentSchema.info(data)
+    end
+
+    test "returns an error when country is required but not provided" do
+      data = %{name: "John Doe", provide_email: false, provide_country: true}
+
+      assert {
+               :error,
+               [
+                 %Peri.Error{
+                   path: [:details],
+                   key: :details,
+                   content: %{actual: "nil", expected: %{country: {:required, :string}}},
+                   message:
+                     "expected type of %{country: {:required, :string}} received nil value",
+                   errors: nil
+                 }
+               ]
+             } =
+               TypeDependentSchema.info(data)
+    end
+  end
 end

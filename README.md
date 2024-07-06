@@ -53,6 +53,7 @@ end
 - `{:custom, {mod, fun}}` - Validates that the field passes the custom validation function.
 - `{:custom, {mod, fun, args}}` - Validates that the field passes the custom validation function.
 - `{:dependent, field, condition, type}` - Validates the field based on the value of another field.
+- `{:dependent, condition}` - Validates the field based on the value of multiple data values.
 - `{:cond, condition, type, else_type}` - Conditional validation based on a condition function.
 
 ## Defining Schemas

@@ -55,27 +55,6 @@ defmodule Peri do
   end
   ```
 
-  ## Available Types
-
-  - `:string` - Validates that the field is a binary (string).
-  - `:integer` - Validates that the field is an integer.
-  - `:float` - Validates that the field is a float.
-  - `:boolean` - Validates that the field is a boolean.
-  - `:atom` - Validates that the field is an atom.
-  - `:any` - Allows any datatype.
-  - `{:required, type}` - Marks the field as required and validates it according to the specified type.
-  - `:map` - Validates that the field is a map.
-  - `{:either, {type_1, type_2}}` - Validates that the field is either of `type_1` or `type_2`.
-  - `{:oneof, types}` - Validates that the field is at least one of the provided types.
-  - `{:list, type}` - Validates that the field is a list with elements of the specified type.
-  - `{:tuple, types}` - Validates that the field is a tuple with the specified types in sequence.
-  - `{:custom, anonymous_fun_arity_1}` - Validates that the field passes the callback function.
-  - `{:custom, {MyModule, :my_validation}}` - Validates using a function from a specific module.
-  - `{:custom, {MyModule, :my_validation, [arg1, arg2]}}` - Same as above but allows extra arguments.
-  -	`{:cond, condition, true_type, else_type}` - Validates the field based on a condition.
-  -	`{:dependent, field, condition, type}` - Validates the field based on another field’s value.
-  -	`{type, {:default, default}}` - Sets a default value for a field if it is nil.
-
   ## Error Handling
 
   Peri provides detailed error messages that include the path to the invalid data, the expected and actual values, and custom error messages for custom validations.
@@ -547,7 +526,31 @@ defmodule Peri do
     end
   end
 
-  defp validate_field(nil, _, _data), do: :ok
+  defp validate_field(val, {:cond, condition, true_type, else_type}, parser) do
+    if condition.(parser.data) do
+      validate_field(val, true_type, parser)
+    else
+      validate_field(val, else_type, parser)
+    end
+  end
+
+  defp validate_field(val, {:dependent, callback}, parser)
+       when is_function(callback, 1) do
+    with {:ok, type} <- callback.(parser.data),
+         {:ok, schema} <- validate_schema(type) do
+      validate_field(val, schema, parser)
+    end
+  end
+
+  defp validate_field(val, {:dependent, field, condition, type}, data) do
+    dependent_val = get_enumerable_value(data, field)
+
+    with :ok <- condition.(val, dependent_val) do
+      validate_field(val, type, data)
+    end
+  end
+
+  defp validate_field(nil, s, _data) when not is_enumerable(s), do: :ok
 
   defp validate_field(val, {type, {:transform, mapper}}, data)
        when is_function(mapper, 1) do
@@ -568,22 +571,6 @@ defmodule Peri do
   defp validate_field(val, {:custom, {mod, fun, args}}, _data)
        when is_atom(mod) and is_atom(fun) and is_list(args) do
     apply(mod, fun, [val | args])
-  end
-
-  defp validate_field(val, {:cond, condition, true_type, else_type}, data) do
-    if condition.(data) do
-      validate_field(val, true_type, data)
-    else
-      validate_field(val, else_type, data)
-    end
-  end
-
-  defp validate_field(val, {:dependent, field, condition, type}, data) do
-    dependent_val = get_enumerable_value(data, field)
-
-    with :ok <- condition.(val, dependent_val) do
-      validate_field(val, type, data)
-    end
   end
 
   defp validate_field(val, {:either, {type_1, type_2}}, data) do
@@ -847,6 +834,8 @@ defmodule Peri do
       validate_type(else_type, p)
     end
   end
+
+  defp validate_type({:dependent, cb}, _) when is_function(cb, 1), do: :ok
 
   defp validate_type({:dependent, _, cb, type}, p) when is_function(cb, 1) do
     validate_type(type, p)
