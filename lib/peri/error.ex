@@ -198,15 +198,66 @@ defmodule Peri.Error do
     %{
       path: err.path,
       key: err.key,
-      content: err.content,
+      content: transform_content(err.content),
       message: err.message,
       errors: transform_errors(err.errors)
     }
+  end
+
+  defp transform_content(content) do
+    for {k, v} <- content do
+      if is_tuple(v) do
+        {k, transform_tuple(v)}
+      else
+        {k, v}
+      end
+    end
+    |> Map.new()
+  end
+
+  defp transform_tuple(tuple) when is_tuple(tuple) do
+    for el <- Tuple.to_list(tuple) do
+      if is_tuple(el) do
+        transform_tuple(el)
+      else
+        el
+      end
+    end
   end
 
   defp transform_errors(nil), do: nil
 
   defp transform_errors(errors) when is_list(errors) do
     Enum.map(errors, &error_to_map/1)
+  end
+
+  if Code.ensure_loaded?(:json) do
+    def error_to_json(%Peri.Error{} = err) do
+      err
+      |> Peri.Error.error_to_map()
+      |> transform_nil()
+      |> :json.encode()
+    end
+
+    defp transform_nil(err) do
+      for {k, v} <- err do
+        cond do
+          is_nil(v) -> {k, :null}
+          is_map(v) -> {k, transform_nil(v)}
+          true -> {k, v}
+        end
+      end
+      |> Map.new()
+    end
+  end
+
+  if Code.ensure_loaded?(Jason) do
+    defimpl Jason.Encoder, for: __MODULE__ do
+      def encode(%Peri.Error{} = err, opts) do
+        err
+        |> Peri.Error.error_to_map()
+        |> Jason.Encode.map(opts)
+      end
+    end
   end
 end
