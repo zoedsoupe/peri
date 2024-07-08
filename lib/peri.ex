@@ -252,7 +252,7 @@ defmodule Peri do
   """
   def validate(schema, data) when is_enumerable(schema) and is_enumerable(data) do
     data = filter_data(schema, data)
-    state = Peri.Parser.new(data)
+    state = Peri.Parser.new(data, root_data: data)
 
     case traverse_schema(schema, state) do
       %Peri.Parser{errors: [], data: result} -> {:ok, result}
@@ -527,7 +527,7 @@ defmodule Peri do
   end
 
   defp validate_field(val, {:cond, condition, true_type, else_type}, parser) do
-    if condition.(parser.data) do
+    if condition.(parser.root_data) do
       validate_field(val, true_type, parser)
     else
       validate_field(val, else_type, parser)
@@ -536,7 +536,7 @@ defmodule Peri do
 
   defp validate_field(val, {:dependent, callback}, parser)
        when is_function(callback, 1) do
-    with {:ok, type} <- callback.(parser.data),
+    with {:ok, type} <- callback.(parser.root_data),
          {:ok, schema} <- validate_schema(type) do
       validate_field(val, schema, parser)
     end
@@ -667,8 +667,10 @@ defmodule Peri do
     {:error, "expected a nested schema but received schema: %{type}", [type: schema]}
   end
 
-  defp validate_field(data, schema, _data) when is_enumerable(data) do
-    case traverse_schema(schema, Peri.Parser.new(data)) do
+  defp validate_field(data, schema, p) when is_enumerable(data) do
+    root = p.root_data
+
+    case traverse_schema(schema, Peri.Parser.new(data, root_data: root)) do
       %Peri.Parser{errors: []} = parser -> {:ok, parser.data}
       %Peri.Parser{errors: errors} -> {:error, errors}
     end
@@ -733,14 +735,14 @@ defmodule Peri do
     ```
   """
   def validate_schema(schema) when is_enumerable(schema) do
-    case traverse_definition(schema, Peri.Parser.new(schema)) do
+    case traverse_definition(schema, Peri.Parser.new(schema, root_data: schema)) do
       %Peri.Parser{errors: [], data: data} -> {:ok, data}
       %Peri.Parser{errors: errors} -> {:error, errors}
     end
   end
 
   def validate_schema(schema) do
-    case validate_type(schema, Peri.Parser.new(schema)) do
+    case validate_type(schema, Peri.Parser.new(schema, root_data: schema)) do
       :ok ->
         {:ok, schema}
 

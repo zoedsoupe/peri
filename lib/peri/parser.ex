@@ -12,7 +12,7 @@ defmodule Peri.Parser do
   - `:path` - The current path within the data structure being validated.
   """
 
-  defstruct [:data, :errors, :path]
+  defstruct [:data, :errors, :path, :root_data]
 
   @doc """
   Initializes a new `Peri.Parser` struct with the given data.
@@ -25,8 +25,8 @@ defmodule Peri.Parser do
       iex> Peri.Parser.new(%{name: "Alice"})
       %Peri.Parser{data: %{name: "Alice"}, errors: [], path: []}
   """
-  def new(data) do
-    %__MODULE__{data: data, errors: [], path: []}
+  def new(data, root_data: root) do
+    %__MODULE__{data: data, root_data: root, errors: [], path: []}
   end
 
   @doc """
