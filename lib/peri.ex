@@ -300,7 +300,7 @@ defmodule Peri do
   end
 
   defp enumerable_has_key?(data, key) when is_map(data) do
-    Map.has_key?(data, key) or Map.has_key?(data, Atom.to_string(key))
+    Map.has_key?(data, key) or Map.has_key?(data, (is_binary(key) && key) || Atom.to_string(key))
   end
 
   defp enumerable_has_key?(data, key) when is_list(data) do
@@ -334,7 +334,7 @@ defmodule Peri do
 
   defp get_enumerable_value(enum, key) do
     case Access.get(enum, key) do
-      nil when is_map(enum) -> Map.get(enum, Atom.to_string(key))
+      nil when is_map(enum) -> Map.get(enum, (is_binary(key) && key) || Atom.to_string(key))
       val -> val
     end
   end
