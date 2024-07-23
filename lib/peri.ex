@@ -589,6 +589,7 @@ defmodule Peri do
         :ok -> {:halt, :ok}
         {:ok, val} -> {:halt, {:ok, val}}
         {:error, _reason, _info} -> {:cont, :error}
+        {:error, _errors} -> {:cont, :error}
       end
     end)
     |> then(fn
