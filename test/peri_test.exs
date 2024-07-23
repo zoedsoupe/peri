@@ -9,6 +9,12 @@ defmodule PeriTest do
     email: {:required, :string}
   })
 
+  defschema(:simple_mixed_keys, %{
+    "email" => {:required, :string},
+    name: :string,
+    age: :integer
+  })
+
   defschema(:nested, %{
     user: %{
       name: :string,
@@ -67,6 +73,13 @@ defmodule PeriTest do
                ]
              } =
                simple(data)
+    end
+
+    test "does not raise on simple schema with string keys" do
+      data = %{name: "John", age: 30}
+
+      assert {:error, [%Peri.Error{path: ["email"], message: "is required"}]} =
+               simple_mixed_keys(data)
     end
   end
 
