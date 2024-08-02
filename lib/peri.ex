@@ -268,6 +268,9 @@ defmodule Peri do
       {:ok, result} ->
         {:ok, result}
 
+      {:error, errors} ->
+        {:error, errors}
+
       {:error, reason, info} ->
         {:error, Peri.Error.new_single(reason, info)}
     end
@@ -583,7 +586,9 @@ defmodule Peri do
   end
 
   defp validate_field(val, {:cond, condition, true_type, else_type}, parser) do
-    if condition.(parser.root_data) do
+    root = maybe_get_root_data(parser)
+
+    if condition.(root) do
       validate_field(val, true_type, parser)
     else
       validate_field(val, else_type, parser)
@@ -592,7 +597,9 @@ defmodule Peri do
 
   defp validate_field(val, {:dependent, callback}, parser)
        when is_function(callback, 1) do
-    with {:ok, type} <- callback.(parser.root_data),
+    root = maybe_get_root_data(parser)
+
+    with {:ok, type} <- callback.(root),
          {:ok, schema} <- validate_schema(type) do
       validate_field(val, schema, parser)
     end
@@ -725,7 +732,7 @@ defmodule Peri do
   end
 
   defp validate_field(data, schema, p) when is_enumerable(data) do
-    root = p.root_data
+    root = maybe_get_root_data(p)
 
     case traverse_schema(schema, Peri.Parser.new(data, root_data: root)) do
       %Peri.Parser{errors: []} = parser -> {:ok, parser.data}
@@ -737,6 +744,10 @@ defmodule Peri do
     info = [expected: type, actual: inspect(val, pretty: true)]
     {:error, "expected type of %{expected} received %{actual} value", info}
   end
+
+  # if schema is matches a raw data structure, it will not use the Peri.Parser
+  defp maybe_get_root_data(%Peri.Parser{} = p), do: p.root_data
+  defp maybe_get_root_data(data), do: data
 
   @doc """
   Validates a schema definition to ensure it adheres to the expected structure and types.
