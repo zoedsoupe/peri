@@ -1877,4 +1877,40 @@ defmodule PeriTest do
              ] = errors
     end
   end
+
+  defmodule User do
+    defstruct [:name, :age, :email]
+  end
+
+  defschema(:user_map_schema, %{
+    name: {:required, :string},
+    age: :integer,
+    email: {:required, :string}
+  })
+
+  describe "basic struct input validation" do
+    test "validates struct input with valid data" do
+      data = %User{name: "John", age: 30, email: "john@example.com"}
+      assert {:ok, ^data} = user_map_schema(data)
+    end
+
+    test "validates struct input with missing required field" do
+      data = %User{name: "John", age: 30}
+
+      assert {:error, [%Peri.Error{path: [:email], message: "is required"}]} =
+               user_map_schema(data)
+    end
+
+    test "validates struct input with invalid field type" do
+      data = %User{name: "John", age: "thirty", email: "john@example.com"}
+
+      assert {:error,
+              [
+                %Peri.Error{
+                  path: [:age],
+                  message: "expected type of :integer received \"thirty\" value"
+                }
+              ]} = user_map_schema(data)
+    end
+  end
 end

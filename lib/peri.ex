@@ -273,8 +273,34 @@ defmodule Peri do
     end
   end
 
+  @doc """
+  Helper function to put a value into an enum, handling
+  not only maps and keyword lists but also structs.
+
+  ## Examples
+
+      iex> Peri.put_in_enum(%{}, :hello, "world")
+      iex> Peri.put_in_enum(%{}, "hello", "world")
+      iex> Peri.put_in_enum(%User{}, :hello, "world")
+      iex> Peri.put_in_enum([], :hello, "world")
+  """
+  def put_in_enum(enum, key, val) when is_struct(enum) do
+    struct(enum.__struct__, %{key => val})
+  end
+
+  def put_in_enum(enum, key, val) when is_map(enum) do
+    put_in(enum, [Access.key(key)], val)
+  end
+
+  def put_in_enum(enum, key, val) when is_list(enum) do
+    put_in(enum[key], val)
+  end
+
+  # if data is struct, well, we do not need to filter it
+  defp filter_data(_schema, data) when is_struct(data), do: data
+
   defp filter_data(schema, data) do
-    acc = if is_map(schema), do: %{}, else: []
+    acc = make_filter_data_accumulator(schema, data)
 
     Enum.reduce(schema, acc, fn {key, type}, acc ->
       string_key = to_string(key)
@@ -287,10 +313,10 @@ defmodule Peri do
 
         is_enumerable(value) and is_enumerable(type) ->
           nested_filtered_value = filter_data(type, value)
-          put_in(acc[original_key], nested_filtered_value)
+          put_in_enum(acc, original_key, nested_filtered_value)
 
         true ->
-          put_in(acc[original_key], value)
+          put_in_enum(acc, original_key, value)
       end
     end)
     |> then(fn
@@ -299,8 +325,24 @@ defmodule Peri do
     end)
   end
 
-  defp enumerable_has_key?(data, key) when is_map(data) do
-    Map.has_key?(data, key) or Map.has_key?(data, (is_binary(key) && key) || Atom.to_string(key))
+  # we need to build structs after validating schema
+  defp make_filter_data_accumulator(_schema, data) when is_struct(data) do
+    %{__struct__: data.__struct__}
+  end
+
+  defp make_filter_data_accumulator(schema, _data) when is_map(schema), do: %{}
+  defp make_filter_data_accumulator(schema, _data) when is_list(schema), do: []
+
+  defp enumerable_has_key?(data, key) when is_struct(data) do
+    !!get_in(data, [Access.key(key)])
+  end
+
+  defp enumerable_has_key?(data, key) when is_map(data) and is_binary(key) do
+    Map.has_key?(data, key)
+  end
+
+  defp enumerable_has_key?(data, key) when is_map(data) and is_atom(key) do
+    Map.has_key?(data, key) or enumerable_has_key?(data, Atom.to_string(key))
   end
 
   defp enumerable_has_key?(data, key) when is_list(data) do
@@ -332,11 +374,25 @@ defmodule Peri do
     end)
   end
 
-  defp get_enumerable_value(enum, key) do
-    case Access.get(enum, key) do
-      nil when is_map(enum) -> Map.get(enum, (is_binary(key) && key) || Atom.to_string(key))
-      val -> val
+  # Access.key/1 only support maps and structs
+  def get_enumerable_value(enum, key) when is_struct(enum) do
+    get_in(enum, [Access.key(key)])
+  end
+
+  def get_enumerable_value(enum, key) when is_map(enum) and is_binary(key) do
+    Map.get(enum, key)
+  end
+
+  def get_enumerable_value(enum, key) when is_map(enum) and is_atom(key) do
+    if Map.has_key?(enum, key) do
+      Map.get(enum, key)
+    else
+      get_enumerable_value(enum, Atom.to_string(key))
     end
+  end
+
+  def get_enumerable_value(enum, key) when is_list(enum) do
+    Keyword.get(enum, key)
   end
 
   @doc """
