@@ -2,17 +2,35 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.8] - 2024-08-01
+
+### Added
+
+- handle structs as input data for schemas [859a0fd]
+- support validate enumerable schemas on raw data structures (eg. `:list` type) [32aa540]
+
+## [0.2.7] - 2024-07-28
+
+### Added
+
+- Support multiple dependencies for the `:dependent` type [1be99ef]
+- `:cond` type receives "root data" and is treated as required by default [336316c]
+- basic `Jason.Protocol` for `Peri.Error` (optional) [9031b1e]
+- correctly pass "root data" to `:cond` and `:dependent` types [b79dfbd]
+- allow usage of `:one_of` and `get_schema/1` [cb1b250]
+- handle schemas definitions with string keys [266b5a2]
+
 ## [0.2.6] - 2024-06-27
 
 ### Added
 
-- Data generation with based on `StreamData` provided as the `Peri.generate/1` function that receives a schema and returns a stream of generated data that matches this schema.
+- Data generation with based on `StreamData` provided as the `Peri.generate/1` function that receives a schema and returns a stream of generated data that matches this schema. [c85b972]
 
 ## [0.2.5] - 2024-06-22
 
 ### Added
 
--	Numeric and String Validations: Implemented new validation types for numeric and string data, including regex patterns, equality, inequality, range, and length validations. This allows for more granular and specific data validations. [a54a558]
+-	Numeric and String Validations: Implemented new validation types for numeric and string data, including regex patterns, equality, inequality, range, and length validations. This allows for more granular and specific data validations. [9bb797e]
 
 ## [0.2.4] - 2024-06-21
 - Implemented new type `{type, {:default, default}}`. [a569ecf, 821935f]
@@ -72,6 +90,11 @@ All notable changes to this project will be documented in this file.
 ### Added
 - Initial version of Peri with basic schema validation functionalities. [7044ea7]
 
+[0.2.8]: https://github.com/zoedsoupe/peri/compare/v0.2.7...v0.2.8
+[0.2.7]: https://github.com/zoedsoupe/peri/compare/v0.2.6...v0.2.7
+[0.2.6]: https://github.com/zoedsoupe/peri/compare/v0.2.5...v0.2.6
+[0.2.5]: https://github.com/zoedsoupe/peri/compare/v0.2.4...v0.2.5
+[0.2.4]: https://github.com/zoedsoupe/peri/compare/v0.2.3...v0.2.4
 [0.2.3]: https://github.com/zoedsoupe/peri/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/zoedsoupe/peri/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/zoedsoupe/peri/compare/v0.2.0...v0.2.1
