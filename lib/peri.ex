@@ -288,7 +288,7 @@ defmodule Peri do
       iex> Peri.put_in_enum([], :hello, "world")
   """
   def put_in_enum(enum, key, val) when is_struct(enum) do
-    struct(enum.__struct__, %{key => val})
+    struct(enum, %{key => val})
   end
 
   def put_in_enum(enum, key, val) when is_map(enum) do
