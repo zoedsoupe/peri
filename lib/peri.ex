@@ -1,7 +1,7 @@
 defmodule Peri do
   @moduledoc """
   Peri is a schema validation library for Elixir, inspired by Clojure's Plumatic Schema.
-  It provides a flexible and powerful way to define and validate data structures using schemas. 
+  It provides a flexible and powerful way to define and validate data structures using schemas.
   The library supports nested schemas, optional fields, custom validation functions, and various type constraints.
 
   ## Key Features
@@ -450,6 +450,7 @@ defmodule Peri do
   @doc false
   defp validate_field(nil, nil, _data), do: :ok
   defp validate_field(_, :any, _data), do: :ok
+  defp validate_field(pid, :pid, _data) when is_pid(pid), do: :ok
   defp validate_field(%Date{}, :date, _data), do: :ok
   defp validate_field(%Time{}, :time, _data), do: :ok
   defp validate_field(%DateTime{}, :datetime, _data), do: :ok
@@ -461,11 +462,14 @@ defmodule Peri do
   defp validate_field(val, :float, _data) when is_float(val), do: :ok
   defp validate_field(val, :boolean, _data) when is_boolean(val), do: :ok
   defp validate_field(val, :list, _data) when is_list(val), do: :ok
-  defp validate_field(nil, {:required, _}, _data), do: {:error, "is required", []}
 
-  defp validate_field(_val, {:required, {type, {:default, _}}}, _data) do
+  defp validate_field(nil, {:required, type}, _data) do
+    {:error, "is required, expected type of %{expected}", expected: type}
+  end
+
+  defp validate_field(_val, {:required, {type, {:default, default}}}, _data) do
     template =
-      "cannot set default value of default@example.com for required field of type %{type}"
+      "cannot set default value of #{inspect(default)} for required field of type %{type}"
 
     {:ok, template, [type: type]}
   end
@@ -577,6 +581,11 @@ defmodule Peri do
     end
   end
 
+  defp validate_field(val, {type, {:default, default}}, data)
+       when is_function(default, 0) do
+    validate_field(val, {type, {:default, default.()}}, data)
+  end
+
   defp validate_field(val, {type, {:default, default}}, data) do
     val = if is_nil(val), do: default, else: val
 
@@ -613,7 +622,11 @@ defmodule Peri do
     end
   end
 
-  defp validate_field(nil, s, _data) when not is_enumerable(s), do: :ok
+  defp validate_field(nil, s, data) when is_enumerable(s) do
+    validate_field(%{}, s, data)
+  end
+
+  defp validate_field(nil, _schema, _data), do: :ok
 
   defp validate_field(val, {type, {:transform, mapper}}, data)
        when is_function(mapper, 1) do
@@ -766,7 +779,7 @@ defmodule Peri do
   ## Examples
 
     Validating a simple schema:
-    
+
     ```elixir
     schema = %{
       name: :string,
@@ -846,6 +859,11 @@ defmodule Peri do
   defp validate_type(:float, _parser), do: :ok
   defp validate_type(:boolean, _parser), do: :ok
   defp validate_type(:string, _parser), do: :ok
+  defp validate_type(:date, _parser), do: :ok
+  defp validate_type(:time, _parser), do: :ok
+  defp validate_type(:datetime, _parser), do: :ok
+  defp validate_type(:naive_datetime, _parser), do: :ok
+  defp validate_type(:pid, _parser), do: :ok
   defp validate_type({type, {:default, _val}}, p), do: validate_type(type, p)
   defp validate_type({:enum, choices}, _) when is_list(choices), do: :ok
 

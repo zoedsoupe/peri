@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.10] - 2024-09-16
+
+### Added
+
+- fixes for `0.2.10` [45300d3]
+  - default values are also applied to nested schemas when the parent node is `nil`
+  - all type schemas are treat as optional by default
+  - allow types as valid schema definition
+    - `:date`
+    - `:time`
+    - `:datetime`
+    - `:naive_datetime`
+    - `:pid`
+
 ## [0.2.8] - 2024-08-01
 
 ### Added

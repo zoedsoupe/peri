@@ -137,11 +137,7 @@ defmodule CondSchema do
   defschema(:info, %{
     name: {:required, :string},
     provide_details: {:required, :boolean},
-    details:
-      {:cond,
-       fn %{provide_details: pd} ->
-         pd
-       end, get_schema(:details), nil}
+    details: {:cond, & &1.provide_details, {:required, get_schema(:details)}, nil}
   })
 end
 ```
@@ -168,7 +164,7 @@ defmodule UserSchemas do
 
   # if confirmation has the same value of password, the validation is ok
   defp validate_confirmation(%{password: password}, password), do: :ok
-  
+
   defp validate_confirmation(_confirmation, _password) do
     {:error, "confirmation should be equal to password", []}
   end
@@ -206,16 +202,16 @@ defmodule TypeDependentSchema do
     provide = {pe, pc}
 
     case provide do
-      {true, true} -> {:ok, get_schema(:details)}
-      {true, false} -> {:ok, get_schema(:email_details)}
-      {false, true} -> {:ok, get_schema(:country_details)}
+      {true, true} -> {:ok, {:required, get_schema(:details)}}
+      {true, false} -> {:ok, {:required, get_schema(:email_details)}}
+      {false, true} -> {:ok, {:required, get_schema(:country_details)}}
       {false, false} -> {:ok, nil}
     end
   end
 end
 ```
 
-In this example we have different schemas parsing rules based on the structure and values of the given data. Basically this type deifinition could be read as: 
+In this example we have different schemas parsing rules based on the structure and values of the given data. Basically this type deifinition could be read as:
 
 - if the field `info.provide_email` and `info.provide_country` is both `true`, then the `info.details` field is required to provide both `email` and `country` fields.
 - if the field `info.provide_email` is `true` but `info.provide_country` is `false`, so `info.details` should only contains the `info.details.email` field.

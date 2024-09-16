@@ -54,7 +54,10 @@ defmodule PeriTest do
 
     test "validates simple schema with missing required field" do
       data = %{name: "John", age: 30}
-      assert {:error, [%Peri.Error{path: [:email], message: "is required"}]} = simple(data)
+
+      assert {:error,
+              [%Peri.Error{path: [:email], message: "is required, expected type of :string"}]} =
+               simple(data)
     end
 
     test "validates simple schema with invalid field type" do
@@ -78,7 +81,8 @@ defmodule PeriTest do
     test "does not raise on simple schema with string keys" do
       data = %{name: "John", age: 30}
 
-      assert {:error, [%Peri.Error{path: ["email"], message: "is required"}]} =
+      assert {:error,
+              [%Peri.Error{path: ["email"], message: "is required, expected type of :string"}]} =
                simple_mixed_keys(data)
     end
   end
@@ -142,8 +146,8 @@ defmodule PeriTest do
                          %Peri.Error{
                            path: [:user, :profile, :email],
                            key: :email,
-                           content: %{},
-                           message: "is required",
+                           content: %{expected: :string},
+                           message: "is required, expected type of :string",
                            errors: nil
                          }
                        ]
@@ -318,8 +322,8 @@ defmodule PeriTest do
                      %Peri.Error{
                        path: [:users, :name],
                        key: :name,
-                       content: %{},
-                       message: "is required",
+                       content: %{expected: :string},
+                       message: "is required, expected type of :string",
                        errors: nil
                      }
                    ],
@@ -600,10 +604,10 @@ defmodule PeriTest do
                  :error,
                  [
                    %Peri.Error{
-                     content: %{},
+                     content: %{expected: :integer},
                      errors: nil,
                      key: :id,
-                     message: "is required",
+                     message: "is required, expected type of :integer",
                      path: [:id]
                    }
                  ]
@@ -643,10 +647,10 @@ defmodule PeriTest do
                :error,
                [
                  %Peri.Error{
-                   content: %{},
+                   content: %{expected: :string},
                    errors: nil,
                    key: :email,
-                   message: "is required",
+                   message: "is required, expected type of :string",
                    path: [:email]
                  }
                ]
@@ -697,8 +701,8 @@ defmodule PeriTest do
                       %Peri.Error{
                         path: [:user, :email],
                         key: :email,
-                        content: %{},
-                        message: "is required",
+                        content: %{expected: :string},
+                        message: "is required, expected type of :string",
                         errors: nil
                       }
                     ],
@@ -744,7 +748,8 @@ defmodule PeriTest do
     test "validates simple keyword list schema with missing required field" do
       data = [name: "John", age: 30]
 
-      assert {:error, [%Peri.Error{path: [:email], message: "is required"}]} =
+      assert {:error,
+              [%Peri.Error{path: [:email], message: "is required, expected type of :string"}]} =
                simple_keyword(data)
     end
 
@@ -826,8 +831,8 @@ defmodule PeriTest do
                          %Peri.Error{
                            path: [:user, :profile, :email],
                            key: :email,
-                           content: %{},
-                           message: "is required",
+                           content: %{expected: :string},
+                           message: "is required, expected type of :string",
                            errors: nil
                          }
                        ]
@@ -906,8 +911,8 @@ defmodule PeriTest do
                      %Peri.Error{
                        path: [:user_info, :username],
                        key: :username,
-                       content: %{},
-                       message: "is required",
+                       content: %{expected: :string},
+                       message: "is required, expected type of :string",
                        errors: nil
                      }
                    ],
@@ -1233,7 +1238,8 @@ defmodule PeriTest do
     test "handles missing required fields" do
       data = %{name: "Alice", age: 25}
 
-      assert {:error, [%Peri.Error{path: [:email], message: "is required"}]} =
+      assert {:error,
+              [%Peri.Error{path: [:email], message: "is required, expected type of :string"}]} =
                default_values(data)
     end
   end
@@ -1694,9 +1700,9 @@ defmodule PeriTest do
       provide = {pe, pc}
 
       case provide do
-        {true, true} -> {:ok, get_schema(:details)}
-        {true, false} -> {:ok, get_schema(:email_details)}
-        {false, true} -> {:ok, get_schema(:country_details)}
+        {true, true} -> {:ok, {:required, get_schema(:details)}}
+        {true, false} -> {:ok, {:required, get_schema(:email_details)}}
+        {false, true} -> {:ok, {:required, get_schema(:country_details)}}
         {false, false} -> {:ok, nil}
       end
     end
@@ -1760,8 +1766,8 @@ defmodule PeriTest do
                  %Peri.Error{
                    path: [:details],
                    key: :details,
-                   content: %{actual: "nil", expected: %{email: {:required, :string}}},
-                   message: "expected type of %{email: {:required, :string}} received nil value",
+                   content: %{expected: %{email: {:required, :string}}},
+                   message: "is required, expected type of %{email: {:required, :string}}",
                    errors: nil
                  }
                ]
@@ -1778,9 +1784,8 @@ defmodule PeriTest do
                  %Peri.Error{
                    path: [:details],
                    key: :details,
-                   content: %{actual: "nil", expected: %{country: {:required, :string}}},
-                   message:
-                     "expected type of %{country: {:required, :string}} received nil value",
+                   content: %{expected: %{country: {:required, :string}}},
+                   message: "is required, expected type of %{country: {:required, :string}}",
                    errors: nil
                  }
                ]
@@ -1800,11 +1805,7 @@ defmodule PeriTest do
     defschema(:info, %{
       name: {:required, :string},
       provide_details: {:required, :boolean},
-      details:
-        {:cond,
-         fn %{provide_details: pd} ->
-           pd
-         end, get_schema(:details), nil}
+      details: {:cond, & &1.provide_details, {:required, get_schema(:details)}, nil}
     })
   end
 
@@ -1839,11 +1840,10 @@ defmodule PeriTest do
                  path: [:details],
                  key: :details,
                  content: %{
-                   actual: "nil",
                    expected: %{email: {:required, :string}, country: {:required, :string}}
                  },
                  message:
-                   "expected type of %{email: {:required, :string}, country: {:required, :string}} received nil value",
+                   "is required, expected type of %{email: {:required, :string}, country: {:required, :string}}",
                  errors: nil
                }
              ] = errors
@@ -1868,8 +1868,8 @@ defmodule PeriTest do
                    %Peri.Error{
                      path: [:details, :country],
                      key: :country,
-                     content: %{},
-                     message: "is required",
+                     content: %{expected: :string},
+                     message: "is required, expected type of :string",
                      errors: nil
                    }
                  ]
@@ -1897,7 +1897,8 @@ defmodule PeriTest do
     test "validates struct input with missing required field" do
       data = %User{name: "John", age: 30}
 
-      assert {:error, [%Peri.Error{path: [:email], message: "is required"}]} =
+      assert {:error,
+              [%Peri.Error{path: [:email], message: "is required, expected type of :string"}]} =
                user_map_schema(data)
     end
 
@@ -1911,6 +1912,64 @@ defmodule PeriTest do
                   message: "expected type of :integer received \"thirty\" value"
                 }
               ]} = user_map_schema(data)
+    end
+  end
+
+  defschema(:cond_with_nest_default, %{
+    name: {:required, :string},
+    provide_details: {:required, :boolean},
+    details: {:cond, & &1.provide_details, get_schema(:details), nil}
+  })
+
+  defschema(:details, %{
+    email: {:string, {:default, "foo@example.com"}},
+    country: {:string, {:default, "USA"}}
+  })
+
+  describe "default values with conditional schema" do
+    test "validates correctly when provide_details is true" do
+      data = %{
+        name: "John Doe",
+        provide_details: true
+      }
+
+      assert {:ok, valid_data} = cond_with_nest_default(data)
+
+      assert valid_data == %{
+               name: "John Doe",
+               provide_details: true,
+               details: %{email: "foo@example.com", country: "USA"}
+             }
+    end
+
+    test "validates correctly when provide_details is false" do
+      data = %{
+        name: "Jane Doe",
+        provide_details: false
+      }
+
+      assert {:ok, valid_data} = cond_with_nest_default(data)
+
+      assert valid_data == %{
+               name: "Jane Doe",
+               provide_details: false
+             }
+    end
+
+    test "validates correctly when provide_details is true and details are provided" do
+      data = %{
+        name: "John Doe",
+        provide_details: true,
+        details: %{email: "zoey@example.com", country: "Canada"}
+      }
+
+      assert {:ok, valid_data} = cond_with_nest_default(data)
+
+      assert valid_data == %{
+               name: "John Doe",
+               provide_details: true,
+               details: %{email: "zoey@example.com", country: "Canada"}
+             }
     end
   end
 end
