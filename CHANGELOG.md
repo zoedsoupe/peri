@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.11] - 204-09-16
+
+## Added
+
+- ability to pass partial MFA (aka `{mod, fun}`) or complete MFA (aka `{mof, fun, args}`) to `:transform`, `:dependent` and `:default` directives
+
 ## [0.2.10] - 2024-09-16
 
 ### Added

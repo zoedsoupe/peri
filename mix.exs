@@ -1,7 +1,7 @@
 defmodule Peri.MixProject do
   use Mix.Project
 
-  @version "0.2.10"
+  @version "0.2.11"
   @source_url "https://github.com/zoedsoupe/peri"
 
   def project do

@@ -581,6 +581,16 @@ defmodule Peri do
     end
   end
 
+  defp validate_field(val, {type, {:default, {mod, fun}}}, data)
+       when is_atom(mod) and is_atom(fun) do
+    validate_field(val, {type, {:default, apply(mod, fun, [])}}, data)
+  end
+
+  defp validate_field(val, {type, {:default, {mod, fun, args}}}, data)
+       when is_atom(mod) and is_atom(fun) and is_list(args) do
+    validate_field(val, {type, {:default, apply(mod, fun, args)}}, data)
+  end
+
   defp validate_field(val, {type, {:default, default}}, data)
        when is_function(default, 0) do
     validate_field(val, {type, {:default, default.()}}, data)
@@ -614,6 +624,26 @@ defmodule Peri do
     end
   end
 
+  defp validate_field(val, {:dependent, {mod, fun}}, parser)
+       when is_atom(mod) and is_atom(fun) do
+    root = maybe_get_root_data(parser)
+
+    with {:ok, type} <- apply(mod, fun, [root]),
+         {:ok, schema} <- validate_schema(type) do
+      validate_field(val, schema, parser)
+    end
+  end
+
+  defp validate_field(val, {:dependent, {mod, fun, args}}, parser)
+       when is_atom(mod) and is_atom(fun) and is_list(args) do
+    root = maybe_get_root_data(parser)
+
+    with {:ok, type} <- apply(mod, fun, [root | args]),
+         {:ok, schema} <- validate_schema(type) do
+      validate_field(val, schema, parser)
+    end
+  end
+
   defp validate_field(val, {:dependent, field, condition, type}, data) do
     dependent_val = get_enumerable_value(data, field)
 
@@ -632,6 +662,20 @@ defmodule Peri do
        when is_function(mapper, 1) do
     with :ok <- validate_field(val, type, data) do
       {:ok, mapper.(val)}
+    end
+  end
+
+  defp validate_field(val, {type, {:transform, {mod, fun}}}, data)
+       when is_atom(mod) and is_atom(fun) do
+    with :ok <- validate_field(val, type, data) do
+      {:ok, apply(mod, fun, [val])}
+    end
+  end
+
+  defp validate_field(val, {type, {:transform, {mod, fun, args}}}, data)
+       when is_atom(mod) and is_atom(fun) and is_list(args) do
+    with :ok <- validate_field(val, type, data) do
+      {:ok, apply(mod, fun, [val | args])}
     end
   end
 

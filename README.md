@@ -46,7 +46,10 @@ end
 - `{:list, type}` - Validates that the field is a list of elements of the specified type.
 - `{:tuple, types}` - Validates that the field is a tuple with elements of the specified types.
 - `{type, {:default, default}}` - Provides a default value if the field is missing or `nil`.
+  - `{type, {:default, &some_fun/0}}` - The default values is retrieved from callinf `some_fun/0` if the field is missing.
+  - `{type, {:default, {mod, fun}}}` - The default values is retrieved from callinf `mod.fun/0` if the field is missing.
 - `{type, {:transform, mapper}}` - Transforms the field value using the specified mapper function.
+  - `{type, {:transform, {mod, fun}}}` - Transforms the field value using the specified `mod.fun/1` function.
 - `{:either, {type1, type2}}` - Validates that the field is either of the two specified types.
 - `{:oneof, types}` - Validates that the field is one of the specified types.
 - `{:custom, callback}` - Validates that the field passes the custom validation function.
@@ -54,6 +57,7 @@ end
 - `{:custom, {mod, fun, args}}` - Validates that the field passes the custom validation function.
 - `{:dependent, field, condition, type}` - Validates the field based on the value of another field. Check the [dependent schema examples](#dependent-schemas) section for more info.
 - `{:dependent, condition}` - Validates the field based on the value of multiple data values. Check the [dependent schema examples](#dependent-schemas) section for more info.
+  - `{:dependent, {mod, fun}}` - Validates the field based on the value of multiple data values but executes `mod.fun/1` in runtime.
 - `{:cond, condition, type, else_type}` - Conditional validation based on a condition function. Check the [conditional schema examples](#conditional-schemas) section for more info.
 
 ## Defining Schemas
