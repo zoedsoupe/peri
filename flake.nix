@@ -1,6 +1,6 @@
 {
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-24.11";
     flake-parts.url = "github:hercules-ci/flake-parts";
     systems.url = "github:nix-systems/default";
   };
@@ -22,21 +22,13 @@
 
         beam = packagesWith erlang_27;
 
-        elixir = beam.elixir.override {
-          version = "1.17";
-          rev = "ac64fba4eba654c3ae402a1e30f5a8bb185b88d7";
-          sha256 = "FUTOpK3T0Q4RKDxSo85+iZjdIcW8rjTgacP6LX6hPII=";
-        };
+        inherit (beam) elixir;
       in {
-        _module.args.pkgs = import inputs.nixpkgs {
-          inherit system;
-          config.allowUnfree = true;
-        };
         devShells.default = with pkgs;
           mkShell {
             name = "peri";
             packages = with pkgs;
-              [elixir]
+              [elixir erlang_27]
               ++ lib.optional stdenv.isLinux [inotify-tools]
               ++ lib.optional stdenv.isDarwin [
                 darwin.apple_sdk.frameworks.CoreServices
