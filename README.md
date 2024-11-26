@@ -48,8 +48,9 @@ end
 - `{type, {:default, default}}` - Provides a default value if the field is missing or `nil`.
   - `{type, {:default, &some_fun/0}}` - The default values is retrieved from callinf `some_fun/0` if the field is missing.
   - `{type, {:default, {mod, fun}}}` - The default values is retrieved from callinf `mod.fun/0` if the field is missing.
-- `{type, {:transform, mapper}}` - Transforms the field value using the specified mapper function.
-  - `{type, {:transform, {mod, fun}}}` - Transforms the field value using the specified `mod.fun/1` function.
+- `{type, {:transform, mapper}}` - Transforms the field value using the specified mapper function. It can be a 1 or 2 arity function: when is a single arity the mapper function will only receive the defined field value, while with 2 arity will receive the current defined field value and the whole data as the second argument.
+  - `{type, {:transform, {mod, fun}}}` - Transforms the field value using the specified `mod.fun/1` function. Notice that `fun` can be a 2 arity so it can receive the whole data being validated, in case on dependent fields transformations.
+  - `{type, {:transform, {mod, fun, args}}}` - Transforms the field value using the specified MFA. Notice that `fun` will be at least a 2 arity one so it can receive the whole data being validated, in case on dependent fields transformations and the maximum arity allowed will be 2 + `length(args)`.
 - `{:either, {type1, type2}}` - Validates that the field is either of the two specified types.
 - `{:oneof, types}` - Validates that the field is one of the specified types.
 - `{:custom, callback}` - Validates that the field passes the custom validation function.

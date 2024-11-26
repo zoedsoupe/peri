@@ -665,17 +665,44 @@ defmodule Peri do
     end
   end
 
+  defp validate_field(val, {type, {:transform, mapper}}, data)
+       when is_function(mapper, 2) do
+    with :ok <- validate_field(val, type, data) do
+      {:ok, mapper.(val, maybe_get_root_data(data))}
+    end
+  end
+
   defp validate_field(val, {type, {:transform, {mod, fun}}}, data)
        when is_atom(mod) and is_atom(fun) do
     with :ok <- validate_field(val, type, data) do
-      {:ok, apply(mod, fun, [val])}
+      cond do
+        function_exported?(mod, fun, 1) ->
+          {:ok, apply(mod, fun, [val])}
+
+        function_exported?(mod, fun, 2) ->
+          {:ok, apply(mod, fun, [val, maybe_get_root_data(data)])}
+
+        true ->
+          template = "expected %{mod} to export %{fun}/1 or %{fun}/2"
+          {:error, template, mod: mod, fun: fun}
+      end
     end
   end
 
   defp validate_field(val, {type, {:transform, {mod, fun, args}}}, data)
        when is_atom(mod) and is_atom(fun) and is_list(args) do
     with :ok <- validate_field(val, type, data) do
-      {:ok, apply(mod, fun, [val | args])}
+      cond do
+        function_exported?(mod, fun, length(args) + 2) ->
+          {:ok, apply(mod, fun, [val, maybe_get_root_data(data) | args])}
+
+        function_exported?(mod, fun, length(args) + 1) ->
+          {:ok, apply(mod, fun, [val | args])}
+
+        true ->
+          template = "expected %{mod} to export %{fun} with arity from %{base} to %{arity}"
+          {:error, template, mod: mod, fun: fun, arity: length(args), base: length(args) + 1}
+      end
     end
   end
 
@@ -945,6 +972,15 @@ defmodule Peri do
        do: :ok
 
   defp validate_type({type, {:transform, mapper}}, p) when is_function(mapper, 1),
+    do: validate_type(type, p)
+
+  defp validate_type({type, {:transform, mapper}}, p) when is_function(mapper, 2),
+    do: validate_type(type, p)
+
+  defp validate_type({type, {:transform, {_mod, _fun}}}, p),
+    do: validate_type(type, p)
+
+  defp validate_type({type, {:transform, {_mod, _fun, args}}}, p) when is_list(args),
     do: validate_type(type, p)
 
   defp validate_type({:required, {type, {:default, val}}}, _) do
