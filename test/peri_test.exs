@@ -1492,6 +1492,53 @@ defmodule PeriTest do
     end
   end
 
+  describe "transform with MFA" do
+    test "it should apply the mapper function without additional argument" do
+      s = {:string, {:transform, {String, :to_integer}}}
+      assert {:ok, 10} = Peri.validate(s, "10")
+    end
+
+    test "it should apply the mapper function without additional argument but with dependent field" do
+      s = %{id: {:string, {:transform, {__MODULE__, :integer_by_name}}}, name: :string}
+      data = %{id: "10", name: "john"}
+      assert {:ok, %{id: 20, name: "john"}} = Peri.validate(s, data)
+
+      data = %{id: "10", name: "maria"}
+      assert {:ok, %{id: 10, name: "maria"}} = Peri.validate(s, data)
+    end
+
+    test "it should apply mapper function with additional arguments" do
+      s = {:string, {:transform, {String, :split, [~r/\D/, [trim: true]]}}}
+      assert {:ok, ["10"]} = Peri.validate(s, "omw 10")
+    end
+
+    test "it should apply mapper function with additional arguments with dependent field" do
+      s = %{
+        id: {:string, {:transform, {__MODULE__, :integer_by_name, [[make_sense?: false]]}}},
+        name: :string
+      }
+
+      data = %{id: "10", name: "john"}
+      assert {:ok, %{id: 10, name: "john"}} = Peri.validate(s, data)
+    end
+  end
+
+  def integer_by_name(id, %{name: name}) do
+    if name != "john" do
+      String.to_integer(id)
+    else
+      String.to_integer(id) + 10
+    end
+  end
+
+  def integer_by_name(id, %{name: name}, make_sense?: sense) do
+    cond do
+      sense && name != "john" -> String.to_integer(id) - 10
+      not sense && name == "john" -> String.to_integer(id)
+      true -> 42
+    end
+  end
+
   defschema(:either_transform, %{
     value: {:either, {{:integer, {:transform, &double/1}}, {:string, {:transform, &upcase/1}}}}
   })
