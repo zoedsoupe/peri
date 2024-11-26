@@ -1383,6 +1383,32 @@ defmodule PeriTest do
     scores: {:list, {:integer, {:transform, &double/1}}}
   })
 
+  defschema(:dependent_transform, %{
+    id: {:required, :string},
+    name:
+      {:string,
+       {:transform,
+        fn
+          name, data -> (data[:id] && name <> "-#{data[:id]}") || name
+        end}}
+  })
+
+  defschema(:nested_dependent_transform, %{
+    user: %{
+      birth_year: {:required, :integer},
+      age: {:integer, {:transform, fn _, %{user: %{birth_year: y}} -> 2024 - y end}},
+      profile: %{
+        nickname:
+          {:string,
+           {:transform,
+            fn nick, data ->
+              year = get_in(data, [:user, :birth_year])
+              if year > 2006, do: nick, else: "doomed"
+            end}}
+      }
+    }
+  })
+
   describe "basic transform schema" do
     test "applies transform function correctly" do
       data = %{number: 5, name: "john"}
@@ -1404,6 +1430,65 @@ defmodule PeriTest do
       data = %{scores: [1, 2, 3]}
       expected = %{scores: [2, 4, 6]}
       assert {:ok, ^expected} = list_transform(data)
+    end
+  end
+
+  describe "dependent fields transform" do
+    test "applies transform function correctly with dependent fields" do
+      data = %{id: "123", name: "john"}
+      expected = %{id: "123", name: "john-123"}
+      assert {:ok, ^expected} = dependent_transform(data)
+
+      # how about keyword lists?
+      data = [id: "123", name: "maria"]
+      s = Map.to_list(get_schema(:dependent_transform))
+      assert {:ok, valid} = Peri.validate(s, data)
+      assert valid[:id] == "123"
+      assert valid[:name] == "maria-123"
+
+      # order shouldn't matter too
+      data = [name: "maria", id: "123"]
+      s = Map.to_list(get_schema(:dependent_transform))
+      assert {:ok, valid} = Peri.validate(s, data)
+      assert valid[:id] == "123"
+      assert valid[:name] == "maria-123"
+    end
+
+    test "it should return an error if the dependent field is invalid" do
+      data = %{id: 123, name: "john"}
+
+      assert {
+               :error,
+               [
+                 %Peri.Error{
+                   path: [:id],
+                   key: :id,
+                   content: %{actual: "123", expected: :string},
+                   message: "expected type of :string received 123 value",
+                   errors: nil
+                 }
+               ]
+             } = dependent_transform(data)
+
+      # map order shouldn't matter
+      data = %{name: "john", id: 123}
+
+      assert {:error,
+              [
+                %Peri.Error{
+                  path: [:id],
+                  key: :id,
+                  content: %{actual: "123", expected: :string},
+                  message: "expected type of :string received 123 value",
+                  errors: nil
+                }
+              ]} = dependent_transform(data)
+    end
+
+    test "it should support nested dependent transformations too" do
+      data = %{user: %{birth_year: 2007, age: 5, profile: %{nickname: "john"}}}
+      expected = %{user: %{birth_year: 2007, age: 17, profile: %{nickname: "john"}}}
+      assert {:ok, ^expected} = nested_dependent_transform(data)
     end
   end
 

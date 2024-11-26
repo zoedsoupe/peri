@@ -665,6 +665,13 @@ defmodule Peri do
     end
   end
 
+  defp validate_field(val, {type, {:transform, mapper}}, data)
+       when is_function(mapper, 2) do
+    with :ok <- validate_field(val, type, data) do
+      {:ok, mapper.(val, maybe_get_root_data(data))}
+    end
+  end
+
   defp validate_field(val, {type, {:transform, {mod, fun}}}, data)
        when is_atom(mod) and is_atom(fun) do
     with :ok <- validate_field(val, type, data) do
@@ -945,6 +952,15 @@ defmodule Peri do
        do: :ok
 
   defp validate_type({type, {:transform, mapper}}, p) when is_function(mapper, 1),
+    do: validate_type(type, p)
+
+  defp validate_type({type, {:transform, mapper}}, p) when is_function(mapper, 2),
+    do: validate_type(type, p)
+
+  defp validate_type({type, {:transform, {_mod, _fun}}}, p),
+    do: validate_type(type, p)
+
+  defp validate_type({type, {:transform, {_mod, _fun, args}}}, p) when is_list(args),
     do: validate_type(type, p)
 
   defp validate_type({:required, {type, {:default, val}}}, _) do
