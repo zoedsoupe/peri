@@ -1539,6 +1539,111 @@ defmodule PeriTest do
     end
   end
 
+  describe "transform directive on nested schema type" do
+    test "it should apply the trasnformation on a nested schema type" do
+      nested = %{foo: :string}
+      parent = %{bar: {nested, {:transform, fn v -> v end}}}
+      data = %{bar: %{foo: "hello"}}
+      assert {:ok, ^data} = Peri.validate(parent, data)
+
+      # generic map type should pass too
+      parent = %{bar: {:map, {:transform, fn v -> v end}}}
+      data = %{bar: %{foo: "hello"}}
+      assert {:ok, ^data} = Peri.validate(parent, data)
+
+      # function are indeed being applied?
+      assert_raise RuntimeError, fn ->
+        parent = %{bar: {nested, {:transform, fn _ -> raise("boom") end}}}
+        data = %{bar: %{foo: "hello"}}
+        refute {:ok, ^data} = Peri.validate(parent, data)
+      end
+
+      assert_raise RuntimeError, fn ->
+        parent = %{bar: {:map, {:transform, fn _ -> raise("boom") end}}}
+        data = %{bar: %{foo: "hello"}}
+        refute {:ok, ^data} = Peri.validate(parent, data)
+      end
+    end
+
+    test "it should apply the mapper on nested schemas too by MFA" do
+      nested = %{foo: :string}
+      parent = %{bar: {nested, {:transform, {__MODULE__, :id}}}}
+      data = %{bar: %{foo: "10"}}
+      assert {:ok, ^data} = Peri.validate(parent, data)
+
+      # generic map type should pass too
+      parent = %{bar: {:map, {:transform, {__MODULE__, :id}}}}
+      data = %{bar: %{foo: "hello"}}
+      assert {:ok, ^data} = Peri.validate(parent, data)
+
+      # function are indeed being applied?
+      assert_raise RuntimeError, fn ->
+        parent = %{bar: {nested, {:transform, {__MODULE__, :boom}}}}
+        data = %{bar: %{foo: "hello"}}
+        refute {:ok, ^data} = Peri.validate(parent, data)
+      end
+
+      assert_raise RuntimeError, fn ->
+        parent = %{bar: {:map, {:transform, {__MODULE__, :boom}}}}
+        data = %{bar: %{foo: "hello"}}
+        refute {:ok, ^data} = Peri.validate(parent, data)
+      end
+    end
+
+    test "it should apply the mapper on nested schemas too by MFA with additional args" do
+      nested = %{foo: :string}
+      parent = %{bar: {nested, {:transform, {__MODULE__, :id, []}}}}
+      data = %{bar: %{foo: "10"}}
+      assert {:ok, ^data} = Peri.validate(parent, data)
+
+      # generic map type should pass too
+      parent = %{bar: {:map, {:transform, {__MODULE__, :id, []}}}}
+      data = %{bar: %{foo: "hello"}}
+      assert {:ok, ^data} = Peri.validate(parent, data)
+
+      # function are indeed being applied?
+      assert_raise RuntimeError, fn ->
+        parent = %{bar: {nested, {:transform, {__MODULE__, :boom, []}}}}
+        data = %{bar: %{foo: "hello"}}
+        refute {:ok, ^data} = Peri.validate(parent, data)
+      end
+
+      assert_raise RuntimeError, fn ->
+        parent = %{bar: {:map, {:transform, {__MODULE__, :boom, []}}}}
+        data = %{bar: %{foo: "hello"}}
+        refute {:ok, ^data} = Peri.validate(parent, data)
+      end
+    end
+
+    test "it should apply the trasnformation on a nested schema type with dependent fields" do
+      nested = %{foo: :string}
+      parent = %{bar: {nested, {:transform, fn v, _ -> v end}}}
+      data = %{bar: %{foo: "hello"}}
+      assert {:ok, ^data} = Peri.validate(parent, data)
+
+      # generic map type should pass too
+      parent = %{bar: {:map, {:transform, fn v, _ -> v end}}}
+      data = %{bar: %{foo: "hello"}}
+      assert {:ok, ^data} = Peri.validate(parent, data)
+
+      # function are indeed being applied?
+      assert_raise RuntimeError, fn ->
+        parent = %{bar: {nested, {:transform, fn _, _ -> raise("boom") end}}}
+        data = %{bar: %{foo: "hello"}}
+        refute {:ok, ^data} = Peri.validate(parent, data)
+      end
+
+      assert_raise RuntimeError, fn ->
+        parent = %{bar: {:map, {:transform, fn _, _ -> raise("boom") end}}}
+        data = %{bar: %{foo: "hello"}}
+        refute {:ok, ^data} = Peri.validate(parent, data)
+      end
+    end
+  end
+
+  def id(v), do: v
+  def boom(_), do: raise("boom")
+
   defschema(:either_transform, %{
     value: {:either, {{:integer, {:transform, &double/1}}, {:string, {:transform, &upcase/1}}}}
   })
