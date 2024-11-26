@@ -660,21 +660,35 @@ defmodule Peri do
 
   defp validate_field(val, {type, {:transform, mapper}}, data)
        when is_function(mapper, 1) do
-    with :ok <- validate_field(val, type, data) do
-      {:ok, mapper.(val)}
+    case validate_field(val, type, data) do
+      :ok -> {:ok, mapper.(val)}
+      {:ok, val} -> {:ok, mapper.(val)}
+      err -> err
     end
   end
 
   defp validate_field(val, {type, {:transform, mapper}}, data)
        when is_function(mapper, 2) do
-    with :ok <- validate_field(val, type, data) do
-      {:ok, mapper.(val, maybe_get_root_data(data))}
+    case validate_field(val, type, data) do
+      :ok -> {:ok, mapper.(val, maybe_get_root_data(data))}
+      {:ok, val} -> {:ok, mapper.(val, maybe_get_root_data(data))}
+      err -> err
     end
   end
 
   defp validate_field(val, {type, {:transform, {mod, fun}}}, data)
        when is_atom(mod) and is_atom(fun) do
-    with :ok <- validate_field(val, type, data) do
+    result = validate_field(val, type, data)
+    ok? = match?(:ok, result) or match?({:ok, _}, result)
+
+    val =
+      case result do
+        :ok -> val
+        {:ok, val} -> val
+        err -> err
+      end
+
+    if ok? do
       cond do
         function_exported?(mod, fun, 1) ->
           {:ok, apply(mod, fun, [val])}
@@ -686,12 +700,24 @@ defmodule Peri do
           template = "expected %{mod} to export %{fun}/1 or %{fun}/2"
           {:error, template, mod: mod, fun: fun}
       end
+    else
+      result
     end
   end
 
   defp validate_field(val, {type, {:transform, {mod, fun, args}}}, data)
        when is_atom(mod) and is_atom(fun) and is_list(args) do
-    with :ok <- validate_field(val, type, data) do
+    result = validate_field(val, type, data)
+    ok? = match?(:ok, result) or match?({:ok, _}, result)
+
+    val =
+      case result do
+        :ok -> val
+        {:ok, val} -> val
+        err -> err
+      end
+
+    if ok? do
       cond do
         function_exported?(mod, fun, length(args) + 2) ->
           {:ok, apply(mod, fun, [val, maybe_get_root_data(data) | args])}
@@ -703,6 +729,8 @@ defmodule Peri do
           template = "expected %{mod} to export %{fun} with arity from %{base} to %{arity}"
           {:error, template, mod: mod, fun: fun, arity: length(args), base: length(args) + 1}
       end
+    else
+      result
     end
   end
 
