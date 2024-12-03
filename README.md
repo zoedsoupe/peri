@@ -16,7 +16,7 @@ Add this line to your `mix.exs`:
 ```elixir
 defp deps do
   [
-    {:peri, "~> 0.2"}
+    {:peri, "~> 0.3"}
   ]
 end
 ```

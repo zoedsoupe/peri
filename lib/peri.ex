@@ -813,7 +813,7 @@ defmodule Peri do
   end
 
   defp validate_field(val, {:enum, choices}, _data) do
-    if to_string(val) in Enum.map(choices, &to_string/1) do
+    if val in choices do
       :ok
     else
       info = [choices: inspect(choices, pretty: true), actual: inspect(val)]
