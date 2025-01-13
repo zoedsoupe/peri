@@ -50,6 +50,8 @@ defmodule Peri.Error do
   - `error_to_map/1` - Converts a `Peri.Error` struct to a map, including nested errors.
   """
 
+  @behaviour Exception
+
   @type t :: %__MODULE__{
           message: String.t(),
           content: keyword,
@@ -59,7 +61,34 @@ defmodule Peri.Error do
         }
 
   @derive {Inspect, only: ~w(path key content message errors)a}
-  defstruct [:path, :key, :content, :message, :errors]
+  defstruct [:path, :key, :content, :message, :errors, __exception__: true]
+
+  @impl true
+  def exception([%__MODULE__{} | _] = errors) when is_list(errors) do
+    struct(__MODULE__, errors: errors)
+  end
+
+  def exception(%__MODULE__{} = err), do: exception(Map.from_struct(err))
+
+  def exception(params) when is_map(params) or is_list(params) do
+    struct!(__MODULE__, params)
+  end
+
+  @impl true
+  def message(%__MODULE__{errors: nil, path: nil} = err), do: err.message
+
+  def message(%__MODULE__{errors: nil} = err) do
+    "#{inspect(err.path, pretty: true)} -> #{err.message}"
+  end
+
+  def message(%__MODULE__{errors: nested}) when is_list(nested) do
+    nested
+    |> Enum.map(&message/1)
+    |> then(fn [x | xs] ->
+      [x | Enum.map(xs, &(String.duplicate("\s", 16) <> &1))]
+    end)
+    |> Enum.join(",\n")
+  end
 
   @doc """
   Creates a new parent error with nested errors.

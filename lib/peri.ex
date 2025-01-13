@@ -86,6 +86,74 @@ defmodule Peri do
   ```
   """
 
+  @type validation :: (term -> :ok | {:error, template :: String.t(), context :: map | keyword})
+  @type string_def ::
+          :string
+          | {:string, {:regex, Regex.t()} | {:eq, String.t()} | {:min, integer} | {:max, integer}}
+  @type int_def ::
+          :integer
+          | {:integer,
+             {:eq, integer}
+             | {:neq, integer}
+             | {:lt, integer}
+             | {:lte, integer}
+             | {:gt, integer}
+             | {:gte, :integer}
+             | {:range, {min :: integer, max :: integer}}}
+  @type float_def ::
+          :float
+          | {:float,
+             {:eq, float}
+             | {:neq, float}
+             | {:lt, float}
+             | {:lte, float}
+             | {:gt, float}
+             | {:gte, :float}
+             | {:range, {min :: float, max :: float}}}
+  @type default_def ::
+          {schema_def, {:default, term}}
+          | {schema_def, {:default, (-> term)}}
+          | {schema_def, {:default, {module, atom}}}
+  @type transform_def ::
+          {schema_def, {:transform, (term -> term) | (term, term -> term)}}
+          | {schema_def, {:transform, {module, atom}}}
+          | {schema_def, {:transform, {module, atom, list(term)}}}
+  @type custom_def ::
+          {:custom, (term -> term)}
+          | {:custom, {module, atom}}
+          | {:custom, {module, atom, list(term)}}
+  @type cond_def ::
+          {:cond, condition :: (term -> boolean), true_branch :: schema_def,
+           else_branch :: schema_def}
+  @type dependent_def ::
+          {:dependent, field :: atom, validation, type :: schema_def}
+          | {:dependent,
+             (term ->
+                {:ok, schema_def | nil}
+                | {:error, template :: String.t(), context :: map | keyword})}
+  @type schema_def ::
+          :any
+          | :atom
+          | :boolean
+          | :map
+          | {:either, {schema_def, schema_def}}
+          | {:oneof, list(schema_def)}
+          | {:required, schema_def}
+          | {:enum, list(term)}
+          | {:list, schema_def}
+          | {:tuple, list(schema_def)}
+          | string_def
+          | int_def
+          | float_def
+          | default_def
+          | transform_def
+          | custom_def
+  @type schema ::
+          schema_def
+          | %{String.t() => schema_def}
+          | %{atom => schema_def}
+          | [{atom, schema_def}]
+
   @doc """
   Defines a schema with a given name and schema definition.
 
