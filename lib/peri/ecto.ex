@@ -1,0 +1,160 @@
+if Code.ensure_loaded?(Ecto) do
+  defmodule Peri.Ecto do
+    @moduledoc false
+
+    import Ecto.Changeset
+
+    alias Ecto.Embedded, as: Embed
+    alias Peri.Ecto.Type
+
+    @type validation ::
+            {:eq, integer | float | String.t()}
+            | {:neq, integer | float}
+            | {:lt, integer | float}
+            | {:lte, integer | float}
+            | {:gt, integer | float}
+            | {:gte, integer | float}
+            | {:min, length :: integer}
+            | {:max, length :: integer}
+            | {:regex, pattern :: Regex.t()}
+            | {:range, {min :: integer | float, max :: integer | float}}
+
+    @type def :: %{
+            atom => %{
+              type: term,
+              required: boolean,
+              depend: path :: list(atom),
+              default: term,
+              validations: list(validation),
+              nested: %{atom => def}
+            }
+          }
+
+    def parse(%{} = schema) do
+      init =
+        Map.new(Map.keys(schema), fn key ->
+          {key,
+           %{
+             required: nil,
+             default: nil,
+             validations: [],
+             nested: nil
+           }}
+        end)
+
+      Enum.reduce(schema, init, &parse_peri/2)
+    end
+
+    @raw_types ~w(atom string integer float boolean map date time datetime naive_datetime pid)a
+
+    for type <- @raw_types do
+      def parse_peri({key, unquote(type)}, ecto) do
+        put_in(ecto[key][:type], Type.from(unquote(type)))
+      end
+    end
+
+    def parse_peri({key, {:enum, _} = type}, ecto) do
+      put_in(ecto[key][:type], Type.from(type))
+    end
+
+    def parse_peri({key, {:required, type}}, ecto) do
+      ecto = put_in(ecto[key][:required], true)
+      parse_peri({key, type}, ecto)
+    end
+
+    def parse_peri({key, {type, {:default, {mod, fun}}}}, ecto) do
+      put_in(ecto[key][:default], apply(mod, fun, []))
+      |> then(&parse_peri({key, type}, &1))
+    end
+
+    def parse_peri({key, {type, {:default, {mod, fun, args}}}}, ecto) do
+      put_in(ecto[key][:default], apply(mod, fun, args))
+      |> then(&parse_peri({key, type}, &1))
+    end
+
+    def parse_peri({key, {type, {:default, val}}}, ecto) do
+      put_in(ecto[key][:default], val)
+      |> then(&parse_peri({key, type}, &1))
+    end
+
+    def parse_peri({key, {:string, {:regex, regex}}}, ecto) do
+      put_validation(ecto, key, fn changeset ->
+        validate_format(changeset, key, regex)
+      end)
+      |> then(&parse_peri({key, :string}, &1))
+    end
+
+    def parse_peri({key, {:string, {:eq, eq}}}, ecto) do
+      validation =
+        &validate_change(&1, key, fn ^key, val ->
+          if val === eq, do: [], else: [{key, "should be equal to literal #{eq}"}]
+        end)
+
+      put_validation(ecto, key, validation)
+      |> then(&parse_peri({key, :string}, &1))
+    end
+
+    def parse_peri({key, {:string, {:min, min}}}, ecto) do
+      put_validation(ecto, key, fn changeset ->
+        validate_length(changeset, key, min: min)
+      end)
+      |> then(&parse_peri({key, :string}, &1))
+    end
+
+    def parse_peri({key, {:string, {:max, max}}}, ecto) do
+      put_validation(ecto, key, fn changeset ->
+        validate_length(changeset, key, max: max)
+      end)
+      |> then(&parse_peri({key, :string}, &1))
+    end
+
+    @number_checks [
+      eq: :equal_to,
+      neq: :not_equal_to,
+      lt: :less_than,
+      gt: :greater_than,
+      lte: :less_than_or_equal_to,
+      gte: :greater_than_or_equal_to
+    ]
+
+    for type <- [:integer, :float], {peri, check} <- @number_checks do
+      def parse_peri({key, {unquote(type), {unquote(peri), val}}}, ecto) do
+        put_validation(ecto, key, fn changeset ->
+          validate_number(changeset, key, [{unquote(check), val}])
+        end)
+        |> then(&parse_peri({key, unquote(type)}, &1))
+      end
+    end
+
+    for type <- [:integer, :float] do
+      def parse_peri({key, {unquote(type), {:range, {min, max}}}}, ecto) do
+        put_validation(ecto, key, fn changeset ->
+          validate_number(changeset, key,
+            greater_than_or_equal_to: min,
+            less_than_or_equal_to: max
+          )
+        end)
+        |> then(&parse_peri({key, unquote(type)}, &1))
+      end
+    end
+
+    def parse_peri({key, {:list, type}}, ecto) when is_map(type) do
+      ecto = put_in(ecto[key][:nested], parse(type))
+      put_in(ecto[key][:type], {:embed, Embed.init(field: key, cardinality: :many, related: nil)})
+    end
+
+    def parse_peri({key, type}, ecto) when is_map(type) do
+      ecto = put_in(ecto[key][:nested], parse(type))
+      put_in(ecto[key][:type], {:embed, Embed.init(field: key, cardinality: :one, related: nil)})
+    end
+
+    def parse_peri({key, type}, _ecto) do
+      type = inspect(type, pretty: true)
+      raise Peri.Error, message: "Ecto doesn't support `#{type}` type for #{key}"
+    end
+
+    defp put_validation(ecto, key, validation) do
+      update_in(ecto[key][:validations], &[validation | &1])
+    end
+  end
+end

@@ -1169,7 +1169,7 @@ defmodule Peri do
       |> cast(attrs, Map.keys(definition) -- nested_keys)
       |> process_validations(definition)
       |> process_required(definition)
-      |> process_nested(nested)
+      |> process_nested(nested, attrs)
     end
 
     defp process_defaults(definition) do
@@ -1200,16 +1200,37 @@ defmodule Peri do
       end)
     end
 
-    defp process_nested(changeset, nested) do
-      Enum.reduce(nested, changeset, &handle_nested/2)
+    defp process_nested(changeset, nested, attrs) do
+      Enum.reduce(nested, changeset, &handle_nested(&1, &2, attrs))
     end
 
-    defp handle_nested({key, %{type: {:embed, %{cardinality: :one}}, nested: schema}}, acc) do
-      cast_embed(acc, key,
-        with: fn _source, attrs ->
-          process_changeset(schema, attrs)
-        end
-      )
+    defp handle_nested({key, %{type: {:embed, %{cardinality: :one}}} = defn}, changeset, attrs) do
+      {key, defn.nested}
+      |> handle_nested_single(changeset, attrs)
+    end
+
+    defp handle_nested({key, %{type: {:embed, %{cardinality: :many}}} = defn}, changeset, attrs) do
+      handle_nested_single({key, defn.nested}, changeset, attrs)
+    end
+
+    defp handle_nested_single({key, schema}, changeset, attrs) do
+      case Map.fetch(attrs, key) do
+        {:ok, nested} when not is_nil(nested) ->
+          process_changeset(schema, nested)
+          |> then(&put_nested(changeset, key, &1))
+
+        _ ->
+          add_error(changeset, key, "can't be blank", validation: :required)
+      end
+    end
+
+    defp put_nested(changeset, key, %{valid?: true} = nested) do
+      update_in(changeset.changes[key], fn _ -> nested end)
+    end
+
+    defp put_nested(changeset, key, %{valid?: false} = nested) do
+      changeset = update_in(changeset.changes[key], fn _ -> nested end)
+      %{changeset | valid?: false}
     end
   end
 end

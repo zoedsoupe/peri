@@ -40,7 +40,7 @@ end
   - `{:range, {min, max}}` - Validates taht the integer field is inside the range of `min` to `max` (inclusive)
 - `:float` - Validates that the field is a float.
 - `:boolean` - Validates that the field is a boolean.
-- `:map` - Validates that the field is a map.
+- `:map` - Validates that the field is a map, doesn't validate underlying definition.
 - `{:required, type}` - Marks the field as required and validates it according to the specified type.
 - `{:enum, choices}` - Validates that the field is one of the specified choices.
 - `{:list, type}` - Validates that the field is a list of elements of the specified type.
