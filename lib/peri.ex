@@ -749,17 +749,7 @@ defmodule Peri do
 
   defp validate_field(val, {type, {:transform, {mod, fun}}}, data)
        when is_atom(mod) and is_atom(fun) do
-    result = validate_field(val, type, data)
-    ok? = match?(:ok, result) or match?({:ok, _}, result)
-
-    val =
-      case result do
-        :ok -> val
-        {:ok, val} -> val
-        err -> err
-      end
-
-    if ok? do
+    with {:ok, val} <- validate_and_extract(val, type, data) do
       cond do
         function_exported?(mod, fun, 1) ->
           {:ok, apply(mod, fun, [val])}
@@ -771,24 +761,12 @@ defmodule Peri do
           template = "expected %{mod} to export %{fun}/1 or %{fun}/2"
           {:error, template, mod: mod, fun: fun}
       end
-    else
-      result
     end
   end
 
   defp validate_field(val, {type, {:transform, {mod, fun, args}}}, data)
        when is_atom(mod) and is_atom(fun) and is_list(args) do
-    result = validate_field(val, type, data)
-    ok? = match?(:ok, result) or match?({:ok, _}, result)
-
-    val =
-      case result do
-        :ok -> val
-        {:ok, val} -> val
-        err -> err
-      end
-
-    if ok? do
+    with {:ok, val} <- validate_and_extract(val, type, data) do
       cond do
         function_exported?(mod, fun, length(args) + 2) ->
           {:ok, apply(mod, fun, [val, maybe_get_root_data(data) | args])}
@@ -800,8 +778,6 @@ defmodule Peri do
           template = "expected %{mod} to export %{fun} with arity from %{base} to %{arity}"
           {:error, template, mod: mod, fun: fun, arity: length(args), base: length(args) + 1}
       end
-    else
-      result
     end
   end
 
@@ -856,26 +832,7 @@ defmodule Peri do
 
   defp validate_field(source, {:tuple, types}, data) when is_tuple(source) do
     if tuple_size(source) == length(types) do
-      Enum.with_index(types)
-      |> Enum.reduce_while({:ok, []}, fn {type, index}, {:ok, vals} ->
-        case validate_field(elem(source, index), type, data) do
-          :ok ->
-            {:cont, {:ok, vals}}
-
-          {:ok, val} ->
-            {:cont, {:ok, [val | vals]}}
-
-          {:error, reason, nested_info} ->
-            info = [index: index] ++ nested_info
-            {:halt, {:error, "tuple element %{index}: #{reason}", info}}
-        end
-      end)
-      |> then(fn
-        :ok -> :ok
-        {:ok, []} -> :ok
-        {:ok, vals} -> {:ok, List.to_tuple(Enum.reverse(vals))}
-        {:error, reason, info} -> {:error, reason, info}
-      end)
+      validate_tuple_elements(source, types, data)
     else
       info = [length: length(types), actual: length(Tuple.to_list(source))]
       template = "expected tuple of size %{length} received tuple with %{actual} length"
@@ -926,6 +883,37 @@ defmodule Peri do
   defp validate_field(val, type, _data) do
     info = [expected: type, actual: inspect(val, pretty: true)]
     {:error, "expected type of %{expected} received %{actual} value", info}
+  end
+
+  defp validate_tuple_elements(source, types, data) do
+    Enum.with_index(types)
+    |> Enum.reduce_while({:ok, []}, fn {type, index}, {:ok, vals} ->
+      case validate_field(elem(source, index), type, data) do
+        :ok ->
+          {:cont, {:ok, vals}}
+
+        {:ok, val} ->
+          {:cont, {:ok, [val | vals]}}
+
+        {:error, reason, nested_info} ->
+          info = [index: index] ++ nested_info
+          {:halt, {:error, "tuple element %{index}: #{reason}", info}}
+      end
+    end)
+    |> then(fn
+      {:ok, []} -> :ok
+      {:ok, vals} -> {:ok, List.to_tuple(Enum.reverse(vals))}
+      {:error, reason, info} -> {:error, reason, info}
+    end)
+  end
+
+  #  Handles the validation step and extracts the value if valid
+  defp validate_and_extract(val, type, data) do
+    case validate_field(val, type, data) do
+      :ok -> {:ok, val}
+      {:ok, val} -> {:ok, val}
+      err -> err
+    end
   end
 
   # if schema is matches a raw data structure, it will not use the Peri.Parser
