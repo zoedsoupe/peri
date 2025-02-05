@@ -14,7 +14,8 @@ defmodule Peri.MixProject do
       deps: deps(),
       package: package(),
       description: description(),
-      source_url: @source_url
+      source_url: @source_url,
+      dialyzer: [plt_local_path: "priv/plts", ignore_warnings: ".dialyzerignore"]
     ]
   end
 
@@ -28,8 +29,10 @@ defmodule Peri.MixProject do
     [
       {:jason, "~> 1.0", optional: true},
       {:stream_data, "~> 1.1", optional: true},
-      {:credo, "~> 1.7", only: :dev, runtime: false},
-      {:ex_doc, "~> 0.14", only: :dev, runtime: false}
+      {:ecto, "~> 3.12", optional: true},
+      {:ex_doc, ">= 0.0.0", only: [:dev], runtime: false},
+      {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
+      {:dialyxir, "~> 1.3", only: [:dev, :test], runtime: false}
     ]
   end
 

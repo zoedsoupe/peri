@@ -87,6 +87,7 @@ defmodule Peri do
   """
 
   @type validation :: (term -> :ok | {:error, template :: String.t(), context :: map | keyword})
+  @type time_def :: :time | :date | :datetime | :naive_datetime
   @type string_def ::
           :string
           | {:string, {:regex, Regex.t()} | {:eq, String.t()} | {:min, integer} | {:max, integer}}
@@ -98,7 +99,7 @@ defmodule Peri do
              | {:lt, integer}
              | {:lte, integer}
              | {:gt, integer}
-             | {:gte, :integer}
+             | {:gte, integer}
              | {:range, {min :: integer, max :: integer}}}
   @type float_def ::
           :float
@@ -136,12 +137,14 @@ defmodule Peri do
           | :atom
           | :boolean
           | :map
+          | :pid
           | {:either, {schema_def, schema_def}}
           | {:oneof, list(schema_def)}
           | {:required, schema_def}
           | {:enum, list(term)}
           | {:list, schema_def}
           | {:tuple, list(schema_def)}
+          | time_def
           | string_def
           | int_def
           | float_def
@@ -1141,5 +1144,84 @@ defmodule Peri do
   defp validate_type(invalid, _p) do
     invalid = inspect(invalid, pretty: true)
     {:error, "invalid schema definition: %{invalid}", invalid: invalid}
+  end
+
+  if Code.ensure_loaded?(Ecto) do
+    import Ecto.Changeset
+
+    @doc """
+    Converts a `Peri.schema()` definition to an Ecto [schemaless changesets](https://hexdocs.pm/ecto/Ecto.Changeset.html#module-schemaless-changesets).
+    """
+    @spec to_changeset!(schema, attrs :: map) :: Ecto.Changeset.t()
+    def to_changeset!(s, _attrs) when not is_map(s) do
+      raise Peri.Error,
+        message:
+          "currently Ecto doesn't support raw data structures or keyword lists validation, only maps"
+    end
+
+    def to_changeset!(%{} = s, %{} = attrs) do
+      with {:error, err} <- Peri.validate_schema(s) do
+        raise Peri.Error, err
+      end
+
+      definition = Peri.Ecto.parse(s)
+
+      process_changeset(definition, attrs)
+    end
+
+    defp process_changeset(definition, attrs) do
+      nested =
+        definition
+        |> Enum.map(fn {key, def} -> {key, Map.take(def, [:type, :nested])} end)
+        |> Enum.filter(fn {_, def} -> def.nested end)
+
+      nested_keys = Enum.map(nested, fn {key, _} -> key end)
+
+      {process_defaults(definition), process_types(definition)}
+      |> cast(attrs, Map.keys(definition) -- nested_keys)
+      |> process_validations(definition)
+      |> process_required(definition)
+      |> process_nested(nested)
+    end
+
+    defp process_defaults(definition) do
+      definition
+      |> Enum.map(fn {key, %{default: val}} -> {key, val} end)
+      |> Enum.filter(fn {_key, default} -> default end)
+      |> Map.new()
+    end
+
+    defp process_types(definition) do
+      Map.new(definition, fn {key, %{type: type}} -> {key, type} end)
+    end
+
+    defp process_required(changeset, definition) do
+      required =
+        definition
+        |> Enum.filter(fn {_key, %{required: required}} -> required end)
+        |> Enum.map(fn {key, _} -> key end)
+
+      validate_required(changeset, required)
+    end
+
+    defp process_validations(changeset, definition) do
+      Enum.reduce(definition, changeset, fn {_, %{validations: vals}}, acc ->
+        for validation <- vals, reduce: acc do
+          changeset -> validation.(changeset)
+        end
+      end)
+    end
+
+    defp process_nested(changeset, nested) do
+      Enum.reduce(nested, changeset, &handle_nested/2)
+    end
+
+    defp handle_nested({key, %{type: {:embed, %{cardinality: :one}}, nested: schema}}, acc) do
+      cast_embed(acc, key,
+        with: fn _source, attrs ->
+          process_changeset(schema, attrs)
+        end
+      )
+    end
   end
 end
