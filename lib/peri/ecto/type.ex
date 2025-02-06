@@ -1,20 +1,23 @@
 defmodule Peri.Ecto.Type do
   @moduledoc "Responsible to convert between Peri <> Ecto types definitions"
 
+  alias Ecto.ParameterizedType
   alias Peri.Ecto.Type.PID
 
   @spec from(Peri.schema_def()) :: term
   def from(:pid), do: PID
+  def from(:datetime), do: :utc_datetime
 
   def from({:list, inner}), do: {:array, from(inner)}
 
   def from({:enum, choices}) do
     cond do
       Enum.all?(choices, &is_binary/1) ->
-        {:parametrized, {Ecto.Enum, Ecto.Enum.init(values: choices)}}
+        choices = Enum.map(choices, &String.to_atom/1)
+        ParameterizedType.init(Ecto.Enum, values: choices)
 
       Enum.all?(choices, &is_atom/1) ->
-        {:parametrized, {Ecto.Enum, Ecto.Enum.init(values: choices)}}
+        ParameterizedType.init(Ecto.Enum, values: choices)
 
       true ->
         raise Peri.Error, message: "Ecto.Enum only accepts strings and atoms"

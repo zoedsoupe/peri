@@ -87,7 +87,7 @@ defmodule Peri do
   """
 
   @type validation :: (term -> :ok | {:error, template :: String.t(), context :: map | keyword})
-  @type time_def :: :time | :date | :datetime | :naive_datetime
+  @type time_def :: :time | :date | :datetime | :naive_datetime | :duration
   @type string_def ::
           :string
           | {:string, {:regex, Regex.t()} | {:eq, String.t()} | {:min, integer} | {:max, integer}}
@@ -524,6 +524,7 @@ defmodule Peri do
   defp validate_field(pid, :pid, _data) when is_pid(pid), do: :ok
   defp validate_field(%Date{}, :date, _data), do: :ok
   defp validate_field(%Time{}, :time, _data), do: :ok
+  defp validate_field(%Duration{}, :duration, _data), do: :ok
   defp validate_field(%DateTime{}, :datetime, _data), do: :ok
   defp validate_field(%NaiveDateTime{}, :naive_datetime, _data), do: :ok
   defp validate_field(val, :atom, _data) when is_atom(val), do: :ok
@@ -1019,6 +1020,7 @@ defmodule Peri do
   defp validate_type(:string, _parser), do: :ok
   defp validate_type(:date, _parser), do: :ok
   defp validate_type(:time, _parser), do: :ok
+  defp validate_type(:duration, _parser), do: :ok
   defp validate_type(:datetime, _parser), do: :ok
   defp validate_type(:naive_datetime, _parser), do: :ok
   defp validate_type(:pid, _parser), do: :ok
@@ -1205,12 +1207,11 @@ defmodule Peri do
     end
 
     defp handle_nested({key, %{type: {:embed, %{cardinality: :one}}} = defn}, changeset, attrs) do
-      {key, defn.nested}
-      |> handle_nested_single(changeset, attrs)
+      handle_nested_single({key, defn.nested}, changeset, attrs)
     end
 
     defp handle_nested({key, %{type: {:embed, %{cardinality: :many}}} = defn}, changeset, attrs) do
-      handle_nested_single({key, defn.nested}, changeset, attrs)
+      handle_nested_many({key, defn.nested}, changeset, attrs)
     end
 
     defp handle_nested_single({key, schema}, changeset, attrs) do
@@ -1224,6 +1225,18 @@ defmodule Peri do
       end
     end
 
+    defp handle_nested_many({key, schema}, changeset, attrs) do
+      case Map.fetch(attrs, key) do
+        {:ok, nested} when is_list(nested) ->
+          # FIXME this is nested unnecessary levels :confused:
+          changes = Enum.map(nested, &process_changeset(schema, &1))
+          put_nested(changeset, key, changes)
+
+        _ ->
+          add_error(changeset, key, "can't be blank", validation: :required)
+      end
+    end
+
     defp put_nested(changeset, key, %{valid?: true} = nested) do
       update_in(changeset.changes[key], fn _ -> nested end)
     end
@@ -1231,6 +1244,16 @@ defmodule Peri do
     defp put_nested(changeset, key, %{valid?: false} = nested) do
       changeset = update_in(changeset.changes[key], fn _ -> nested end)
       %{changeset | valid?: false}
+    end
+
+    defp put_nested(changeset, key, changes) when is_list(changes) do
+      changeset = update_in(changeset.changes[key], fn _ -> changes end)
+
+      if Enum.any?(changes, &(not &1.valid?)) do
+        %{changeset | valid?: false}
+      else
+        changeset
+      end
     end
   end
 end

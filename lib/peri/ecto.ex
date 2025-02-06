@@ -143,6 +143,10 @@ if Code.ensure_loaded?(Ecto) do
       put_in(ecto[key][:type], {:embed, Embed.init(field: key, cardinality: :many, related: nil)})
     end
 
+    def parse_peri({key, {:list, type}}, ecto) do
+      put_in(ecto[key][:type], {:array, type})
+    end
+
     def parse_peri({key, type}, ecto) when is_map(type) do
       ecto = put_in(ecto[key][:nested], parse(type))
       put_in(ecto[key][:type], {:embed, Embed.init(field: key, cardinality: :one, related: nil)})

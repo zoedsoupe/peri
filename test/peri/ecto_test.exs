@@ -219,6 +219,205 @@ defmodule Peri.EctoTest do
     end
   end
 
+  describe "enum types validation" do
+    test "validates string enum values" do
+      schema = %{
+        status: {:enum, ["active", "inactive", "pending"]}
+      }
+
+      valid_attrs = %{status: "active"}
+      invalid_attrs = %{status: "unknown"}
+
+      valid_changeset = Peri.to_changeset!(schema, valid_attrs)
+      invalid_changeset = Peri.to_changeset!(schema, invalid_attrs)
+      assert is_changeset(valid_changeset)
+      assert is_changeset(invalid_changeset)
+
+      assert valid_changeset.valid?
+      refute invalid_changeset.valid?
+      assert %{status: ["is invalid"]} = errors_on(invalid_changeset)
+    end
+
+    test "validates atom enum values" do
+      schema = %{
+        role: {:enum, [:admin, :user, :guest]}
+      }
+
+      valid_attrs = %{role: :admin}
+      invalid_attrs = %{role: :superuser}
+
+      valid_changeset = Peri.to_changeset!(schema, valid_attrs)
+      invalid_changeset = Peri.to_changeset!(schema, invalid_attrs)
+      assert is_changeset(valid_changeset)
+      assert is_changeset(invalid_changeset)
+
+      assert valid_changeset.valid?
+      refute invalid_changeset.valid?
+      assert %{role: ["is invalid"]} = errors_on(invalid_changeset)
+    end
+  end
+
+  describe "list type validation" do
+    test "validates list of primitive values" do
+      schema = %{
+        tags: {:list, :string},
+        scores: {:list, :integer}
+      }
+
+      valid_attrs = %{
+        tags: ["elixir", "ecto"],
+        scores: [85, 90, 95]
+      }
+
+      invalid_attrs = %{
+        tags: ["elixir", 123],
+        scores: [85, :hello, 95]
+      }
+
+      valid_changeset = Peri.to_changeset!(schema, valid_attrs)
+      invalid_changeset = Peri.to_changeset!(schema, invalid_attrs)
+      assert is_changeset(valid_changeset)
+      assert is_changeset(invalid_changeset)
+
+      assert valid_changeset.valid?
+      refute invalid_changeset.valid?
+      assert get_change(valid_changeset, :tags) == ["elixir", "ecto"]
+      assert get_change(valid_changeset, :scores) == [85, 90, 95]
+      assert %{tags: ["is invalid"], scores: ["is invalid"]} = errors_on(invalid_changeset)
+    end
+
+    test "validates list of maps" do
+      schema = %{
+        addresses:
+          {:list,
+           %{
+             street: {:required, :string},
+             number: {:required, :integer},
+             complement: :string
+           }}
+      }
+
+      valid_attrs = %{
+        addresses: [
+          %{street: "Main St", number: 123},
+          %{street: "Second St", number: 456, complement: "Apt 4B"}
+        ]
+      }
+
+      invalid_attrs = %{
+        addresses: [
+          %{street: "Main St"},
+          %{street: "Second St", number: :hello}
+        ]
+      }
+
+      valid_changeset = Peri.to_changeset!(schema, valid_attrs)
+      invalid_changeset = Peri.to_changeset!(schema, invalid_attrs)
+      assert is_changeset(valid_changeset)
+      assert is_changeset(invalid_changeset)
+
+      assert valid_changeset.valid?
+      refute invalid_changeset.valid?
+
+      assert %{addresses: addresses_errors} = errors_on(invalid_changeset)
+
+      assert [
+               %{number: ["can't be blank"]},
+               %{number: ["is invalid"]}
+             ] = addresses_errors
+    end
+  end
+
+  describe "custom type validation" do
+    test "validates PID type" do
+      schema = %{process: :pid}
+      pid = self()
+
+      valid_attrs = %{process: pid}
+      invalid_attrs = %{process: "not_a_pid"}
+
+      valid_changeset = Peri.to_changeset!(schema, valid_attrs)
+      invalid_changeset = Peri.to_changeset!(schema, invalid_attrs)
+      assert is_changeset(valid_changeset)
+      assert is_changeset(invalid_changeset)
+
+      assert valid_changeset.valid?
+      refute invalid_changeset.valid?
+      assert get_change(valid_changeset, :process) == pid
+      assert %{process: ["is invalid"]} = errors_on(invalid_changeset)
+    end
+  end
+
+  describe "complex validation rules" do
+    test "combines multiple string validations" do
+      schema = %{
+        password: {:string, {:regex, ~r/^(?=.*[A-Z])(?=.*[0-9]).{8,}$/}},
+        confirm_password: {:string, {:eq, "Secret123"}}
+      }
+
+      valid_attrs = %{
+        password: "Secret123",
+        confirm_password: "Secret123"
+      }
+
+      invalid_attrs = %{
+        password: "weak",
+        confirm_password: "different"
+      }
+
+      valid_changeset = Peri.to_changeset!(schema, valid_attrs)
+      invalid_changeset = Peri.to_changeset!(schema, invalid_attrs)
+      assert is_changeset(valid_changeset)
+      assert is_changeset(invalid_changeset)
+
+      assert valid_changeset.valid?
+      refute invalid_changeset.valid?
+
+      assert %{
+               password: ["has invalid format"],
+               confirm_password: ["should be equal to literal Secret123"]
+             } = errors_on(invalid_changeset)
+    end
+
+    test "validates date and time fields" do
+      schema = %{
+        date: :date,
+        time: :time,
+        datetime: :datetime,
+        naive_datetime: :naive_datetime
+      }
+
+      valid_attrs = %{
+        date: ~D[2024-02-05],
+        time: ~T[10:30:00],
+        datetime: DateTime.from_naive!(~N[2024-02-05 10:30:00], "Etc/UTC"),
+        naive_datetime: ~N[2024-02-05 10:30:00]
+      }
+
+      invalid_attrs = %{
+        date: "invalid",
+        time: "invalid",
+        datetime: "invalid",
+        naive_datetime: "invalid"
+      }
+
+      valid_changeset = Peri.to_changeset!(schema, valid_attrs)
+      invalid_changeset = Peri.to_changeset!(schema, invalid_attrs)
+      assert is_changeset(valid_changeset)
+      assert is_changeset(invalid_changeset)
+
+      assert valid_changeset.valid?
+      refute invalid_changeset.valid?
+
+      assert %{
+               date: ["is invalid"],
+               time: ["is invalid"],
+               datetime: ["is invalid"],
+               naive_datetime: ["is invalid"]
+             } = errors_on(invalid_changeset)
+    end
+  end
+
   @doc """
   A helper that transforms changeset errors into a map of messages.
   """
