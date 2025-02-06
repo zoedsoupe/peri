@@ -2,7 +2,9 @@
 
 > [!NOTE]
 > Peri is implementing an Ecto integration right now, you can test it pointing your mix.exs def to the `feat/ecto-integration` branch
-> something like `{:peri, github: "zoedsoupe/peri", branch: "feat/ecto-integration"}`
+>
+> Something like `{:peri, github: "zoedsoupe/peri", branch: "feat/ecto-integration"}`
+>
 > You can follow the development status on https://github.com/zoedsoupe/peri/pull/18
 
 Peri is a schema validation library for Elixir, inspired by Clojure's Plumatic Schema. It provides a powerful and flexible way to define and validate schemas for your data, ensuring data integrity and consistency throughout your application. Peri supports a variety of types and validation rules, and it can generate sample data based on your schemas.
