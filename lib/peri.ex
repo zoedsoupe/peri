@@ -1228,7 +1228,6 @@ defmodule Peri do
     defp handle_nested_many({key, schema}, changeset, attrs) do
       case Map.fetch(attrs, key) do
         {:ok, nested} when is_list(nested) ->
-          # FIXME this is nested unnecessary levels :confused:
           changes = Enum.map(nested, &process_changeset(schema, &1))
           put_nested(changeset, key, changes)
 

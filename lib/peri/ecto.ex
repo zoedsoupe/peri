@@ -152,6 +152,58 @@ if Code.ensure_loaded?(Ecto) do
       put_in(ecto[key][:type], {:embed, Embed.init(field: key, cardinality: :one, related: nil)})
     end
 
+    def parse_peri({key, {:tuple, types}}, ecto) when is_list(types) do
+      ecto = put_in(ecto[key][:type], Type.from({:tuple, types}))
+
+      put_validation(ecto, key, fn changeset ->
+        validate_tuple(changeset, key, types)
+      end)
+    end
+
+    def parse_peri({key, {type, {:transform, mapper}}}, ecto) when is_function(mapper, 1) do
+      ecto = parse_peri({key, type}, ecto)
+
+      put_validation(ecto, key, fn changeset ->
+        update_change(changeset, key, mapper)
+      end)
+    end
+
+    def parse_peri({key, {type, {:transform, {mod, fun}}}}, ecto)
+        when is_atom(mod) and is_atom(fun) do
+      ecto = parse_peri({key, type}, ecto)
+
+      put_validation(ecto, key, fn changeset ->
+        update_change(changeset, key, &apply(mod, fun, [&1]))
+      end)
+    end
+
+    def parse_peri({key, {type, {:transform, {mod, fun, args}}}}, ecto)
+        when is_atom(mod) and is_atom(fun) and is_list(args) do
+      ecto = parse_peri({key, type}, ecto)
+
+      put_validation(ecto, key, fn changeset ->
+        update_change(changeset, key, &apply(mod, fun, [&1 | args]))
+      end)
+    end
+
+    def parse_peri({key, {:either, {fst, snd}}}, ecto) do
+      put_in(ecto[key][:type], Type.from({:either, {fst, snd}}))
+    end
+
+    def parse_peri({key, {:oneof, types}}, ecto) when is_list(types) do
+      if Enum.any?(types, &is_map/1) do
+        # nested = Enum.filter(types, &is_map/1)
+        raise "unimplemented"
+      else
+        put_in(ecto[key][:type], Type.from({:oneof, types}))
+      end
+    end
+
+    # needs the either or oneof implementation first
+    def parse_peri({_key, {:cond, _condition, _true_type, _else_type}}, _ecto) do
+      raise "unimplemented"
+    end
+
     def parse_peri({key, type}, _ecto) do
       type = inspect(type, pretty: true)
       raise Peri.Error, message: "Ecto doesn't support `#{type}` type for #{key}"
@@ -159,6 +211,15 @@ if Code.ensure_loaded?(Ecto) do
 
     defp put_validation(ecto, key, validation) do
       update_in(ecto[key][:validations], &[validation | &1])
+    end
+
+    defp validate_tuple(changeset, key, types) do
+      validate_change(changeset, key, fn ^key, val ->
+        case Peri.validate({:tuple, types}, val) do
+          {:ok, _} -> []
+          {:error, msg} -> [{key, msg}]
+        end
+      end)
     end
   end
 end
