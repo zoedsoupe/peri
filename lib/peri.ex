@@ -1155,7 +1155,6 @@ defmodule Peri do
       end
 
       definition = Peri.Ecto.parse(s)
-
       process_changeset(definition, attrs)
     end
 

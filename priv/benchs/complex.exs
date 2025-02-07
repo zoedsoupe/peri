@@ -390,6 +390,7 @@ end
 # Run the benchmark
 valid_data = Complex.generate_valid_data()
 invalid_data = Complex.generate_invalid_data()
+schema = Complex.get_schema(:organization)
 
 Benchee.run(
   %{
@@ -398,6 +399,12 @@ Benchee.run(
     end,
     "complex schema - invalid data" => fn ->
       Complex.organization(invalid_data)
+    end,
+    "complex ecto schema - valid data" => fn ->
+      Peri.to_changeset!(schema, valid_data)
+    end,
+    "complex ecto schema - invalid data" => fn ->
+      Peri.to_changeset!(schema, invalid_data)
     end
   },
   time: 10,
