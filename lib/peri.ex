@@ -188,6 +188,12 @@ defmodule Peri do
         unquote(schema)
       end
 
+      if Code.ensure_loaded?(Ecto) do
+        def unquote(:"#{name}_changeset")(data) do
+          Peri.to_changeset!(unquote(schema), data)
+        end
+      end
+
       def unquote(name)(data) do
         with {:ok, schema} <- Peri.validate_schema(unquote(schema)) do
           Peri.validate(schema, data)
@@ -1137,8 +1143,6 @@ defmodule Peri do
   end
 
   if Code.ensure_loaded?(Ecto) do
-    import Ecto.Changeset
-
     @doc """
     Converts a `Peri.schema()` definition to an Ecto [schemaless changesets](https://hexdocs.pm/ecto/Ecto.Changeset.html#module-schemaless-changesets).
     """
@@ -1168,7 +1172,7 @@ defmodule Peri do
       nested_keys = Enum.map(nested, fn {key, _} -> key end)
 
       {process_defaults(definition), process_types(definition)}
-      |> cast(attrs, Map.keys(definition) -- nested_keys)
+      |> Ecto.Changeset.cast(attrs, Map.keys(definition) -- nested_keys)
       |> process_validations(definition)
       |> process_required(definition)
       |> process_nested(nested, attrs)
@@ -1191,7 +1195,7 @@ defmodule Peri do
         |> Enum.filter(fn {_key, %{required: required}} -> required end)
         |> Enum.map(fn {key, _} -> key end)
 
-      validate_required(changeset, required)
+      Ecto.Changeset.validate_required(changeset, required)
     end
 
     defp process_validations(changeset, definition) do
@@ -1221,7 +1225,7 @@ defmodule Peri do
           |> then(&put_nested(changeset, key, &1))
 
         _ ->
-          add_error(changeset, key, "can't be blank", validation: :required)
+          Ecto.Changeset.add_error(changeset, key, "can't be blank", validation: :required)
       end
     end
 
@@ -1232,7 +1236,7 @@ defmodule Peri do
           put_nested(changeset, key, changes)
 
         _ ->
-          add_error(changeset, key, "can't be blank", validation: :required)
+          Ecto.Changeset.add_error(changeset, key, "can't be blank", validation: :required)
       end
     end
 

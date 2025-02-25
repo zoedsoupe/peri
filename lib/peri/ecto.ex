@@ -7,6 +7,8 @@ if Code.ensure_loaded?(Ecto) do
     alias Ecto.Embedded, as: Embed
     alias Peri.Ecto.Type
 
+    require Peri
+
     @type validation ::
             {:eq, integer | float | String.t()}
             | {:neq, integer | float}
@@ -29,6 +31,8 @@ if Code.ensure_loaded?(Ecto) do
               nested: %{atom => def}
             }
           }
+
+    defguard is_ecto_embed(data) when elem(data, 0) == :embed or elem(data, 0) == :parameterized
 
     def parse(%{} = schema) do
       init =
@@ -140,7 +144,7 @@ if Code.ensure_loaded?(Ecto) do
 
     def parse_peri({key, {:list, type}}, ecto) when is_map(type) do
       ecto = put_in(ecto[key][:nested], parse(type))
-      put_in(ecto[key][:type], {:embed, Embed.init(field: key, cardinality: :many, related: nil)})
+      put_in(ecto[key][:type], embed_many(key))
     end
 
     def parse_peri({key, {:list, type}}, ecto) do
@@ -149,7 +153,7 @@ if Code.ensure_loaded?(Ecto) do
 
     def parse_peri({key, type}, ecto) when is_map(type) do
       ecto = put_in(ecto[key][:nested], parse(type))
-      put_in(ecto[key][:type], {:embed, Embed.init(field: key, cardinality: :one, related: nil)})
+      put_in(ecto[key][:type], embed_one(key))
     end
 
     def parse_peri({key, {:tuple, types}}, ecto) when is_list(types) do
@@ -220,6 +224,14 @@ if Code.ensure_loaded?(Ecto) do
           {:error, msg} -> [{key, msg}]
         end
       end)
+    end
+
+    defp embed_one(key) do
+      {:embed, Embed.init(field: key, cardinality: :one, related: nil)}
+    end
+
+    defp embed_many(key) do
+      {:embed, Embed.init(field: key, cardinality: :many, related: nil)}
     end
   end
 end
