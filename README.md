@@ -1,5 +1,12 @@
 # Peri
 
+> [!NOTE]
+> Peri is implementing an Ecto integration right now, you can test it pointing your mix.exs def to the `feat/ecto-integration` branch
+>
+> Something like `{:peri, github: "zoedsoupe/peri", branch: "feat/ecto-integration"}`
+>
+> You can follow the development status on https://github.com/zoedsoupe/peri/pull/18
+
 Peri is a schema validation library for Elixir, inspired by Clojure's Plumatic Schema. It provides a powerful and flexible way to define and validate schemas for your data, ensuring data integrity and consistency throughout your application. Peri supports a variety of types and validation rules, and it can generate sample data based on your schemas.
 
 ## Features
@@ -41,6 +48,8 @@ end
 - `:float` - Validates that the field is a float.
 - `:boolean` - Validates that the field is a boolean.
 - `:map` - Validates that the field is a map, doesn't validate underlying definition.
+- `{:map, type}` - Validates that the field is a map where all values conform to the specified type.
+- `{:map, key_type, value_type}` - Validates that the field is a map where keys conform to key_type and values conform to value_type.
 - `:date` - Validates that the field is a date, aka `%Date{}`.
 - `:time` - Validates that the field is a time, aka `%Time{}`.
 - `:naive_datetime` - Validates that the field is a naive datetime, aka `%NaiveDateTime{}`.
@@ -49,6 +58,7 @@ end
 - `{:required, type}` - Marks the field as required and validates it according to the specified type.
 - `{:enum, choices}` - Validates that the field is one of the specified choices.
 - `{:list, type}` - Validates that the field is a list of elements of the specified type.
+- `{:literal, value}` - Validates that the field is exactly equal to the specified literal value.
 - `{:tuple, types}` - Validates that the field is a tuple with elements of the specified types.
 - `{type, {:default, default}}` - Provides a default value if the field is missing or `nil`.
   - `{type, {:default, &some_fun/0}}` - The default values is retrieved from callinf `some_fun/0` if the field is missing.
@@ -86,6 +96,9 @@ defmodule MySchemas do
     },
     tags: {:list, :string},
     role: {:enum, [:admin, :user, :guest]},
+    status: {:literal, :active},
+    preferences: {:map, :string},
+    scores: {:map, :string, :integer},
     geolocation: {:tuple, [:float, :float]},
     rating: {:custom, &validate_rating/1}
   }
@@ -367,6 +380,54 @@ Peri.validate(get_schema(:age), invalid_data)
 # => {:error, [%Peri.Error{message: "should be in the range of 18..65 (inclusive)"}]}
 ```
 
+### Maps with Type Constraints
+
+Maps can be validated to ensure all values match a specific type or that both keys and values match specified types.
+
+```elixir
+defmodule MySchemas do
+  import Peri
+
+  defschema :user_preferences, {:map, :string}
+  defschema :user_scores, {:map, :string, :integer}
+end
+
+# Map with string values
+valid_prefs = %{theme: "dark", notifications: "enabled"}
+Peri.validate(get_schema(:user_preferences), valid_prefs)
+# => {:ok, %{theme: "dark", notifications: "enabled"}}
+
+# Map with string keys and integer values
+valid_scores = %{"math" => 95, "science" => 92}
+Peri.validate(get_schema(:user_scores), valid_scores)
+# => {:ok, %{"math" => 95, "science" => 92}}
+
+# Invalid data with wrong value type
+invalid_prefs = %{theme: "dark", notifications: true}
+Peri.validate(get_schema(:user_preferences), invalid_prefs)
+# => {:error, [%Peri.Error{message: "expected type of :string received true value"}]}
+```
+
+### Literal Values
+
+Literal values can be validated to ensure they exactly match a specific value.
+
+```elixir
+defmodule MySchemas do
+  import Peri
+
+  defschema :user_status, {:literal, :active}
+end
+
+valid_data = :active
+Peri.validate(get_schema(:user_status), valid_data)
+# => {:ok, :active}
+
+invalid_data = :inactive
+Peri.validate(get_schema(:user_status), invalid_data)
+# => {:error, [%Peri.Error{message: "expected literal value :active but got :inactive"}]}
+```
+
 ### Comprehensive Validation Options
 
 Peri's robust validation capabilities make it suitable for various data types and validation needs:
@@ -374,6 +435,8 @@ Peri's robust validation capabilities make it suitable for various data types an
 - **Equality and Inequality**: Validate that values match or do not match specific criteria.
 - **Ranges**: Ensure numerical values fall within specified bounds.
 - **Regular Expressions**: Enforce patterns on string data.
+- **Map Constraints**: Validate maps with type constraints on keys and values.
+- **Literal Values**: Ensure exact matches with specified values. 
 - **Custom Validation**: Implement complex rules through custom functions.
 
 By supporting these raw data structures and providing detailed error handling, Peri ensures that your data remains consistent and adheres to the defined rules, making it an excellent choice for applications requiring strict data validation.

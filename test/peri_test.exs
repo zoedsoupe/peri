@@ -302,6 +302,249 @@ defmodule PeriTest do
     users: {:list, %{name: {:required, :string}, age: {:required, :integer}}}
   })
 
+  defschema(:map_of_integers, %{
+    scores: {:map, :integer}
+  })
+
+  defschema(:map_of_lists, %{
+    user_lists: {:map, {:list, :string}}
+  })
+
+  defschema(:map_of_maps, %{
+    user_data: {:map, %{name: :string, age: :integer}}
+  })
+
+  defschema(:string_to_integer_map, %{
+    scores: {:map, :string, :integer}
+  })
+
+  defschema(:atom_to_map_map, %{
+    users: {:map, :atom, %{name: :string, active: :boolean}}
+  })
+
+  describe "map type validation" do
+    test "validates map of integers with correct data" do
+      data = %{scores: %{"Alice" => 95, "Bob" => 87, "Charlie" => 92}}
+      assert map_of_integers(data) == {:ok, data}
+    end
+
+    test "validates map of integers with incorrect value type" do
+      data = %{scores: %{"Alice" => "excellent", "Bob" => 87}}
+
+      assert {:error, errors} = map_of_integers(data)
+      assert [%Peri.Error{path: [:scores]}] = errors
+    end
+
+    test "validates map of lists with correct data" do
+      data = %{
+        user_lists: %{
+          "team_a" => ["Alice", "Bob", "Charlie"],
+          "team_b" => ["Dave", "Eve"]
+        }
+      }
+
+      assert map_of_lists(data) == {:ok, data}
+    end
+
+    test "validates map of lists with incorrect inner type" do
+      data = %{
+        user_lists: %{
+          "team_a" => ["Alice", "Bob", 123],
+          "team_b" => ["Dave", "Eve"]
+        }
+      }
+
+      assert {:error, errors} = map_of_lists(data)
+      assert [%Peri.Error{path: [:user_lists]}] = errors
+    end
+
+    test "validates map of maps with correct data" do
+      data = %{
+        user_data: %{
+          "user1" => %{name: "Alice", age: 30},
+          "user2" => %{name: "Bob", age: 25}
+        }
+      }
+
+      assert map_of_maps(data) == {:ok, data}
+    end
+
+    test "validates map of maps with incorrect inner field" do
+      data = %{
+        user_data: %{
+          "user1" => %{name: "Alice", age: "thirty"},
+          "user2" => %{name: "Bob", age: 25}
+        }
+      }
+
+      assert {:error, errors} = map_of_maps(data)
+      assert [%Peri.Error{path: [:user_data]}] = errors
+    end
+
+    test "handles empty map correctly" do
+      data = %{scores: %{}}
+      assert map_of_integers(data) == {:ok, data}
+    end
+
+    test "handles missing map correctly" do
+      data = %{}
+      assert map_of_integers(data) == {:ok, data}
+    end
+  end
+
+  defschema(:literal_values, %{
+    string_val: {:literal, "hello"},
+    integer_val: {:literal, 42},
+    float_val: {:literal, 3.14},
+    atom_val: {:literal, :success},
+    boolean_val: {:literal, true}
+  })
+
+  describe "literal type validation" do
+    test "validates literal values with correct data" do
+      data = %{
+        string_val: "hello",
+        integer_val: 42,
+        float_val: 3.14,
+        atom_val: :success,
+        boolean_val: true
+      }
+
+      assert literal_values(data) == {:ok, data}
+    end
+
+    test "validates literal values with incorrect string value" do
+      data = %{
+        string_val: "world",
+        integer_val: 42,
+        float_val: 3.14,
+        atom_val: :success,
+        boolean_val: true
+      }
+
+      assert {:error, errors} = literal_values(data)
+      assert [%Peri.Error{path: [:string_val]}] = errors
+    end
+
+    test "validates literal values with incorrect integer value" do
+      data = %{
+        string_val: "hello",
+        integer_val: 24,
+        float_val: 3.14,
+        atom_val: :success,
+        boolean_val: true
+      }
+
+      assert {:error, errors} = literal_values(data)
+      assert [%Peri.Error{path: [:integer_val]}] = errors
+    end
+
+    test "validates literal values with incorrect float value" do
+      data = %{
+        string_val: "hello",
+        integer_val: 42,
+        float_val: 2.71,
+        atom_val: :success,
+        boolean_val: true
+      }
+
+      assert {:error, errors} = literal_values(data)
+      assert [%Peri.Error{path: [:float_val]}] = errors
+    end
+
+    test "validates literal values with incorrect atom value" do
+      data = %{
+        string_val: "hello",
+        integer_val: 42,
+        float_val: 3.14,
+        atom_val: :failure,
+        boolean_val: true
+      }
+
+      assert {:error, errors} = literal_values(data)
+      assert [%Peri.Error{path: [:atom_val]}] = errors
+    end
+
+    test "validates literal values with incorrect boolean value" do
+      data = %{
+        string_val: "hello",
+        integer_val: 42,
+        float_val: 3.14,
+        atom_val: :success,
+        boolean_val: false
+      }
+
+      assert {:error, errors} = literal_values(data)
+      assert [%Peri.Error{path: [:boolean_val]}] = errors
+    end
+  end
+
+  describe "map key-value type validation" do
+    test "validates string to integer map with correct data" do
+      data = %{scores: %{"Alice" => 95, "Bob" => 87, "Charlie" => 92}}
+      assert string_to_integer_map(data) == {:ok, data}
+    end
+
+    test "validates string to integer map with incorrect key type" do
+      data = %{scores: %{123 => 95, "Bob" => 87}}
+
+      assert {:error, errors} = string_to_integer_map(data)
+      assert [%Peri.Error{path: [:scores]}] = errors
+    end
+
+    test "validates string to integer map with incorrect value type" do
+      data = %{scores: %{"Alice" => "excellent", "Bob" => 87}}
+
+      assert {:error, errors} = string_to_integer_map(data)
+      assert [%Peri.Error{path: [:scores]}] = errors
+    end
+
+    test "validates atom to map map with correct data" do
+      data = %{
+        users: %{
+          admin: %{name: "Alice", active: true},
+          user: %{name: "Bob", active: false}
+        }
+      }
+
+      assert atom_to_map_map(data) == {:ok, data}
+    end
+
+    test "validates atom to map map with incorrect key type" do
+      data = %{
+        users: %{
+          "admin" => %{name: "Alice", active: true},
+          user: %{name: "Bob", active: false}
+        }
+      }
+
+      assert {:error, errors} = atom_to_map_map(data)
+      assert [%Peri.Error{path: [:users]}] = errors
+    end
+
+    test "validates atom to map map with incorrect value type" do
+      data = %{
+        users: %{
+          admin: %{name: "Alice", active: "yes"},
+          user: %{name: "Bob", active: false}
+        }
+      }
+
+      assert {:error, errors} = atom_to_map_map(data)
+      assert [%Peri.Error{path: [:users]}] = errors
+    end
+
+    test "handles empty map correctly" do
+      data = %{scores: %{}}
+      assert string_to_integer_map(data) == {:ok, data}
+    end
+
+    test "handles missing map correctly" do
+      data = %{}
+      assert string_to_integer_map(data) == {:ok, data}
+    end
+  end
+
   describe "list of maps validation" do
     test "validates list of maps with correct data" do
       data = %{users: [%{name: "Alice", age: 30}, %{name: "Bob", age: 25}]}
@@ -2207,6 +2450,71 @@ defmodule PeriTest do
                provide_details: true,
                details: %{email: "zoey@example.com", country: "Canada"}
              }
+    end
+  end
+
+  defschema(:schema_x, %{
+    type: {:enum, [:x]},
+    name: :string,
+    value: :integer
+  })
+
+  defschema(:schema_y, %{
+    type: {:enum, [:y]},
+    name: :string,
+    metadata: %{
+      description: :string
+    }
+  })
+
+  defschema(:schema_either, {:either, {get_schema(:schema_x), get_schema(:schema_y)}})
+  defschema(:schema_oneof, {:oneof, [get_schema(:schema_x), get_schema(:schema_y)]})
+
+  describe "either and oneof validation with nested schemas" do
+    test "validates :either type with nested schema x" do
+      data_x = %{
+        type: :x,
+        name: "test",
+        value: 42
+      }
+
+      assert {:ok, ^data_x} = schema_either(data_x)
+    end
+
+    test "validates :either type with nested schema y" do
+      data_y = %{
+        type: :y,
+        name: "test",
+        metadata: %{
+          description: "test description"
+        }
+      }
+
+      # This should now work after fixing the either implementation
+      assert {:ok, ^data_y} = schema_either(data_y)
+    end
+
+    test "validates :oneof type with nested schema x" do
+      data_x = %{
+        type: :x,
+        name: "test",
+        value: 42
+      }
+
+      assert {:ok, ^data_x} = schema_oneof(data_x)
+    end
+
+    test "validates :oneof type with nested schema y" do
+      data_y = %{
+        type: :y,
+        name: "test",
+        metadata: %{
+          description: "test description"
+        }
+      }
+
+      # This works for :oneof but fails for :either - showing the inconsistency
+      assert {:ok, ^data_y} = schema_oneof(data_y)
     end
   end
 end
