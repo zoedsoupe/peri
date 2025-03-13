@@ -95,6 +95,12 @@ Benchee.run(
     end,
     "complex schema - invalid data" => fn ->
       Simple.complex_user(complex_invalid_data)
+    end,
+    "simple schema - changeset" => fn ->
+      Peri.to_changeset!(Simple.get_schema(:simple_user), simple_valid_data)
+    end,
+    "complex schema - changeset" => fn ->
+      Peri.to_changeset!(Simple.get_schema(:complex_user), complex_valid_data)
     end
   },
   time: 10,

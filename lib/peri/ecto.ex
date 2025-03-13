@@ -148,7 +148,7 @@ if Code.ensure_loaded?(Ecto) do
     end
 
     def parse_peri({key, {:list, type}}, ecto) do
-      put_in(ecto[key][:type], {:array, type})
+      put_in(ecto[key][:type], {:array, Type.from(type)})
     end
 
     def parse_peri({key, type}, ecto) when is_map(type) do
