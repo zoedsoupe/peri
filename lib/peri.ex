@@ -1293,9 +1293,9 @@ defmodule Peri do
       )
     end
   end
-  
+
   # Helper functions
-  
+
   # Normalize validation results to handle different error formats
   defp normalize_validation_result(:ok), do: :ok
   defp normalize_validation_result({:ok, val}), do: {:ok, val}
