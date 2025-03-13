@@ -10,7 +10,7 @@ defmodule Peri do
   - **Optional and Required Fields**: Specify fields as optional or required with type constraints.
   - **Custom Validation Functions**: Use custom functions to validate fields.
   - **Comprehensive Error Handling**: Provides detailed error messages for validation failures.
-  - **Type Constraints**: Supports various types including enums, lists, tuples, and more.
+  - **Type Constraints**: Supports various types including enums, lists, maps, tuples, literals, and more.
 
   ## Usage
 
@@ -31,6 +31,9 @@ defmodule Peri do
       tags: {:list, :string},
       role: {:enum, [:admin, :user, :guest]},
       geolocation: {:tuple, [:float, :float]},
+      preferences: {:map, :string},
+      scores: {:map, :string, :integer},
+      status: {:literal, :active},
       rating: {:custom, &validate_rating/1}
     }
 
@@ -46,7 +49,11 @@ defmodule Peri do
     name: "John", age: 30, email: "john@example.com",
     address: %{street: "123 Main St", city: "Somewhere"},
     tags: ["science", "funky"], role: :admin,
-    geolocation: {12.2, 34.2}, rating: 9
+    geolocation: {12.2, 34.2}, 
+    preferences: %{"theme" => "dark", "notifications" => "enabled"},
+    scores: %{"math" => 95, "science" => 92},
+    status: :active,
+    rating: 9
   }
 
   case MySchemas.user(user_data) do
@@ -59,11 +66,28 @@ defmodule Peri do
 
   Peri provides detailed error messages that include the path to the invalid data, the expected and actual values, and custom error messages for custom validations.
 
+  ## Schema Types
+
+  Peri supports the following schema types:
+
+  - `:string`, `:integer`, `:float`, `:boolean`, `:atom`, `:map`, `:pid` - Basic types
+  - `{:required, type}` - Mark a field as required
+  - `{:list, type}` - List of elements of the given type
+  - `{:map, type}` - Map with values of the given type
+  - `{:map, key_type, value_type}` - Map with keys and values of specified types
+  - `{:tuple, [type1, type2, ...]}` - Tuple with elements of specified types
+  - `{:enum, [value1, value2, ...]}` - One of the specified values
+  - `{:literal, value}` - Exactly matches the specified value
+  - `{:either, {type1, type2}}` - Either type1 or type2
+  - `{:oneof, [type1, type2, ...]}` - One of the specified types
+  - Nested maps for complex structures
+
   ## Functions
 
   - `validate/2` - Validates data against a schema.
   - `conforms?/2` - Checks if data conforms to a schema.
   - `validate_schema/1` - Validates the schema definition.
+  - `generate/1` - Generates sample data based on schema (when StreamData is available).
 
   ## Example
 
