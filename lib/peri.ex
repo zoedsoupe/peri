@@ -10,7 +10,7 @@ defmodule Peri do
   - **Optional and Required Fields**: Specify fields as optional or required with type constraints.
   - **Custom Validation Functions**: Use custom functions to validate fields.
   - **Comprehensive Error Handling**: Provides detailed error messages for validation failures.
-  - **Type Constraints**: Supports various types including enums, lists, tuples, and more.
+  - **Type Constraints**: Supports various types including enums, lists, maps, tuples, literals, and more.
 
   ## Usage
 
@@ -31,6 +31,9 @@ defmodule Peri do
       tags: {:list, :string},
       role: {:enum, [:admin, :user, :guest]},
       geolocation: {:tuple, [:float, :float]},
+      preferences: {:map, :string},
+      scores: {:map, :string, :integer},
+      status: {:literal, :active},
       rating: {:custom, &validate_rating/1}
     }
 
@@ -46,7 +49,11 @@ defmodule Peri do
     name: "John", age: 30, email: "john@example.com",
     address: %{street: "123 Main St", city: "Somewhere"},
     tags: ["science", "funky"], role: :admin,
-    geolocation: {12.2, 34.2}, rating: 9
+    geolocation: {12.2, 34.2}, 
+    preferences: %{"theme" => "dark", "notifications" => "enabled"},
+    scores: %{"math" => 95, "science" => 92},
+    status: :active,
+    rating: 9
   }
 
   case MySchemas.user(user_data) do
@@ -59,11 +66,28 @@ defmodule Peri do
 
   Peri provides detailed error messages that include the path to the invalid data, the expected and actual values, and custom error messages for custom validations.
 
+  ## Schema Types
+
+  Peri supports the following schema types:
+
+  - `:string`, `:integer`, `:float`, `:boolean`, `:atom`, `:map`, `:pid` - Basic types
+  - `{:required, type}` - Mark a field as required
+  - `{:list, type}` - List of elements of the given type
+  - `{:map, type}` - Map with values of the given type
+  - `{:map, key_type, value_type}` - Map with keys and values of specified types
+  - `{:tuple, [type1, type2, ...]}` - Tuple with elements of specified types
+  - `{:enum, [value1, value2, ...]}` - One of the specified values
+  - `{:literal, value}` - Exactly matches the specified value
+  - `{:either, {type1, type2}}` - Either type1 or type2
+  - `{:oneof, [type1, type2, ...]}` - One of the specified types
+  - Nested maps for complex structures
+
   ## Functions
 
   - `validate/2` - Validates data against a schema.
   - `conforms?/2` - Checks if data conforms to a schema.
   - `validate_schema/1` - Validates the schema definition.
+  - `generate/1` - Generates sample data based on schema (when StreamData is available).
 
   ## Example
 
@@ -132,6 +156,7 @@ defmodule Peri do
              (term ->
                 {:ok, schema_def | nil}
                 | {:error, template :: String.t(), context :: map | keyword})}
+  @type literal :: integer | float | atom | String.t() | boolean
   @type schema_def ::
           :any
           | :atom
@@ -143,7 +168,10 @@ defmodule Peri do
           | {:required, schema_def}
           | {:enum, list(term)}
           | {:list, schema_def}
+          | {:map, schema_def}
+          | {:map, schema_def, schema_def}
           | {:tuple, list(schema_def)}
+          | {:literal, literal}
           | time_def
           | string_def
           | int_def
@@ -534,6 +562,13 @@ defmodule Peri do
   defp validate_field(val, :boolean, _data) when is_boolean(val), do: :ok
   defp validate_field(val, :list, _data) when is_list(val), do: :ok
 
+  defp validate_field(val, {:literal, literal}, _data) when val === literal, do: :ok
+
+  defp validate_field(val, {:literal, literal}, _data) do
+    {:error, "expected literal value %{expected} but got %{actual}",
+     [expected: inspect(literal), actual: inspect(val)]}
+  end
+
   defp validate_field(nil, {:required, type}, _data) do
     {:error, "is required, expected type of %{expected}", expected: type}
   end
@@ -866,6 +901,42 @@ defmodule Peri do
     end)
   end
 
+  defp validate_field(data, {:map, type}, source) when is_map(data) do
+    Enum.reduce_while(data, {:ok, %{}}, fn {key, val}, {:ok, map_acc} ->
+      case validate_field(val, type, source) do
+        :ok -> {:cont, {:ok, Map.put(map_acc, key, val)}}
+        {:ok, validated_val} -> {:cont, {:ok, Map.put(map_acc, key, validated_val)}}
+        {:error, errors} -> {:halt, {:error, errors}}
+        {:error, reason, info} -> {:halt, {:error, reason, info}}
+      end
+    end)
+    |> then(fn
+      {:ok, map} when map == %{} -> :ok
+      {:ok, map} -> {:ok, map}
+      err -> err
+    end)
+  end
+
+  defp validate_field(data, {:map, key_type, value_type}, source) when is_map(data) do
+    Enum.reduce_while(data, {:ok, %{}}, fn {key, val}, {:ok, map_acc} ->
+      with :ok <- validate_field(key, key_type, source),
+           :ok <- validate_field(val, value_type, source) do
+        {:cont, {:ok, Map.put(map_acc, key, val)}}
+      else
+        {:ok, validated_val} ->
+          {:cont, {:ok, Map.put(map_acc, key, validated_val)}}
+
+        error ->
+          {:halt, error}
+      end
+    end)
+    |> then(fn
+      {:ok, map} when map == %{} -> :ok
+      {:ok, map} -> {:ok, map}
+      err -> err
+    end)
+  end
+
   defp validate_field(data, schema, _data)
        when is_enumerable(data) and not is_enumerable(schema) do
     {:error, "expected a nested schema but received schema: %{type}", [type: schema]}
@@ -1017,6 +1088,7 @@ defmodule Peri do
   defp validate_type(:float, _parser), do: :ok
   defp validate_type(:boolean, _parser), do: :ok
   defp validate_type(:string, _parser), do: :ok
+  defp validate_type({:literal, _literal}, _parser), do: :ok
   defp validate_type(:date, _parser), do: :ok
   defp validate_type(:time, _parser), do: :ok
   defp validate_type(:datetime, _parser), do: :ok
@@ -1077,6 +1149,14 @@ defmodule Peri do
 
   defp validate_type({:required, type}, p), do: validate_type(type, p)
   defp validate_type({:list, type}, p), do: validate_type(type, p)
+  defp validate_type({:map, type}, p), do: validate_type(type, p)
+
+  defp validate_type({:map, key_type, value_type}, p) do
+    with :ok <- validate_type(key_type, p) do
+      validate_type(value_type, p)
+    end
+  end
+
   defp validate_type({:custom, cb}, _) when is_function(cb, 1), do: :ok
   defp validate_type({:custom, {mod, fun}}, _) when is_atom(mod) and is_atom(fun), do: :ok
 

@@ -78,6 +78,8 @@ if Code.ensure_loaded?(StreamData) do
     def gen(:float), do: StreamData.float()
     def gen(:boolean), do: StreamData.boolean()
 
+    def gen({:literal, literal}), do: StreamData.constant(literal)
+
     def gen({:required, type}), do: gen(type)
 
     def gen({:enum, choices}) do
@@ -90,6 +92,25 @@ if Code.ensure_loaded?(StreamData) do
       type
       |> gen()
       |> StreamData.list_of()
+    end
+
+    def gen({:map, type}) do
+      key_generator =
+        StreamData.one_of([
+          StreamData.atom(:alphanumeric),
+          StreamData.string(:alphanumeric)
+        ])
+
+      value_generator = gen(type)
+
+      StreamData.map_of(key_generator, value_generator)
+    end
+
+    def gen({:map, key_type, value_type}) do
+      key_generator = gen(key_type)
+      value_generator = gen(value_type)
+
+      StreamData.map_of(key_generator, value_generator)
     end
 
     def gen({:tuple, types}) do
