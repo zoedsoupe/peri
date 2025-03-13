@@ -132,6 +132,7 @@ defmodule Peri do
              (term ->
                 {:ok, schema_def | nil}
                 | {:error, template :: String.t(), context :: map | keyword})}
+  @type literal :: integer | float | atom | String.t() | boolean
   @type schema_def ::
           :any
           | :atom
@@ -143,7 +144,10 @@ defmodule Peri do
           | {:required, schema_def}
           | {:enum, list(term)}
           | {:list, schema_def}
+          | {:map, schema_def}
+          | {:map, schema_def, schema_def}
           | {:tuple, list(schema_def)}
+          | {:literal, literal}
           | time_def
           | string_def
           | int_def
@@ -534,6 +538,13 @@ defmodule Peri do
   defp validate_field(val, :boolean, _data) when is_boolean(val), do: :ok
   defp validate_field(val, :list, _data) when is_list(val), do: :ok
 
+  defp validate_field(val, {:literal, literal}, _data) when val === literal, do: :ok
+
+  defp validate_field(val, {:literal, literal}, _data) do
+    {:error, "expected literal value %{expected} but got %{actual}",
+     [expected: inspect(literal), actual: inspect(val)]}
+  end
+
   defp validate_field(nil, {:required, type}, _data) do
     {:error, "is required, expected type of %{expected}", expected: type}
   end
@@ -866,6 +877,42 @@ defmodule Peri do
     end)
   end
 
+  defp validate_field(data, {:map, type}, source) when is_map(data) do
+    Enum.reduce_while(data, {:ok, %{}}, fn {key, val}, {:ok, map_acc} ->
+      case validate_field(val, type, source) do
+        :ok -> {:cont, {:ok, Map.put(map_acc, key, val)}}
+        {:ok, validated_val} -> {:cont, {:ok, Map.put(map_acc, key, validated_val)}}
+        {:error, errors} -> {:halt, {:error, errors}}
+        {:error, reason, info} -> {:halt, {:error, reason, info}}
+      end
+    end)
+    |> then(fn
+      {:ok, map} when map == %{} -> :ok
+      {:ok, map} -> {:ok, map}
+      err -> err
+    end)
+  end
+
+  defp validate_field(data, {:map, key_type, value_type}, source) when is_map(data) do
+    Enum.reduce_while(data, {:ok, %{}}, fn {key, val}, {:ok, map_acc} ->
+      with :ok <- validate_field(key, key_type, source),
+           :ok <- validate_field(val, value_type, source) do
+        {:cont, {:ok, Map.put(map_acc, key, val)}}
+      else
+        {:ok, validated_val} ->
+          {:cont, {:ok, Map.put(map_acc, key, validated_val)}}
+
+        error ->
+          {:halt, error}
+      end
+    end)
+    |> then(fn
+      {:ok, map} when map == %{} -> :ok
+      {:ok, map} -> {:ok, map}
+      err -> err
+    end)
+  end
+
   defp validate_field(data, schema, _data)
        when is_enumerable(data) and not is_enumerable(schema) do
     {:error, "expected a nested schema but received schema: %{type}", [type: schema]}
@@ -1017,6 +1064,7 @@ defmodule Peri do
   defp validate_type(:float, _parser), do: :ok
   defp validate_type(:boolean, _parser), do: :ok
   defp validate_type(:string, _parser), do: :ok
+  defp validate_type({:literal, _literal}, _parser), do: :ok
   defp validate_type(:date, _parser), do: :ok
   defp validate_type(:time, _parser), do: :ok
   defp validate_type(:datetime, _parser), do: :ok
@@ -1077,6 +1125,14 @@ defmodule Peri do
 
   defp validate_type({:required, type}, p), do: validate_type(type, p)
   defp validate_type({:list, type}, p), do: validate_type(type, p)
+  defp validate_type({:map, type}, p), do: validate_type(type, p)
+
+  defp validate_type({:map, key_type, value_type}, p) do
+    with :ok <- validate_type(key_type, p) do
+      validate_type(value_type, p)
+    end
+  end
+
   defp validate_type({:custom, cb}, _) when is_function(cb, 1), do: :ok
   defp validate_type({:custom, {mod, fun}}, _) when is_atom(mod) and is_atom(fun), do: :ok
 
