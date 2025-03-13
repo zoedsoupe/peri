@@ -2452,4 +2452,69 @@ defmodule PeriTest do
              }
     end
   end
+
+  defschema(:schema_x, %{
+    type: {:enum, [:x]},
+    name: :string,
+    value: :integer
+  })
+
+  defschema(:schema_y, %{
+    type: {:enum, [:y]},
+    name: :string,
+    metadata: %{
+      description: :string
+    }
+  })
+
+  defschema(:schema_either, {:either, {get_schema(:schema_x), get_schema(:schema_y)}})
+  defschema(:schema_oneof, {:oneof, [get_schema(:schema_x), get_schema(:schema_y)]})
+
+  describe "either and oneof validation with nested schemas" do
+    test "validates :either type with nested schema x" do
+      data_x = %{
+        type: :x,
+        name: "test",
+        value: 42
+      }
+
+      assert {:ok, ^data_x} = schema_either(data_x)
+    end
+
+    test "validates :either type with nested schema y" do
+      data_y = %{
+        type: :y,
+        name: "test",
+        metadata: %{
+          description: "test description"
+        }
+      }
+
+      # This should now work after fixing the either implementation
+      assert {:ok, ^data_y} = schema_either(data_y)
+    end
+
+    test "validates :oneof type with nested schema x" do
+      data_x = %{
+        type: :x,
+        name: "test",
+        value: 42
+      }
+
+      assert {:ok, ^data_x} = schema_oneof(data_x)
+    end
+
+    test "validates :oneof type with nested schema y" do
+      data_y = %{
+        type: :y,
+        name: "test",
+        metadata: %{
+          description: "test description"
+        }
+      }
+
+      # This works for :oneof but fails for :either - showing the inconsistency
+      assert {:ok, ^data_y} = schema_oneof(data_y)
+    end
+  end
 end

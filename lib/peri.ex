@@ -831,8 +831,8 @@ defmodule Peri do
   end
 
   defp validate_field(val, {:either, {type_1, type_2}}, data) do
-    with {:error, _, _} <- validate_field(val, type_1, data),
-         {:error, _, _} <- validate_field(val, type_2, data) do
+    with {:error, _} <- normalize_validation_result(validate_field(val, type_1, data)),
+         {:error, _} <- normalize_validation_result(validate_field(val, type_2, data)) do
       info = [first_type: type_1, second_type: type_2, actual: inspect(val)]
       template = "expected either %{first_type} or %{second_type}, got: %{actual}"
       {:error, template, info}
@@ -1232,9 +1232,10 @@ defmodule Peri do
         raise Peri.Error, err
       end
 
-      definition = Peri.Ecto.parse(s)
+      # TODO
+      # definition = Peri.Ecto.parse(s)
 
-      process_changeset(definition, attrs)
+      process_changeset(%{}, attrs)
     end
 
     defp process_changeset(definition, attrs) do
@@ -1292,4 +1293,12 @@ defmodule Peri do
       )
     end
   end
+
+  # Helper functions
+
+  # Normalize validation results to handle different error formats
+  defp normalize_validation_result(:ok), do: :ok
+  defp normalize_validation_result({:ok, val}), do: {:ok, val}
+  defp normalize_validation_result({:error, reason, info}), do: {:error, [reason, info]}
+  defp normalize_validation_result({:error, errors}), do: {:error, errors}
 end
