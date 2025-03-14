@@ -111,7 +111,7 @@ defmodule Peri do
   """
 
   @type validation :: (term -> :ok | {:error, template :: String.t(), context :: map | keyword})
-  @type time_def :: :time | :date | :datetime | :naive_datetime
+  @type time_def :: :time | :date | :datetime | :naive_datetime | :duration
   @type string_def ::
           :string
           | {:string, {:regex, Regex.t()} | {:eq, String.t()} | {:min, integer} | {:max, integer}}
@@ -214,6 +214,12 @@ defmodule Peri do
     quote do
       def get_schema(unquote(name)) do
         unquote(schema)
+      end
+
+      if Code.ensure_loaded?(Ecto) do
+        def unquote(:"#{name}_changeset")(data) do
+          Peri.to_changeset!(unquote(schema), data)
+        end
       end
 
       def unquote(name)(data) do
@@ -552,6 +558,7 @@ defmodule Peri do
   defp validate_field(pid, :pid, _data) when is_pid(pid), do: :ok
   defp validate_field(%Date{}, :date, _data), do: :ok
   defp validate_field(%Time{}, :time, _data), do: :ok
+  defp validate_field(%Duration{}, :duration, _data), do: :ok
   defp validate_field(%DateTime{}, :datetime, _data), do: :ok
   defp validate_field(%NaiveDateTime{}, :naive_datetime, _data), do: :ok
   defp validate_field(val, :atom, _data) when is_atom(val), do: :ok
@@ -966,6 +973,10 @@ defmodule Peri do
         {:ok, val} ->
           {:cont, {:ok, [val | vals]}}
 
+        {:error, errors} when is_list(errors) ->
+          info = [index: index]
+          {:halt, {:error, "tuple element %{index}: invalid", info}}
+
         {:error, reason, nested_info} ->
           info = [index: index] ++ nested_info
           {:halt, {:error, "tuple element %{index}: #{reason}", info}}
@@ -1091,6 +1102,7 @@ defmodule Peri do
   defp validate_type({:literal, _literal}, _parser), do: :ok
   defp validate_type(:date, _parser), do: :ok
   defp validate_type(:time, _parser), do: :ok
+  defp validate_type(:duration, _parser), do: :ok
   defp validate_type(:datetime, _parser), do: :ok
   defp validate_type(:naive_datetime, _parser), do: :ok
   defp validate_type(:pid, _parser), do: :ok
@@ -1175,6 +1187,10 @@ defmodule Peri do
   defp validate_type({:dependent, _, cb, type}, p) when is_function(cb, 1) do
     validate_type(type, p)
   end
+  
+  defp validate_type({:dependent, field, cb, type}, p) when is_atom(field) and is_function(cb, 2) do
+    validate_type(type, p)
+  end
 
   defp validate_type({:tuple, types}, p) do
     Enum.reduce_while(types, :ok, fn type, :ok ->
@@ -1215,8 +1231,6 @@ defmodule Peri do
   end
 
   if Code.ensure_loaded?(Ecto) do
-    import Ecto.Changeset
-
     @doc """
     Converts a `Peri.schema()` definition to an Ecto [schemaless changesets](https://hexdocs.pm/ecto/Ecto.Changeset.html#module-schemaless-changesets).
     """
@@ -1232,10 +1246,8 @@ defmodule Peri do
         raise Peri.Error, err
       end
 
-      # TODO
-      # definition = Peri.Ecto.parse(s)
-
-      process_changeset(%{}, attrs)
+      definition = Peri.Ecto.parse(s)
+      process_changeset(definition, attrs)
     end
 
     defp process_changeset(definition, attrs) do
@@ -1247,10 +1259,10 @@ defmodule Peri do
       nested_keys = Enum.map(nested, fn {key, _} -> key end)
 
       {process_defaults(definition), process_types(definition)}
-      |> cast(attrs, Map.keys(definition) -- nested_keys)
+      |> Ecto.Changeset.cast(attrs, Map.keys(definition) -- nested_keys)
       |> process_validations(definition)
       |> process_required(definition)
-      |> process_nested(nested)
+      |> process_nested(nested, attrs)
     end
 
     defp process_defaults(definition) do
@@ -1261,7 +1273,18 @@ defmodule Peri do
     end
 
     defp process_types(definition) do
-      Map.new(definition, fn {key, %{type: type}} -> {key, type} end)
+      Map.new(definition, fn
+        # Handle special cases for conditional and dependent types
+        {key, %{condition: _} = def} -> {key, def[:type] || :string} 
+        {key, %{dependent_callback: _} = def} -> {key, def[:type] || :string}
+        {key, %{depend: _} = def} -> {key, def[:type] || :string}
+        # Handle cases where type is nil (either types sometimes don't set it)
+        {key, %{type: nil} = _def} -> {key, :string}
+        # Normal types
+        {key, %{type: type}} -> {key, type}
+        # Default fallback for any other pattern
+        {key, _def} -> {key, :string}
+      end)
     end
 
     defp process_required(changeset, definition) do
@@ -1270,7 +1293,7 @@ defmodule Peri do
         |> Enum.filter(fn {_key, %{required: required}} -> required end)
         |> Enum.map(fn {key, _} -> key end)
 
-      validate_required(changeset, required)
+      Ecto.Changeset.validate_required(changeset, required)
     end
 
     defp process_validations(changeset, definition) do
@@ -1281,16 +1304,145 @@ defmodule Peri do
       end)
     end
 
-    defp process_nested(changeset, nested) do
-      Enum.reduce(nested, changeset, &handle_nested/2)
+    defp process_nested(changeset, nested, attrs) do
+      Enum.reduce(nested, changeset, &handle_nested(&1, &2, attrs))
     end
 
-    defp handle_nested({key, %{type: {:embed, %{cardinality: :one}}, nested: schema}}, acc) do
-      cast_embed(acc, key,
-        with: fn _source, attrs ->
-          process_changeset(schema, attrs)
-        end
-      )
+    defp handle_nested({key, %{type: {:embed, %{cardinality: :one}}} = defn}, changeset, attrs) do
+      handle_nested_single({key, defn.nested}, changeset, attrs)
+    end
+
+    defp handle_nested({key, %{type: {:embed, %{cardinality: :many}}} = defn}, changeset, attrs) do
+      handle_nested_many({key, defn.nested}, changeset, attrs)
+    end
+    
+    # For map type with nested schemas (like in oneof)
+    defp handle_nested({key, %{type: _type, nested: nested}}, changeset, attrs) do
+      # For tuple_type, either_type, etc. with nested maps
+      case get_in(attrs, [key]) do
+        nil -> 
+          changeset
+        value when is_map(value) ->
+          # Get first available nested schema
+          find_and_apply_nested_schema(key, nested, changeset, attrs)
+        value when is_tuple(value) and map_size(nested) > 0 ->
+          # Handle tuple with nested map - parse the map part of the tuple
+          handle_nested_tuple(key, nested, changeset, attrs, value)
+        _ -> 
+          # Add validation error for non-map values when map expected
+          Ecto.Changeset.add_error(changeset, key, "is invalid")
+      end
+    end
+    
+    # Extract schema selection logic
+    defp find_and_apply_nested_schema(key, nested, changeset, attrs) do
+      case Enum.to_list(nested) do
+        [] -> 
+          changeset
+        nested_schemas ->
+          # For now just use the first schema
+          {_, schema} = hd(nested_schemas)
+          handle_nested_single({key, schema}, changeset, attrs)
+      end
+    end
+    
+    # Handle tuples with nested maps
+    defp handle_nested_tuple(key, nested, changeset, _attrs, tuple_value) do
+      # Extract tuple values
+      tuple_list = Tuple.to_list(tuple_value)
+      
+      # Look for map elements in the tuple
+      indexed_nested_schemas = Map.to_list(nested)
+      
+      tuple_with_validated_maps = 
+        Enum.with_index(tuple_list)
+        |> Enum.map(fn {val, idx} ->
+          if is_map(val) do
+            # Find a nested schema for this map position
+            case find_schema_for_map_index(indexed_nested_schemas, idx) do
+              nil -> val
+              schema -> 
+                map_changeset = process_changeset(schema, val)
+                
+                if map_changeset.valid? do
+                  Ecto.Changeset.apply_changes(map_changeset)
+                else
+                  # Add errors to parent changeset
+                  Enum.reduce(map_changeset.errors, changeset, fn {field, {msg, opts}}, acc ->
+                    Ecto.Changeset.add_error(acc, key, "Invalid at index #{idx}: #{field} #{msg}", opts)
+                  end)
+                  
+                  # Return original value
+                  val
+                end
+            end
+          else
+            val
+          end
+        end)
+        |> List.to_tuple()
+      
+      # Update the changeset with the validated tuple
+      Ecto.Changeset.put_change(changeset, key, tuple_with_validated_maps)
+    end
+    
+    # Helper to find the right schema for a map at a specific index in a tuple
+    defp find_schema_for_map_index(indexed_nested_schemas, idx) do
+      # First try to find a schema with a key that matches the index pattern
+      Enum.find_value(indexed_nested_schemas, fn
+        {"map_" <> index_str, schema} ->
+          case Integer.parse(index_str) do
+            {^idx, ""} -> schema
+            _ -> nil
+          end
+        _ -> nil
+      end) || 
+      # If no matching index found, use the first schema
+      case indexed_nested_schemas do
+        [{_, schema} | _] -> schema
+        _ -> nil
+      end
+    end
+
+    defp handle_nested_single({key, schema}, changeset, attrs) do
+      case Map.fetch(attrs, key) do
+        {:ok, nested} when not is_nil(nested) ->
+          process_changeset(schema, nested)
+          |> then(&put_nested(changeset, key, &1))
+
+        _ ->
+          Ecto.Changeset.add_error(changeset, key, "can't be blank", validation: :required)
+      end
+    end
+
+    defp handle_nested_many({key, schema}, changeset, attrs) do
+      case Map.fetch(attrs, key) do
+        {:ok, nested} when is_list(nested) ->
+          changes = Enum.map(nested, &process_changeset(schema, &1))
+          put_nested(changeset, key, changes)
+
+        _ ->
+          Ecto.Changeset.add_error(changeset, key, "can't be blank", validation: :required)
+      end
+    end
+
+    defp put_nested(changeset, key, %{valid?: true} = nested) do
+      update_in(changeset.changes[key], fn _ -> nested end)
+    end
+
+    defp put_nested(changeset, key, %{valid?: false} = nested) do
+      changeset = update_in(changeset.changes[key], fn _ -> nested end)
+      %{changeset | valid?: false}
+    end
+
+    defp put_nested(changeset, key, changes) when is_list(changes) do
+      changeset = update_in(changeset.changes[key], fn _ -> changes end)
+
+      if Enum.any?(changes, &(not &1.valid?)) do
+        %{changeset | valid?: false}
+      else
+        changeset
+      end
     end
   end
 
