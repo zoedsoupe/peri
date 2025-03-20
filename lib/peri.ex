@@ -1215,8 +1215,6 @@ defmodule Peri do
   end
 
   if Code.ensure_loaded?(Ecto) do
-    import Ecto.Changeset
-
     @doc """
     Converts a `Peri.schema()` definition to an Ecto [schemaless changesets](https://hexdocs.pm/ecto/Ecto.Changeset.html#module-schemaless-changesets).
     """
@@ -1247,7 +1245,7 @@ defmodule Peri do
       nested_keys = Enum.map(nested, fn {key, _} -> key end)
 
       {process_defaults(definition), process_types(definition)}
-      |> cast(attrs, Map.keys(definition) -- nested_keys)
+      |> Ecto.Changeset.cast(attrs, Map.keys(definition) -- nested_keys)
       |> process_validations(definition)
       |> process_required(definition)
       |> process_nested(nested)
@@ -1270,7 +1268,7 @@ defmodule Peri do
         |> Enum.filter(fn {_key, %{required: required}} -> required end)
         |> Enum.map(fn {key, _} -> key end)
 
-      validate_required(changeset, required)
+      Ecto.Changeset.validate_required(changeset, required)
     end
 
     defp process_validations(changeset, definition) do
@@ -1286,7 +1284,7 @@ defmodule Peri do
     end
 
     defp handle_nested({key, %{type: {:embed, %{cardinality: :one}}, nested: schema}}, acc) do
-      cast_embed(acc, key,
+      Ecto.Changeset.cast_embed(acc, key,
         with: fn _source, attrs ->
           process_changeset(schema, attrs)
         end
