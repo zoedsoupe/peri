@@ -2,9 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
-## [0.2.11] - 204-09-16
+## [0.3.1] - 2025-03-14
 
-## Added
+### Fixed
+
+- Make `:either` behave consistently with `:oneof` for nested schemas (#21)
+
+### Added
+
+- New schema types for map and literal (#22)
+
+## [0.2.11] - 2024-09-16
+
+### Added
 
 - ability to pass partial MFA (aka `{mod, fun}`) or complete MFA (aka `{mof, fun, args}`) to `:transform`, `:dependent` and `:default` directives
 
@@ -110,6 +120,9 @@ All notable changes to this project will be documented in this file.
 ### Added
 - Initial version of Peri with basic schema validation functionalities. [7044ea7]
 
+[0.3.1]: https://github.com/zoedsoupe/peri/compare/v0.2.11...v0.3.1
+[0.2.11]: https://github.com/zoedsoupe/peri/compare/v0.2.10...v0.2.11
+[0.2.10]: https://github.com/zoedsoupe/peri/compare/v0.2.8...v0.2.10
 [0.2.8]: https://github.com/zoedsoupe/peri/compare/v0.2.7...v0.2.8
 [0.2.7]: https://github.com/zoedsoupe/peri/compare/v0.2.6...v0.2.7
 [0.2.6]: https://github.com/zoedsoupe/peri/compare/v0.2.5...v0.2.6
