@@ -1172,7 +1172,7 @@ defmodule Peri do
 
   defp validate_type({:dependent, cb}, _) when is_function(cb, 1), do: :ok
 
-  defp validate_type({:dependent, _, cb, type}, p) when is_function(cb, 1) do
+  defp validate_type({:dependent, _, cb, type}, p) when is_function(cb, 2) do
     validate_type(type, p)
   end
 
