@@ -38,13 +38,13 @@ end
   - `{:min, min}` - Validates that the string field has at least the `min` length
   - `{:max, max}` - Validates that the string field has at maximum the `max` length
 - `:integer` - Validates that the field is an integer.
-  - `{:eq, val}` - Validates taht the integer field is equal to `val`
-  - `{:neq, val}` - Validates taht the integer field is not equal to `val`
-  - `{:lt, val}` - Validates taht the integer field is lesss than `val`
-  - `{:lte, val}` - Validates taht the integer field is less than or equal to `val`
-  - `{:gt, val}` - Validates taht the integer field is greater than `val`
-  - `{:gte, val}` - Validates taht the integer field is greater than or equal to `val`
-  - `{:range, {min, max}}` - Validates taht the integer field is inside the range of `min` to `max` (inclusive)
+  - `{:eq, val}` - Validates that the integer field is equal to `val`
+  - `{:neq, val}` - Validates that the integer field is not equal to `val`
+  - `{:lt, val}` - Validates that the integer field is less than `val`
+  - `{:lte, val}` - Validates that the integer field is less than or equal to `val`
+  - `{:gt, val}` - Validates that the integer field is greater than `val`
+  - `{:gte, val}` - Validates that the integer field is greater than or equal to `val`
+  - `{:range, {min, max}}` - Validates that the integer field is inside the range of `min` to `max` (inclusive)
 - `:float` - Validates that the field is a float.
 - `:boolean` - Validates that the field is a boolean.
 - `:map` - Validates that the field is a map.
@@ -56,8 +56,8 @@ end
 - `{:literal, value}` - Validates that the field is exactly equal to the specified literal value.
 - `{:tuple, types}` - Validates that the field is a tuple with elements of the specified types.
 - `{type, {:default, default}}` - Provides a default value if the field is missing or `nil`.
-  - `{type, {:default, &some_fun/0}}` - The default values is retrieved from callinf `some_fun/0` if the field is missing.
-  - `{type, {:default, {mod, fun}}}` - The default values is retrieved from callinf `mod.fun/0` if the field is missing.
+  - `{type, {:default, &some_fun/0}}` - The default values is retrieved from calling `some_fun/0` if the field is missing.
+  - `{type, {:default, {mod, fun}}}` - The default values is retrieved from calling `mod.fun/0` if the field is missing.
 - `{type, {:transform, mapper}}` - Transforms the field value using the specified mapper function. It can be a 1 or 2 arity function: when is a single arity the mapper function will only receive the defined field value, while with 2 arity will receive the current defined field value and the whole data as the second argument.
   - `{type, {:transform, {mod, fun}}}` - Transforms the field value using the specified `mod.fun/1` function. Notice that `fun` can be a 2 arity so it can receive the whole data being validated, in case on dependent fields transformations.
   - `{type, {:transform, {mod, fun, args}}}` - Transforms the field value using the specified MFA. Notice that `fun` will be at least a 2 arity one so it can receive the whole data being validated, in case on dependent fields transformations and the maximum arity allowed will be 2 + `length(args)`.
@@ -229,7 +229,7 @@ defmodule TypeDependentSchema do
 end
 ```
 
-In this example we have different schemas parsing rules based on the structure and values of the given data. Basically this type deifinition could be read as:
+In this example we have different schemas parsing rules based on the structure and values of the given data. Basically this type definition could be read as:
 
 - if the field `info.provide_email` and `info.provide_country` is both `true`, then the `info.details` field is required to provide both `email` and `country` fields.
 - if the field `info.provide_email` is `true` but `info.provide_country` is `false`, so `info.details` should only contains the `info.details.email` field.
