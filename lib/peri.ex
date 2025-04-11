@@ -111,7 +111,7 @@ defmodule Peri do
   """
 
   @type validation :: (term -> :ok | {:error, template :: String.t(), context :: map | keyword})
-  @type time_def :: :time | :date | :datetime | :naive_datetime
+  @type time_def :: :time | :date | :datetime | :naive_datetime | :duration
   @type string_def ::
           :string
           | {:string, {:regex, Regex.t()} | {:eq, String.t()} | {:min, integer} | {:max, integer}}
@@ -214,6 +214,12 @@ defmodule Peri do
     quote do
       def get_schema(unquote(name)) do
         unquote(schema)
+      end
+
+      if Code.ensure_loaded?(Ecto) do
+        def unquote(:"#{name}_changeset")(data) do
+          Peri.to_changeset!(unquote(schema), data)
+        end
       end
 
       def unquote(name)(data) do
@@ -552,6 +558,7 @@ defmodule Peri do
   defp validate_field(pid, :pid, _data) when is_pid(pid), do: :ok
   defp validate_field(%Date{}, :date, _data), do: :ok
   defp validate_field(%Time{}, :time, _data), do: :ok
+  defp validate_field(%Duration{}, :duration, _data), do: :ok
   defp validate_field(%DateTime{}, :datetime, _data), do: :ok
   defp validate_field(%NaiveDateTime{}, :naive_datetime, _data), do: :ok
   defp validate_field(val, :atom, _data) when is_atom(val), do: :ok
@@ -966,6 +973,10 @@ defmodule Peri do
         {:ok, val} ->
           {:cont, {:ok, [val | vals]}}
 
+        {:error, errors} when is_list(errors) ->
+          info = [index: index]
+          {:halt, {:error, "tuple element %{index}: invalid", info}}
+
         {:error, reason, nested_info} ->
           info = [index: index] ++ nested_info
           {:halt, {:error, "tuple element %{index}: #{reason}", info}}
@@ -1091,6 +1102,7 @@ defmodule Peri do
   defp validate_type({:literal, _literal}, _parser), do: :ok
   defp validate_type(:date, _parser), do: :ok
   defp validate_type(:time, _parser), do: :ok
+  defp validate_type(:duration, _parser), do: :ok
   defp validate_type(:datetime, _parser), do: :ok
   defp validate_type(:naive_datetime, _parser), do: :ok
   defp validate_type(:pid, _parser), do: :ok
@@ -1175,6 +1187,10 @@ defmodule Peri do
   defp validate_type({:dependent, _, cb, type}, p) when is_function(cb, 1) do
     validate_type(type, p)
   end
+  
+  defp validate_type({:dependent, field, cb, type}, p) when is_atom(field) and is_function(cb, 2) do
+    validate_type(type, p)
+  end
 
   defp validate_type({:tuple, types}, p) do
     Enum.reduce_while(types, :ok, fn type, :ok ->
@@ -1230,10 +1246,8 @@ defmodule Peri do
         raise Peri.Error, err
       end
 
-      # TODO
-      # definition = Peri.Ecto.parse(s)
-
-      process_changeset(%{}, attrs)
+      definition = Peri.Ecto.parse(s)
+      process_changeset(definition, attrs)
     end
 
     defp process_changeset(definition, attrs) do
@@ -1248,7 +1262,7 @@ defmodule Peri do
       |> Ecto.Changeset.cast(attrs, Map.keys(definition) -- nested_keys)
       |> process_validations(definition)
       |> process_required(definition)
-      |> process_nested(nested)
+      |> process_nested(nested, attrs)
     end
 
     defp process_defaults(definition) do
@@ -1259,7 +1273,18 @@ defmodule Peri do
     end
 
     defp process_types(definition) do
-      Map.new(definition, fn {key, %{type: type}} -> {key, type} end)
+      Map.new(definition, fn
+        # Handle special cases for conditional and dependent types
+        {key, %{condition: _} = def} -> {key, def[:type] || :string} 
+        {key, %{dependent_callback: _} = def} -> {key, def[:type] || :string}
+        {key, %{depend: _} = def} -> {key, def[:type] || :string}
+        # Handle cases where type is nil (either types sometimes don't set it)
+        {key, %{type: nil} = _def} -> {key, :string}
+        # Normal types
+        {key, %{type: type}} -> {key, type}
+        # Default fallback for any other pattern
+        {key, _def} -> {key, :string}
+      end)
     end
 
     defp process_required(changeset, definition) do
@@ -1279,8 +1304,8 @@ defmodule Peri do
       end)
     end
 
-    defp process_nested(changeset, nested) do
-      Enum.reduce(nested, changeset, &handle_nested/2)
+    defp process_nested(changeset, nested, attrs) do
+      Enum.reduce(nested, changeset, &handle_nested(&1, &2, attrs))
     end
 
     defp handle_nested({key, %{type: {:embed, %{cardinality: :one}}, nested: schema}}, acc) do
