@@ -49,7 +49,7 @@ defmodule Peri do
     name: "John", age: 30, email: "john@example.com",
     address: %{street: "123 Main St", city: "Somewhere"},
     tags: ["science", "funky"], role: :admin,
-    geolocation: {12.2, 34.2}, 
+    geolocation: {12.2, 34.2},
     preferences: %{"theme" => "dark", "notifications" => "enabled"},
     scores: %{"math" => 95, "science" => 92},
     status: :active,
@@ -750,11 +750,12 @@ defmodule Peri do
     end
   end
 
-  defp validate_field(val, {:dependent, field, condition, type}, data) do
-    dependent_val = get_enumerable_value(data, field)
+  defp validate_field(val, {:dependent, field, condition, type}, parser) do
+    root = maybe_get_root_data(parser)
+    dependent_val = get_enumerable_value(root, field)
 
     with :ok <- condition.(val, dependent_val) do
-      validate_field(val, type, data)
+      validate_field(val, type, root)
     end
   end
 
@@ -1172,7 +1173,7 @@ defmodule Peri do
 
   defp validate_type({:dependent, cb}, _) when is_function(cb, 1), do: :ok
 
-  defp validate_type({:dependent, _, cb, type}, p) when is_function(cb, 1) do
+  defp validate_type({:dependent, _, cb, type}, p) when is_function(cb, 2) do
     validate_type(type, p)
   end
 
