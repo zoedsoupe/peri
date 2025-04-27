@@ -1414,7 +1414,7 @@ defmodule PeriTest do
 
     test "handles valid dependent types" do
       schema = %{
-        dependent_field: {:dependent, :string, fn _ -> true end, :integer}
+        dependent_field: {:dependent, :string, fn _, _ -> true end, :integer}
       }
 
       assert {:ok, ^schema} = Peri.validate_schema(schema)
@@ -2186,6 +2186,18 @@ defmodule PeriTest do
         {false, false} -> {:ok, nil}
       end
     end
+
+    defschema(:user_registration, %{
+      username: {:required, :string},
+      password: {:required, :string},
+      password_confirmation: {:dependent, :password, &validate_confirmation/2, :string}
+    })
+
+    defp validate_confirmation(password, password), do: :ok
+
+    defp validate_confirmation(_confirmation, _password) do
+      {:error, "confirmation should be equal to password", []}
+    end
   end
 
   describe "TypeDependentSchema.info/1" do
@@ -2271,6 +2283,40 @@ defmodule PeriTest do
                ]
              } =
                TypeDependentSchema.info(data)
+    end
+  end
+
+  describe "TypeDependentSchema.user_registration/1" do
+    test "validates when password and confirmation match" do
+      data = %{
+        username: "alice",
+        password: "secure123",
+        password_confirmation: "secure123"
+      }
+
+      assert {:ok, valid_data} = TypeDependentSchema.user_registration(data)
+      assert valid_data == data
+    end
+
+    test "fails when confirmation does not match password" do
+      data = %{
+        username: "bob",
+        password: "secure123",
+        password_confirmation: "wrongpass"
+      }
+
+      assert {
+               :error,
+               [
+                 %Peri.Error{
+                   key: :password_confirmation,
+                   path: [:password_confirmation],
+                   message: "confirmation should be equal to password",
+                   errors: nil,
+                   content: %{}
+                 }
+               ]
+             } = TypeDependentSchema.user_registration(data)
     end
   end
 
