@@ -181,7 +181,7 @@ defmodule UserSchemas do
   }
 
   # if confirmation has the same value of password, the validation is ok
-  defp validate_confirmation(%{password: password}, password), do: :ok
+  defp validate_confirmation(password, password), do: :ok
 
   defp validate_confirmation(_confirmation, _password) do
     {:error, "confirmation should be equal to password", []}
