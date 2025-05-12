@@ -47,9 +47,14 @@ end
   - `{:range, {min, max}}` - Validates that the integer field is inside the range of `min` to `max` (inclusive)
 - `:float` - Validates that the field is a float.
 - `:boolean` - Validates that the field is a boolean.
-- `:map` - Validates that the field is a map.
+- `:map` - Validates that the field is a map, doesn't validate underlying definition.
 - `{:map, type}` - Validates that the field is a map where all values conform to the specified type.
 - `{:map, key_type, value_type}` - Validates that the field is a map where keys conform to key_type and values conform to value_type.
+- `:date` - Validates that the field is a date, aka `%Date{}`.
+- `:time` - Validates that the field is a time, aka `%Time{}`.
+- `:naive_datetime` - Validates that the field is a naive datetime, aka `%NaiveDateTime{}`.
+- `:datetime` - Validates that the field is a utc datetime, aka `%DateTime{}`.
+- `:duration` - Validates that the field is a duration, aka `%Duration{}`.
 - `{:required, type}` - Marks the field as required and validates it according to the specified type.
 - `{:enum, choices}` - Validates that the field is one of the specified choices.
 - `{:list, type}` - Validates that the field is a list of elements of the specified type.
