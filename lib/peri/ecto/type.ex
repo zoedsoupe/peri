@@ -348,6 +348,21 @@ if Code.ensure_loaded?(Ecto) do
       end
     end
 
+    # Fallback for when we don't have original schema info
+    def cast(value, %{values: {fst, snd}}) when is_ecto_embed(fst) and is_map(value) do
+      cast(value, %{values: {fst, snd}, original_schema: {nil, nil}})
+    end
+
+    def cast(value, %{values: {fst, snd}}) when is_ecto_embed(snd) and is_map(value) do
+      cast(value, %{values: {fst, snd}, original_schema: {nil, nil}})
+    end
+
+    def cast(value, %{values: {fst, snd}}) do
+      with :error <- Ecto.Type.cast(fst, value) do
+        Ecto.Type.cast(snd, value)
+      end
+    end
+
     defp cast_second_embed(value, snd, original_schema) do
       {_fst_original, snd_original} = original_schema || {nil, nil}
 
@@ -375,21 +390,6 @@ if Code.ensure_loaded?(Ecto) do
 
     defp create_embed_changeset(value, embed_mod) do
       struct(embed_mod) |> Ecto.Changeset.cast(value, Map.keys(value))
-    end
-
-    # Fallback for when we don't have original schema info
-    def cast(value, %{values: {fst, snd}}) when is_ecto_embed(fst) and is_map(value) do
-      cast(value, %{values: {fst, snd}, original_schema: {nil, nil}})
-    end
-
-    def cast(value, %{values: {fst, snd}}) when is_ecto_embed(snd) and is_map(value) do
-      cast(value, %{values: {fst, snd}, original_schema: {nil, nil}})
-    end
-
-    def cast(value, %{values: {fst, snd}}) do
-      with :error <- Ecto.Type.cast(fst, value) do
-        Ecto.Type.cast(snd, value)
-      end
     end
 
     @impl true

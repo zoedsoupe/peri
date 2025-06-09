@@ -331,6 +331,22 @@ if Code.ensure_loaded?(Ecto) do
       put_validation(ecto, key, custom_validation(key, callback))
     end
 
+    def parse_peri({key, {:custom, {mod, fun}}}, ecto) when is_atom(mod) and is_atom(fun) do
+      callback = fn value -> apply(mod, fun, [value]) end
+      parse_peri({key, {:custom, callback}}, ecto)
+    end
+
+    def parse_peri({key, {:custom, {mod, fun, args}}}, ecto)
+        when is_atom(mod) and is_atom(fun) and is_list(args) do
+      callback = fn value -> apply(mod, fun, [value | args]) end
+      parse_peri({key, {:custom, callback}}, ecto)
+    end
+
+    def parse_peri({key, type}, _ecto) do
+      type = inspect(type, pretty: true)
+      raise Peri.Error, message: "Ecto doesn't support `#{type}` type for #{key}"
+    end
+
     defp custom_validation(key, callback) do
       fn changeset ->
         value = get_field(changeset, key)
@@ -349,22 +365,6 @@ if Code.ensure_loaded?(Ecto) do
     defp handle_custom_result(changeset, key, {:error, message, context}) do
       context = if is_list(context), do: context, else: []
       add_error(changeset, key, message, context)
-    end
-
-    def parse_peri({key, {:custom, {mod, fun}}}, ecto) when is_atom(mod) and is_atom(fun) do
-      callback = fn value -> apply(mod, fun, [value]) end
-      parse_peri({key, {:custom, callback}}, ecto)
-    end
-
-    def parse_peri({key, {:custom, {mod, fun, args}}}, ecto)
-        when is_atom(mod) and is_atom(fun) and is_list(args) do
-      callback = fn value -> apply(mod, fun, [value | args]) end
-      parse_peri({key, {:custom, callback}}, ecto)
-    end
-
-    def parse_peri({key, type}, _ecto) do
-      type = inspect(type, pretty: true)
-      raise Peri.Error, message: "Ecto doesn't support `#{type}` type for #{key}"
     end
 
     # Helper function to validate either type
@@ -601,11 +601,6 @@ if Code.ensure_loaded?(Ecto) do
         validations: [],
         nested: nil
       }
-    end
-
-    defp apply_conditional_validation(changeset, _key, nil_or_false_ecto)
-         when is_nil(nil_or_false_ecto) or nil_or_false_ecto == false do
-      changeset
     end
 
     defp apply_conditional_validation(changeset, key, ecto_def) do
