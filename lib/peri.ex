@@ -1269,8 +1269,9 @@ defmodule Peri do
   defp validate_type({:dependent, _, cb, type}, p) when is_function(cb, 2) do
     validate_type(type, p)
   end
-  
-  defp validate_type({:dependent, field, cb, type}, p) when is_atom(field) and is_function(cb, 2) do
+
+  defp validate_type({:dependent, field, cb, type}, p)
+       when is_atom(field) and is_function(cb, 2) do
     validate_type(type, p)
   end
 
@@ -1357,7 +1358,7 @@ defmodule Peri do
     defp process_types(definition) do
       Map.new(definition, fn
         # Handle special cases for conditional and dependent types
-        {key, %{condition: _} = def} -> {key, def[:type] || :string} 
+        {key, %{condition: _} = def} -> {key, def[:type] || :string}
         {key, %{dependent_callback: _} = def} -> {key, def[:type] || :string}
         {key, %{depend: _} = def} -> {key, def[:type] || :string}
         # Handle cases where type is nil (either types sometimes don't set it)
@@ -1390,31 +1391,35 @@ defmodule Peri do
       Enum.reduce(nested, changeset, &handle_nested(&1, &2, attrs))
     end
 
-    defp handle_nested({key, %{type: {:embed, %{cardinality: cardinality}}, nested: schema}}, acc, attrs) do
+    defp handle_nested(
+           {key, %{type: {:embed, %{cardinality: cardinality}}, nested: schema}},
+           acc,
+           attrs
+         ) do
       value = get_nested_value(attrs, key)
       validate_and_cast_nested(acc, key, value, schema, cardinality)
     end
-    
+
     defp get_nested_value(attrs, key) do
       Map.get(attrs, key) || Map.get(attrs, to_string(key))
     end
-    
+
     defp validate_and_cast_nested(changeset, _key, nil, _schema, _cardinality), do: changeset
-    
+
     defp validate_and_cast_nested(changeset, key, value, schema, :one) do
       nested = process_changeset(schema, value)
       cast_nested_result(changeset, key, nested)
     end
-    
+
     defp validate_and_cast_nested(changeset, key, values, schema, :many) when is_list(values) do
       results = Enum.map(values, &process_changeset(schema, &1))
       cast_nested_list_result(changeset, key, results)
     end
-    
+
     defp validate_and_cast_nested(changeset, key, _value, _schema, :many) do
       Ecto.Changeset.add_error(changeset, key, "is invalid")
     end
-    
+
     defp cast_nested_result(changeset, key, nested) do
       if nested.valid? do
         # Keep the changeset in changes so get_change returns a changeset
@@ -1424,10 +1429,10 @@ defmodule Peri do
         transfer_nested_errors(changeset, key, nested)
       end
     end
-    
+
     defp cast_nested_list_result(changeset, key, results) do
       {values, errors} = split_results(results)
-      
+
       if errors == [] do
         # Keep the valid changesets in changes for get_change
         changes = Map.put(changeset.changes, key, values)
@@ -1439,7 +1444,7 @@ defmodule Peri do
         %{changeset | changes: changes, valid?: false}
       end
     end
-    
+
     defp split_results(results) do
       Enum.with_index(results)
       |> Enum.reduce({[], []}, fn {nested, idx}, {values, errors} ->
@@ -1451,14 +1456,13 @@ defmodule Peri do
       end)
       |> then(fn {values, errors} -> {Enum.reverse(values), Enum.reverse(errors)} end)
     end
-    
+
     defp transfer_nested_errors(changeset, key, nested) do
       # For nested changesets, we need to put the invalid changeset in changes
       # so that traverse_errors can find it
       changes = Map.put(changeset.changes, key, nested)
       %{changeset | changes: changes, valid?: false}
     end
-    
   end
 
   # Helper functions

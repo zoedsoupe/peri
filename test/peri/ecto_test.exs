@@ -379,7 +379,7 @@ defmodule Peri.EctoTest do
                confirm_password: ["should be equal to literal Secret123"]
              } = errors_on(invalid_changeset)
     end
-    
+
     test "validates tuple type" do
       schema = %{
         coordinates: {:tuple, [:float, :float]}
@@ -390,17 +390,17 @@ defmodule Peri.EctoTest do
 
       valid_changeset = Peri.to_changeset!(schema, valid_attrs)
       invalid_changeset = Peri.to_changeset!(schema, invalid_attrs)
-      
+
       assert is_changeset(valid_changeset)
       assert is_changeset(invalid_changeset)
-      
+
       assert valid_changeset.valid?
       refute invalid_changeset.valid?
-      
+
       assert get_field(valid_changeset, :coordinates) == {10.5, 20.5}
       assert %{coordinates: ["is invalid"]} = errors_on(invalid_changeset)
     end
-    
+
     @tag :tuple_map
     test "validates tuple with nested map" do
       schema = %{
@@ -412,16 +412,16 @@ defmodule Peri.EctoTest do
 
       valid_changeset = Peri.to_changeset!(schema, valid_attrs)
       invalid_changeset = Peri.to_changeset!(schema, invalid_attrs)
-      
+
       assert is_changeset(valid_changeset)
       assert is_changeset(invalid_changeset)
-      
+
       assert valid_changeset.valid?
       refute invalid_changeset.valid?
-      
+
       assert get_field(valid_changeset, :user_data) == {"john", %{age: 30, active: true}}
     end
-    
+
     test "validates either type" do
       schema = %{
         value: {:either, {:string, :integer}}
@@ -434,20 +434,20 @@ defmodule Peri.EctoTest do
       valid_string_changeset = Peri.to_changeset!(schema, valid_string_attrs)
       valid_integer_changeset = Peri.to_changeset!(schema, valid_integer_attrs)
       invalid_changeset = Peri.to_changeset!(schema, invalid_attrs)
-      
+
       assert is_changeset(valid_string_changeset)
       assert is_changeset(valid_integer_changeset)
       assert is_changeset(invalid_changeset)
-      
+
       assert valid_string_changeset.valid?
       assert valid_integer_changeset.valid?
       refute invalid_changeset.valid?
-      
+
       assert get_change(valid_string_changeset, :value) == "text"
       assert get_change(valid_integer_changeset, :value) == 42
       assert %{value: ["is invalid"]} = errors_on(invalid_changeset)
     end
-    
+
     @tag :skip
     test "validates either type with simple types" do
       schema = %{
@@ -461,16 +461,16 @@ defmodule Peri.EctoTest do
       valid_string_changeset = Peri.to_changeset!(schema, valid_string_attrs)
       valid_int_changeset = Peri.to_changeset!(schema, valid_int_attrs)
       invalid_changeset = Peri.to_changeset!(schema, invalid_attrs)
-      
+
       assert is_changeset(valid_string_changeset)
       assert is_changeset(valid_int_changeset)
       assert is_changeset(invalid_changeset)
-      
+
       assert valid_string_changeset.valid?
       assert valid_int_changeset.valid?
       refute invalid_changeset.valid?
     end
-    
+
     @tag :skip
     test "validates either type with single nested field map" do
       schema = %{
@@ -484,16 +484,16 @@ defmodule Peri.EctoTest do
       valid_string_changeset = Peri.to_changeset!(schema, valid_string_attrs)
       valid_map_changeset = Peri.to_changeset!(schema, valid_map_attrs)
       invalid_changeset = Peri.to_changeset!(schema, invalid_attrs)
-      
+
       assert is_changeset(valid_string_changeset)
       assert is_changeset(valid_map_changeset)
       assert is_changeset(invalid_changeset)
-      
+
       assert valid_string_changeset.valid?
       assert valid_map_changeset.valid?
       refute invalid_changeset.valid?
     end
-    
+
     @tag :skip
     test "validates either type with nested map" do
       schema = %{
@@ -507,16 +507,16 @@ defmodule Peri.EctoTest do
       valid_string_changeset = Peri.to_changeset!(schema, valid_string_attrs)
       valid_map_changeset = Peri.to_changeset!(schema, valid_map_attrs)
       invalid_changeset = Peri.to_changeset!(schema, invalid_attrs)
-      
+
       assert is_changeset(valid_string_changeset)
       assert is_changeset(valid_map_changeset)
       assert is_changeset(invalid_changeset)
-      
+
       assert valid_string_changeset.valid?
       assert valid_map_changeset.valid?
       refute invalid_changeset.valid?
     end
-    
+
     test "validates oneof type" do
       schema = %{
         value: {:oneof, [:string, :integer, :boolean]}
@@ -531,18 +531,18 @@ defmodule Peri.EctoTest do
       valid_integer_changeset = Peri.to_changeset!(schema, valid_integer_attrs)
       valid_boolean_changeset = Peri.to_changeset!(schema, valid_boolean_attrs)
       invalid_changeset = Peri.to_changeset!(schema, invalid_attrs)
-      
+
       assert is_changeset(valid_string_changeset)
       assert is_changeset(valid_integer_changeset)
       assert is_changeset(valid_boolean_changeset)
       assert is_changeset(invalid_changeset)
-      
+
       assert valid_string_changeset.valid?
       assert valid_integer_changeset.valid?
       assert valid_boolean_changeset.valid?
       refute invalid_changeset.valid?
     end
-    
+
     @tag :skip
     test "validates oneof type with nested map" do
       schema = %{
@@ -558,12 +558,12 @@ defmodule Peri.EctoTest do
       valid_map_changeset = Peri.to_changeset!(schema, valid_map_attrs)
       valid_boolean_changeset = Peri.to_changeset!(schema, valid_boolean_attrs)
       invalid_changeset = Peri.to_changeset!(schema, invalid_attrs)
-      
+
       assert is_changeset(valid_string_changeset)
       assert is_changeset(valid_map_changeset)
       assert is_changeset(valid_boolean_changeset)
       assert is_changeset(invalid_changeset)
-      
+
       assert valid_string_changeset.valid?
       assert valid_map_changeset.valid?
       assert valid_boolean_changeset.valid?
@@ -607,182 +607,189 @@ defmodule Peri.EctoTest do
                naive_datetime: ["is invalid"]
              } = errors_on(invalid_changeset)
     end
-    
+
     @tag :skip
     test "validates conditional fields" do
       schema = %{
         provide_details: {:required, :boolean},
-        details: {:cond, 
-          &(&1.provide_details), 
-          {:required, %{email: {:required, :string}}}, 
-          nil
-        }
+        details: {:cond, & &1.provide_details, {:required, %{email: {:required, :string}}}, nil}
       }
-      
+
       valid_with_details = %{
         provide_details: true,
         details: %{email: "john@example.com"}
       }
-      
+
       valid_without_details = %{
         provide_details: false
       }
-      
+
       invalid_attrs = %{
         provide_details: true,
         details: %{}
       }
-      
+
       valid_with_details_changeset = Peri.to_changeset!(schema, valid_with_details)
       valid_without_details_changeset = Peri.to_changeset!(schema, valid_without_details)
       invalid_changeset = Peri.to_changeset!(schema, invalid_attrs)
-      
+
       assert is_changeset(valid_with_details_changeset)
       assert is_changeset(valid_without_details_changeset)
       assert is_changeset(invalid_changeset)
-      
+
       assert valid_with_details_changeset.valid?
       assert valid_without_details_changeset.valid?
       refute invalid_changeset.valid?
-      
+
       assert get_change(valid_with_details_changeset, :details)
       refute get_change(valid_without_details_changeset, :details)
     end
-    
+
     @tag :skip
     test "validates dependent field (field condition)" do
       schema = %{
         password: {:required, :string},
-        password_confirmation: {:dependent, :password, 
-          fn val, password -> if val == password, do: :ok, else: {:error, "must match password", []} end,
-          :string
-        }
+        password_confirmation:
+          {:dependent, :password,
+           fn val, password ->
+             if val == password, do: :ok, else: {:error, "must match password", []}
+           end, :string}
       }
-      
+
       valid_attrs = %{
         password: "Secret123",
         password_confirmation: "Secret123"
       }
-      
+
       invalid_attrs = %{
         password: "Secret123",
         password_confirmation: "Different"
       }
-      
+
       valid_changeset = Peri.to_changeset!(schema, valid_attrs)
       invalid_changeset = Peri.to_changeset!(schema, invalid_attrs)
-      
+
       assert is_changeset(valid_changeset)
       assert is_changeset(invalid_changeset)
-      
+
       assert valid_changeset.valid?
       refute invalid_changeset.valid?
-      
+
       assert %{password_confirmation: ["must match password"]} = errors_on(invalid_changeset)
     end
-    
+
     @tag :skip
     test "validates dependent field (callback)" do
       schema = %{
         provide_email: {:required, :boolean},
         provide_country: {:required, :boolean},
-        details: {:dependent, fn %{provide_email: pe, provide_country: pc} = _data ->
-          case {pe, pc} do
-            {true, true} -> {:ok, {:required, %{email: {:required, :string}, country: {:required, :string}}}}
-            {true, false} -> {:ok, {:required, %{email: {:required, :string}}}}
-            {false, true} -> {:ok, {:required, %{country: {:required, :string}}}}
-            {false, false} -> {:ok, nil}
-          end
-        end}
+        details:
+          {:dependent,
+           fn %{provide_email: pe, provide_country: pc} = _data ->
+             case {pe, pc} do
+               {true, true} ->
+                 {:ok, {:required, %{email: {:required, :string}, country: {:required, :string}}}}
+
+               {true, false} ->
+                 {:ok, {:required, %{email: {:required, :string}}}}
+
+               {false, true} ->
+                 {:ok, {:required, %{country: {:required, :string}}}}
+
+               {false, false} ->
+                 {:ok, nil}
+             end
+           end}
       }
-      
+
       valid_both = %{
         provide_email: true,
         provide_country: true,
         details: %{email: "john@example.com", country: "USA"}
       }
-      
+
       valid_email_only = %{
         provide_email: true,
         provide_country: false,
         details: %{email: "john@example.com"}
       }
-      
+
       valid_country_only = %{
         provide_email: false,
         provide_country: true,
         details: %{country: "USA"}
       }
-      
+
       valid_none = %{
         provide_email: false,
         provide_country: false
       }
-      
+
       invalid_attrs = %{
         provide_email: true,
         provide_country: true,
         details: %{email: "john@example.com"}
       }
-      
+
       valid_both_changeset = Peri.to_changeset!(schema, valid_both)
       valid_email_only_changeset = Peri.to_changeset!(schema, valid_email_only)
       valid_country_only_changeset = Peri.to_changeset!(schema, valid_country_only)
       valid_none_changeset = Peri.to_changeset!(schema, valid_none)
       invalid_changeset = Peri.to_changeset!(schema, invalid_attrs)
-      
+
       assert is_changeset(valid_both_changeset)
       assert is_changeset(valid_email_only_changeset)
       assert is_changeset(valid_country_only_changeset)
       assert is_changeset(valid_none_changeset)
       assert is_changeset(invalid_changeset)
-      
+
       assert valid_both_changeset.valid?
       assert valid_email_only_changeset.valid?
       assert valid_country_only_changeset.valid?
       assert valid_none_changeset.valid?
       refute invalid_changeset.valid?
     end
-    
+
     test "validates custom validation" do
       defmodule CustomValidator do
         def validate_age(age) when is_integer(age) and age >= 18 and age <= 100, do: :ok
         def validate_age(_), do: {:error, "must be between 18 and 100", []}
-        
+
         def validate_email(email) when is_binary(email) do
           if String.contains?(email, "@"), do: :ok, else: {:error, "invalid email format", []}
         end
+
         def validate_email(_), do: {:error, "invalid email format", []}
       end
-      
+
       schema = %{
         age: {:custom, &CustomValidator.validate_age/1},
         email: {:custom, {CustomValidator, :validate_email}}
       }
-      
+
       valid_attrs = %{
         age: 30,
         email: "john@example.com"
       }
-      
+
       invalid_attrs = %{
         age: 15,
         email: "invalid-email"
       }
-      
+
       valid_changeset = Peri.to_changeset!(schema, valid_attrs)
       invalid_changeset = Peri.to_changeset!(schema, invalid_attrs)
-      
+
       assert is_changeset(valid_changeset)
       assert is_changeset(invalid_changeset)
-      
+
       assert valid_changeset.valid?
       refute invalid_changeset.valid?
-      
+
       assert %{
-        age: ["must be between 18 and 100"],
-        email: ["invalid email format"]
-      } = errors_on(invalid_changeset)
+               age: ["must be between 18 and 100"],
+               email: ["invalid email format"]
+             } = errors_on(invalid_changeset)
     end
   end
 

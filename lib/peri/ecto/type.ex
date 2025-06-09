@@ -121,25 +121,30 @@ if Code.ensure_loaded?(Ecto) do
     @impl true
     def init(elements: types) when is_list(types) do
       case Peri.validate_schema({:tuple, types}) do
-        {:ok, {:tuple, types}} -> 
+        {:ok, {:tuple, types}} ->
           # Convert maps to embed types and track them with index
-          {processed_types, nested_map_info} = 
+          {processed_types, nested_map_info} =
             types
             |> Enum.with_index()
             |> Enum.map_reduce(%{}, fn {type, idx}, map_info_acc ->
               if is_map(type) do
                 # For maps, create an embed and store index information
                 map_key = "map_#{idx}"
-                embed_type = {:embed, Ecto.Embedded.init(field: map_key, cardinality: :one, related: nil)}
+
+                embed_type =
+                  {:embed, Ecto.Embedded.init(field: map_key, cardinality: :one, related: nil)}
+
                 {embed_type, Map.put(map_info_acc, map_key, idx)}
               else
                 # For regular types
                 {Peri.Ecto.Type.from(type), map_info_acc}
               end
             end)
-          
+
           %{elements: processed_types, original_types: types, map_indexes: nested_map_info}
-        {:error, message} -> raise Peri.Error, message
+
+        {:error, message} ->
+          raise Peri.Error, message
       end
     end
 
@@ -152,7 +157,7 @@ if Code.ensure_loaded?(Ecto) do
         cast_tuple_with_maps(tuple, types, original_types)
       end
     end
-    
+
     # For simple type array without original_types
     def cast(tuple, %{elements: types}) when is_tuple(tuple) do
       with {_idx, values} <- cast_elements(tuple, types) do
@@ -164,15 +169,16 @@ if Code.ensure_loaded?(Ecto) do
     end
 
     def cast(_, _), do: :error
-    
+
     # Helper for handling tuples with map elements
     defp cast_tuple_with_maps(tuple, types, original_types) do
       tuple_values = Tuple.to_list(tuple)
-      
+
       # Process each element with its corresponding type
-      results = Enum.zip([tuple_values, types, original_types]) 
-                |> Enum.map(&cast_tuple_element/1)
-      
+      results =
+        Enum.zip([tuple_values, types, original_types])
+        |> Enum.map(&cast_tuple_element/1)
+
       # If all elements cast successfully, build the result tuple
       if Enum.all?(results, &match?({:ok, _}, &1)) do
         values = Enum.map(results, fn {:ok, val} -> val end)
@@ -181,22 +187,23 @@ if Code.ensure_loaded?(Ecto) do
         :error
       end
     end
-    
+
     # Pattern match on different element/type combinations
-    defp cast_tuple_element({map_val, {:embed, %{field: _field_name}}, original_type}) 
+    defp cast_tuple_element({map_val, {:embed, %{field: _field_name}}, original_type})
          when is_map(map_val) and is_map(original_type) do
       # Get the schema from the original type
       case tuple_validate_map(map_val, original_type) do
         {:ok, validated_map} -> {:ok, validated_map}
-        _ -> {:ok, map_val} # Default to returning original map if validation fails
+        # Default to returning original map if validation fails
+        _ -> {:ok, map_val}
       end
     end
-    
+
     defp cast_tuple_element({val, type, _}) do
       # Regular element casting
       Ecto.Type.cast(type, val)
     end
-    
+
     # Helper to validate a map against a schema
     defp tuple_validate_map(map_val, schema) do
       try do
@@ -282,8 +289,11 @@ if Code.ensure_loaded?(Ecto) do
 
     def init(values: {fst, snd}) do
       case Peri.validate_schema({:either, {fst, snd}}) do
-        {:ok, {:either, {fst, snd}}} -> %{values: {Type.from(fst), Type.from(snd)}, original_schema: {fst, snd}}
-        {:error, message} -> raise Peri.Error, message
+        {:ok, {:either, {fst, snd}}} ->
+          %{values: {Type.from(fst), Type.from(snd)}, original_schema: {fst, snd}}
+
+        {:error, message} ->
+          raise Peri.Error, message
       end
     end
 
@@ -301,21 +311,23 @@ if Code.ensure_loaded?(Ecto) do
     end
 
     @impl true
-    def cast(value, %{values: {fst, snd}, original_schema: original_schema}) when is_ecto_embed(fst) and is_map(value) do
+    def cast(value, %{values: {fst, snd}, original_schema: original_schema})
+        when is_ecto_embed(fst) and is_map(value) do
       # Access original schema info
       {fst_original, _snd_original} = original_schema
-      
+
       # Try the embedded schema first - using original schema if available
       if is_map(fst_original) do
         case either_validate_map(value, fst_original) do
           {:ok, validated_map} -> {:ok, validated_map}
-          _ -> Ecto.Type.cast(snd, value) # Try second type
+          # Try second type
+          _ -> Ecto.Type.cast(snd, value)
         end
       else
         # Try using embed info directly
         embed_mod = fst |> elem(1) |> Map.get(:related)
-        
-        changeset = 
+
+        changeset =
           if embed_mod do
             # If related module is specified, use it
             struct(embed_mod) |> Ecto.Changeset.cast(value, Map.keys(value))
@@ -323,7 +335,7 @@ if Code.ensure_loaded?(Ecto) do
             # Otherwise just use a basic changeset
             Ecto.Changeset.cast({%{}, %{}}, value, Map.keys(value))
           end
-        
+
         # If valid, return the map, otherwise try the second type
         if changeset.valid? do
           {:ok, Ecto.Changeset.apply_changes(changeset)}
@@ -332,14 +344,17 @@ if Code.ensure_loaded?(Ecto) do
         end
       end
     end
-    
-    def cast(value, %{values: {fst, snd}, original_schema: original_schema}) when is_ecto_embed(snd) and is_map(value) do
+
+    def cast(value, %{values: {fst, snd}, original_schema: original_schema})
+        when is_ecto_embed(snd) and is_map(value) do
       # Access original schema info if available
       {_fst_original, snd_original} = original_schema || {nil, nil}
-      
+
       # Try the first type first
       case Ecto.Type.cast(fst, value) do
-        {:ok, casted_value} -> {:ok, casted_value}
+        {:ok, casted_value} ->
+          {:ok, casted_value}
+
         :error ->
           # Try the embedded schema using original schema if available
           if is_map(snd_original) do
@@ -350,8 +365,8 @@ if Code.ensure_loaded?(Ecto) do
           else
             # Try using embed info directly
             embed_mod = snd |> elem(1) |> Map.get(:related)
-            
-            changeset = 
+
+            changeset =
               if embed_mod do
                 # If related module is specified, use it
                 struct(embed_mod) |> Ecto.Changeset.cast(value, Map.keys(value))
@@ -359,7 +374,7 @@ if Code.ensure_loaded?(Ecto) do
                 # Otherwise just use a basic changeset
                 Ecto.Changeset.cast({%{}, %{}}, value, Map.keys(value))
               end
-            
+
             if changeset.valid? do
               {:ok, Ecto.Changeset.apply_changes(changeset)}
             else
@@ -368,12 +383,12 @@ if Code.ensure_loaded?(Ecto) do
           end
       end
     end
-    
+
     # Fallback for when we don't have original schema info
     def cast(value, %{values: {fst, snd}}) when is_ecto_embed(fst) and is_map(value) do
       cast(value, %{values: {fst, snd}, original_schema: {nil, nil}})
     end
-    
+
     def cast(value, %{values: {fst, snd}}) when is_ecto_embed(snd) and is_map(value) do
       cast(value, %{values: {fst, snd}, original_schema: {nil, nil}})
     end
