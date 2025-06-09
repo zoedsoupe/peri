@@ -1390,13 +1390,75 @@ defmodule Peri do
       Enum.reduce(nested, changeset, &handle_nested(&1, &2, attrs))
     end
 
-    defp handle_nested({key, %{type: {:embed, %{cardinality: :one}}, nested: schema}}, acc) do
-      Ecto.Changeset.cast_embed(acc, key,
-        with: fn _source, attrs ->
-          process_changeset(schema, attrs)
-        end
-      )
+    defp handle_nested({key, %{type: {:embed, %{cardinality: cardinality}}, nested: schema}}, acc, attrs) do
+      value = get_nested_value(attrs, key)
+      validate_and_cast_nested(acc, key, value, schema, cardinality)
     end
+    
+    defp get_nested_value(attrs, key) do
+      Map.get(attrs, key) || Map.get(attrs, to_string(key))
+    end
+    
+    defp validate_and_cast_nested(changeset, _key, nil, _schema, _cardinality), do: changeset
+    
+    defp validate_and_cast_nested(changeset, key, value, schema, :one) do
+      nested = process_changeset(schema, value)
+      cast_nested_result(changeset, key, nested)
+    end
+    
+    defp validate_and_cast_nested(changeset, key, values, schema, :many) when is_list(values) do
+      results = Enum.map(values, &process_changeset(schema, &1))
+      cast_nested_list_result(changeset, key, results)
+    end
+    
+    defp validate_and_cast_nested(changeset, key, _value, _schema, :many) do
+      Ecto.Changeset.add_error(changeset, key, "is invalid")
+    end
+    
+    defp cast_nested_result(changeset, key, nested) do
+      if nested.valid? do
+        # Keep the changeset in changes so get_change returns a changeset
+        changes = Map.put(changeset.changes, key, nested)
+        %{changeset | changes: changes, valid?: changeset.valid?}
+      else
+        transfer_nested_errors(changeset, key, nested)
+      end
+    end
+    
+    defp cast_nested_list_result(changeset, key, results) do
+      {values, errors} = split_results(results)
+      
+      if errors == [] do
+        # Keep the valid changesets in changes for get_change
+        changes = Map.put(changeset.changes, key, values)
+        %{changeset | changes: changes, valid?: changeset.valid?}
+      else
+        # For lists with errors, we need to maintain the list structure
+        # Put all changesets (valid and invalid) in changes
+        changes = Map.put(changeset.changes, key, results)
+        %{changeset | changes: changes, valid?: false}
+      end
+    end
+    
+    defp split_results(results) do
+      Enum.with_index(results)
+      |> Enum.reduce({[], []}, fn {nested, idx}, {values, errors} ->
+        if nested.valid? do
+          {[Ecto.Changeset.apply_changes(nested) | values], errors}
+        else
+          {values, [{idx, nested.errors} | errors]}
+        end
+      end)
+      |> then(fn {values, errors} -> {Enum.reverse(values), Enum.reverse(errors)} end)
+    end
+    
+    defp transfer_nested_errors(changeset, key, nested) do
+      # For nested changesets, we need to put the invalid changeset in changes
+      # so that traverse_errors can find it
+      changes = Map.put(changeset.changes, key, nested)
+      %{changeset | changes: changes, valid?: false}
+    end
+    
   end
 
   # Helper functions
