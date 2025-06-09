@@ -1341,11 +1341,20 @@ defmodule Peri do
 
       nested_keys = Enum.map(nested, fn {key, _} -> key end)
 
+      # Also exclude fields that need special validation
+      special_keys =
+        definition
+        |> Enum.filter(fn {_, def} ->
+          def[:type] == :any || def[:conditional]
+        end)
+        |> Enum.map(fn {key, _} -> key end)
+
       {process_defaults(definition), process_types(definition)}
-      |> Ecto.Changeset.cast(attrs, Map.keys(definition) -- nested_keys)
+      |> Ecto.Changeset.cast(attrs, Map.keys(definition) -- (nested_keys -- special_keys))
       |> process_validations(definition)
       |> process_required(definition)
       |> process_nested(nested, attrs)
+      |> process_special_fields(special_keys, attrs, definition)
     end
 
     defp process_defaults(definition) do
@@ -1391,13 +1400,27 @@ defmodule Peri do
       Enum.reduce(nested, changeset, &handle_nested(&1, &2, attrs))
     end
 
-    defp handle_nested(
-           {key, %{type: {:embed, %{cardinality: cardinality}}, nested: schema}},
-           acc,
-           attrs
-         ) do
+    defp handle_nested({key, def}, changeset, attrs) do
       value = get_nested_value(attrs, key)
-      validate_and_cast_nested(acc, key, value, schema, cardinality)
+
+      cond do
+        def[:conditional] && def[:nested] ->
+          # Let the validation handle it
+          changeset
+
+        match?({:embed, %{cardinality: _}}, def[:type]) ->
+          {:embed, %{cardinality: cardinality}} = def[:type]
+          validate_and_cast_nested(changeset, key, value, def[:nested], cardinality)
+
+        match?({:parameterized, {Peri.Ecto.Type.OneOf, _}}, def[:type]) ->
+          validate_composite_nested(changeset, key, value, def[:nested])
+
+        match?({:parameterized, {Peri.Ecto.Type.Either, _}}, def[:type]) ->
+          validate_composite_nested(changeset, key, value, def[:nested])
+
+        true ->
+          changeset
+      end
     end
 
     defp get_nested_value(attrs, key) do
@@ -1418,6 +1441,36 @@ defmodule Peri do
 
     defp validate_and_cast_nested(changeset, key, _value, _schema, :many) do
       Ecto.Changeset.add_error(changeset, key, "is invalid")
+    end
+
+    defp validate_composite_nested(changeset, _key, nil, _schemas), do: changeset
+
+    defp validate_composite_nested(changeset, key, value, schemas) when is_map(value) do
+      schemas
+      |> Enum.find_value(fn {_, schema} ->
+        case Peri.validate(schema, value) do
+          {:ok, _} -> process_changeset(schema, value)
+          _ -> nil
+        end
+      end)
+      |> case do
+        nil -> changeset
+        nested -> cast_nested_result(changeset, key, nested)
+      end
+    end
+
+    defp validate_composite_nested(changeset, _key, _value, _schemas), do: changeset
+
+    defp process_special_fields(changeset, special_keys, attrs, _definition) do
+      Enum.reduce(special_keys, changeset, fn key, acc ->
+        value = get_nested_value(attrs, key)
+
+        if is_nil(value) do
+          acc
+        else
+          Ecto.Changeset.put_change(acc, key, value)
+        end
+      end)
     end
 
     defp cast_nested_result(changeset, key, nested) do

@@ -214,10 +214,8 @@ if Code.ensure_loaded?(Ecto) do
           ecto
         end
 
-      fst_type = if is_map(fst), do: :map, else: fst
-      snd_type = if is_map(snd), do: :map, else: snd
-
-      ecto = put_in(ecto[key][:type], Type.from({:either, {fst_type, snd_type}}))
+      # Use :any type to allow all values through casting
+      ecto = put_in(ecto[key][:type], :any)
 
       ecto = put_in(ecto[key][:original_fst], fst)
       ecto = put_in(ecto[key][:original_snd], snd)
@@ -238,12 +236,14 @@ if Code.ensure_loaded?(Ecto) do
 
         ecto = put_in(ecto[key][:nested], nested_schemas)
 
-        if other_types != [] do
-          ecto = put_in(ecto[key][:type], Type.from({:oneof, other_types}))
-          put_in(ecto[key][:original_types], types)
-        else
-          put_in(ecto[key][:type], :map)
-        end
+        ecto = put_in(ecto[key][:original_types], types)
+
+        # Always use validate_oneof_nested for validation
+        ecto = put_in(ecto[key][:type], :any)
+
+        put_validation(ecto, key, fn changeset ->
+          validate_oneof_nested(changeset, key, map_types, other_types, types)
+        end)
       else
         put_in(ecto[key][:type], Type.from({:oneof, types}))
       end
@@ -253,10 +253,30 @@ if Code.ensure_loaded?(Ecto) do
       true_branch = parse_single_type(true_type)
       else_branch = parse_single_type(else_type)
 
-      ecto = put_in(ecto[key][:type], true_branch[:type] || :string)
+      # Store the nested schemas if they exist
+      ecto =
+        if true_branch[:nested] || else_branch[:nested] do
+          ecto
+          |> put_in([key, :nested], %{
+            "true_branch" => true_branch[:nested],
+            "else_branch" => else_branch[:nested]
+          })
+          |> put_in([key, :type], :any)
+          |> put_in([key, :conditional], true)
+        else
+          put_in(ecto[key][:type], true_branch[:type] || :string)
+        end
 
       put_validation(ecto, key, fn changeset ->
-        validate_conditional_field(changeset, key, condition, true_branch, else_branch)
+        validate_conditional_field(
+          changeset,
+          key,
+          condition,
+          true_branch,
+          else_branch,
+          true_type,
+          else_type
+        )
       end)
     end
 
@@ -308,26 +328,27 @@ if Code.ensure_loaded?(Ecto) do
 
     def parse_peri({key, {:custom, callback}}, ecto) when is_function(callback, 1) do
       ecto = put_in(ecto[key][:type], :any)
+      put_validation(ecto, key, custom_validation(key, callback))
+    end
 
-      put_validation(ecto, key, fn changeset ->
+    defp custom_validation(key, callback) do
+      fn changeset ->
         value = get_field(changeset, key)
 
         if is_nil(value) do
           changeset
         else
-          case callback.(value) do
-            :ok ->
-              changeset
-
-            {:ok, _} ->
-              changeset
-
-            {:error, message, context} ->
-              context = if is_list(context), do: context, else: []
-              add_error(changeset, key, message, context)
-          end
+          handle_custom_result(changeset, key, callback.(value))
         end
-      end)
+      end
+    end
+
+    defp handle_custom_result(changeset, _key, :ok), do: changeset
+    defp handle_custom_result(changeset, _key, {:ok, _}), do: changeset
+
+    defp handle_custom_result(changeset, key, {:error, message, context}) do
+      context = if is_list(context), do: context, else: []
+      add_error(changeset, key, message, context)
     end
 
     def parse_peri({key, {:custom, {mod, fun}}}, ecto) when is_atom(mod) and is_atom(fun) do
@@ -347,13 +368,40 @@ if Code.ensure_loaded?(Ecto) do
     end
 
     # Helper function to validate either type
-    defp validate_either_type(changeset, key, _fst, _snd, _ecto) do
-      validate_change(changeset, key, fn ^key, _value ->
-        []
-      end)
+    defp validate_either_type(changeset, key, fst, snd, _ecto) do
+      value = get_field(changeset, key)
+
+      if is_nil(value) do
+        changeset
+      else
+        fst_valid = validate_either_branch(value, fst)
+        snd_valid = validate_either_branch(value, snd)
+
+        if fst_valid or snd_valid do
+          changeset
+        else
+          add_error(changeset, key, "is invalid")
+        end
+      end
     end
 
-    defp validate_conditional_field(changeset, key, condition, true_branch, else_branch) do
+    defp validate_either_branch(value, schema) when is_map(schema) do
+      match?({:ok, _}, Peri.validate(schema, value))
+    end
+
+    defp validate_either_branch(value, type) do
+      match?({:ok, _}, Ecto.Type.cast(Peri.Ecto.Type.from(type), value))
+    end
+
+    defp validate_conditional_field(
+           changeset,
+           key,
+           condition,
+           true_branch,
+           else_branch,
+           _true_type,
+           _else_type
+         ) do
       data = apply_changes(changeset)
 
       if condition.(data) do
@@ -422,88 +470,137 @@ if Code.ensure_loaded?(Ecto) do
       {:embed, Embed.init(field: key, cardinality: :many, related: nil)}
     end
 
-    defp parse_single_type(schema_def) do
-      result = %{
-        type: nil,
+    defp parse_single_type(nil),
+      do: %{type: :string, required: nil, default: nil, validations: [], nested: nil}
+
+    defp parse_single_type(schema_def) when is_map(schema_def) do
+      %{
+        type: embed_one("embeddable"),
+        required: nil,
+        default: nil,
+        validations: [],
+        nested: parse(schema_def)
+      }
+    end
+
+    defp parse_single_type(schema_def) when is_atom(schema_def) and schema_def in @raw_types do
+      %{
+        type: Type.from(schema_def),
         required: nil,
         default: nil,
         validations: [],
         nested: nil
       }
+    end
 
-      cond do
-        is_nil(schema_def) ->
-          put_in(result[:type], :string)
+    defp parse_single_type({:required, inner_type}) do
+      inner_result = parse_single_type(inner_type)
+      %{inner_result | required: true}
+    end
 
-        is_map(schema_def) ->
-          result = put_in(result[:nested], parse(schema_def))
-          put_in(result[:type], embed_one("embeddable"))
+    defp parse_single_type({:list, inner_type}) when is_map(inner_type) do
+      %{
+        type: embed_many("embeddable"),
+        required: nil,
+        default: nil,
+        validations: [],
+        nested: parse(inner_type)
+      }
+    end
 
-        is_atom(schema_def) and schema_def in @raw_types ->
-          put_in(result[:type], Type.from(schema_def))
+    defp parse_single_type({:list, inner_type}) do
+      %{
+        type: {:array, Type.from(inner_type)},
+        required: nil,
+        default: nil,
+        validations: [],
+        nested: nil
+      }
+    end
 
-        match?({:required, _}, schema_def) ->
-          {_, inner_type} = schema_def
-          inner_result = parse_single_type(inner_type)
-          result = put_in(result[:required], true)
-          result = put_in(result[:type], inner_result[:type])
+    defp parse_single_type({:tuple, elements}) do
+      %{
+        type: Type.from({:tuple, elements}),
+        required: nil,
+        default: nil,
+        validations: [],
+        nested: nil
+      }
+    end
 
-          if inner_result[:nested] do
-            put_in(result[:nested], inner_result[:nested])
-          else
-            result
-          end
+    defp parse_single_type({:enum, _} = schema_def) do
+      %{
+        type: Type.from(schema_def),
+        required: nil,
+        default: nil,
+        validations: [],
+        nested: nil
+      }
+    end
 
-        match?({:list, _}, schema_def) ->
-          {_, inner_type} = schema_def
+    defp parse_single_type({:either, _} = schema_def) do
+      %{
+        type: Type.from(schema_def),
+        required: nil,
+        default: nil,
+        validations: [],
+        nested: nil
+      }
+    end
 
-          if is_map(inner_type) do
-            result = put_in(result[:nested], parse(inner_type))
-            put_in(result[:type], embed_many("embeddable"))
-          else
-            put_in(result[:type], {:array, Type.from(inner_type)})
-          end
+    defp parse_single_type({:oneof, _} = schema_def) do
+      %{
+        type: Type.from(schema_def),
+        required: nil,
+        default: nil,
+        validations: [],
+        nested: nil
+      }
+    end
 
-        match?({:tuple, _}, schema_def) ->
-          {_, elements} = schema_def
-          put_in(result[:type], Type.from({:tuple, elements}))
+    defp parse_single_type({inner_type, {:default, default_value}}) do
+      inner_result = parse_single_type(inner_type)
+      %{inner_result | default: default_value}
+    end
 
-        match?({:enum, _}, schema_def) ->
-          put_in(result[:type], Type.from(schema_def))
+    defp parse_single_type({:string, _constraint}) do
+      %{
+        type: :string,
+        required: nil,
+        default: nil,
+        validations: [],
+        nested: nil
+      }
+    end
 
-        match?({:either, _}, schema_def) ->
-          put_in(result[:type], Type.from(schema_def))
+    defp parse_single_type({:integer, _constraint}) do
+      %{
+        type: :integer,
+        required: nil,
+        default: nil,
+        validations: [],
+        nested: nil
+      }
+    end
 
-        match?({:oneof, _}, schema_def) ->
-          put_in(result[:type], Type.from(schema_def))
+    defp parse_single_type({:float, _constraint}) do
+      %{
+        type: :float,
+        required: nil,
+        default: nil,
+        validations: [],
+        nested: nil
+      }
+    end
 
-        match?({_, {:default, _}}, schema_def) ->
-          {inner_type, {:default, default_value}} = schema_def
-          result = put_in(result[:default], default_value)
-          inner_result = parse_single_type(inner_type)
-          result = put_in(result[:type], inner_result[:type])
-
-          if inner_result[:nested] do
-            put_in(result[:nested], inner_result[:nested])
-          else
-            result
-          end
-
-        match?({:string, {:regex, _}}, schema_def) or
-          match?({:string, {:eq, _}}, schema_def) or
-          match?({:string, {:min, _}}, schema_def) or
-            match?({:string, {:max, _}}, schema_def) ->
-          put_in(result[:type], :string)
-
-        match?({:integer, _}, schema_def) ->
-          put_in(result[:type], :integer)
-
-        match?({:float, _}, schema_def) ->
-          put_in(result[:type], :float)
-
-        true ->
-          put_in(result[:type], :string)
-      end
+    defp parse_single_type(_) do
+      %{
+        type: :string,
+        required: nil,
+        default: nil,
+        validations: [],
+        nested: nil
+      }
     end
 
     defp apply_conditional_validation(changeset, _key, nil_or_false_ecto)
@@ -512,65 +609,155 @@ if Code.ensure_loaded?(Ecto) do
     end
 
     defp apply_conditional_validation(changeset, key, ecto_def) do
-      changeset =
-        if ecto_def[:required] do
-          validate_required(changeset, [key])
-        else
-          changeset
-        end
+      changeset
+      |> apply_required_if_needed(key, ecto_def)
+      |> apply_nested_validation_if_needed(key, ecto_def)
+      |> apply_validations(ecto_def)
+    end
 
+    defp apply_required_if_needed(changeset, key, ecto_def) do
+      if ecto_def[:required] do
+        validate_required(changeset, [key])
+      else
+        changeset
+      end
+    end
+
+    defp apply_nested_validation_if_needed(changeset, key, ecto_def) do
+      if ecto_def[:nested] do
+        validate_nested_field(changeset, key, ecto_def)
+      else
+        changeset
+      end
+    end
+
+    defp validate_nested_field(changeset, key, ecto_def) do
+      value = get_field(changeset, key)
+
+      if is_nil(value) or not is_map(value) do
+        changeset
+      else
+        validate_nested_map(changeset, key, value, ecto_def[:nested])
+      end
+    end
+
+    defp validate_nested_map(changeset, key, value, nested_def) do
+      nested_changeset = create_nested_changeset(value, nested_def)
+      nested_changeset = apply_nested_required(nested_changeset, nested_def)
+
+      if nested_changeset.valid? do
+        changeset
+      else
+        add_nested_errors(changeset, key, nested_changeset.errors)
+      end
+    end
+
+    defp create_nested_changeset(value, nested_def) do
+      types = Map.new(nested_def, fn {k, v} -> {k, v[:type]} end)
+
+      {%{}, types}
+      |> Ecto.Changeset.cast(value, Map.keys(nested_def))
+    end
+
+    defp apply_nested_required(changeset, nested_def) do
+      Enum.reduce(nested_def, changeset, fn {nested_key, nested_def}, acc ->
+        if nested_def[:required] do
+          validate_required(acc, [nested_key])
+        else
+          acc
+        end
+      end)
+    end
+
+    defp add_nested_errors(changeset, key, errors) do
+      Enum.reduce(errors, changeset, fn {field, {msg, opts}}, acc ->
+        add_error(acc, key, "has invalid nested field #{field}: #{msg}", opts)
+      end)
+    end
+
+    defp apply_validations(changeset, ecto_def) do
       Enum.reduce(ecto_def[:validations] || [], changeset, fn validation, acc ->
         validation.(acc)
       end)
     end
 
-    defp apply_dependent_validation(changeset, key, parsed_schema) do
-      changeset =
-        if parsed_schema[:required] do
-          validate_required(changeset, [key])
+    defp validate_oneof_nested(changeset, key, map_types, other_types, all_types) do
+      validate_change(changeset, key, fn ^key, value ->
+        valid = validate_oneof_value(value, map_types, other_types, all_types)
+
+        if valid do
+          []
         else
-          changeset
+          [{key, "is invalid"}]
         end
+      end)
+    end
 
-      if parsed_schema[:nested] do
-        current_value = get_field(changeset, key)
+    defp validate_oneof_value(value, map_types, _other_types, _all_types) when is_map(value) do
+      Enum.any?(map_types, fn schema ->
+        match?({:ok, _}, Peri.validate(schema, value))
+      end)
+    end
 
-        if is_nil(current_value) do
-          changeset
-        else
-          nested_changeset = cast({%{}, %{}}, current_value, Map.keys(parsed_schema[:nested]))
-
-          nested_changeset =
-            Enum.reduce(parsed_schema[:nested], nested_changeset, fn {nested_key, nested_def},
-                                                                     acc ->
-              if nested_def[:required] do
-                validate_required(acc, [nested_key])
-              else
-                acc
-              end
-            end)
-
-          nested_changeset =
-            Enum.reduce(parsed_schema[:nested], nested_changeset, fn {_nested_key, nested_def},
-                                                                     acc ->
-              Enum.reduce(nested_def[:validations] || [], acc, fn validation, inner_acc ->
-                validation.(inner_acc)
-              end)
-            end)
-
-          if not nested_changeset.valid? do
-            Enum.reduce(nested_changeset.errors, changeset, fn {field, {msg, opts}}, acc ->
-              add_error(acc, key, "Invalid nested data: #{field} #{msg}", opts)
-            end)
-          else
-            changeset
-          end
-        end
+    defp validate_oneof_value(value, _map_types, other_types, _all_types) do
+      if other_types != [] do
+        type = Peri.Ecto.Type.from({:oneof, other_types})
+        match?({:ok, _}, Ecto.Type.cast(type, value))
       else
-        Enum.reduce(parsed_schema[:validations] || [], changeset, fn validation, acc ->
-          validation.(acc)
-        end)
+        false
       end
+    end
+
+    defp apply_dependent_validation(changeset, key, parsed_schema) do
+      changeset
+      |> apply_required_if_needed(key, parsed_schema)
+      |> validate_dependent_nested(key, parsed_schema)
+    end
+
+    defp validate_dependent_nested(changeset, key, parsed_schema) do
+      if parsed_schema[:nested] do
+        validate_dependent_nested_value(changeset, key, parsed_schema)
+      else
+        apply_validations(changeset, parsed_schema)
+      end
+    end
+
+    defp validate_dependent_nested_value(changeset, key, parsed_schema) do
+      current_value = get_field(changeset, key)
+
+      if is_nil(current_value) do
+        changeset
+      else
+        process_dependent_nested(changeset, key, current_value, parsed_schema[:nested])
+      end
+    end
+
+    defp process_dependent_nested(changeset, key, value, nested_schema) do
+      nested_changeset =
+        value
+        |> create_nested_changeset(nested_schema)
+        |> apply_nested_required(nested_schema)
+        |> apply_nested_validations(nested_schema)
+
+      if nested_changeset.valid? do
+        changeset
+      else
+        add_dependent_errors(changeset, key, nested_changeset.errors)
+      end
+    end
+
+    defp apply_nested_validations(changeset, nested_schema) do
+      Enum.reduce(nested_schema, changeset, fn {_key, def}, acc ->
+        Enum.reduce(def[:validations] || [], acc, fn validation, inner_acc ->
+          validation.(inner_acc)
+        end)
+      end)
+    end
+
+    defp add_dependent_errors(changeset, key, errors) do
+      Enum.reduce(errors, changeset, fn {field, {msg, opts}}, acc ->
+        add_error(acc, key, "Invalid nested data: #{field} #{msg}", opts)
+      end)
     end
   end
 end

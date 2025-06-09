@@ -122,24 +122,7 @@ if Code.ensure_loaded?(Ecto) do
     def init(elements: types) when is_list(types) do
       case Peri.validate_schema({:tuple, types}) do
         {:ok, {:tuple, types}} ->
-          # Convert maps to embed types and track them with index
-          {processed_types, nested_map_info} =
-            types
-            |> Enum.with_index()
-            |> Enum.map_reduce(%{}, fn {type, idx}, map_info_acc ->
-              if is_map(type) do
-                # For maps, create an embed and store index information
-                map_key = "map_#{idx}"
-
-                embed_type =
-                  {:embed, Ecto.Embedded.init(field: map_key, cardinality: :one, related: nil)}
-
-                {embed_type, Map.put(map_info_acc, map_key, idx)}
-              else
-                # For regular types
-                {Peri.Ecto.Type.from(type), map_info_acc}
-              end
-            end)
+          {processed_types, nested_map_info} = process_tuple_types(types)
 
           %{elements: processed_types, original_types: types, map_indexes: nested_map_info}
 
@@ -204,17 +187,29 @@ if Code.ensure_loaded?(Ecto) do
       Ecto.Type.cast(type, val)
     end
 
-    # Helper to validate a map against a schema
     defp tuple_validate_map(map_val, schema) do
-      try do
-        # Use the existing Peri validation
-        case Peri.validate(schema, map_val) do
-          {:ok, validated} -> {:ok, validated}
-          _ -> :error
-        end
-      rescue
+      case Peri.validate(schema, map_val) do
+        {:ok, validated} -> {:ok, validated}
         _ -> :error
       end
+    rescue
+      _ -> :error
+    end
+
+    defp process_tuple_types(types) do
+      types
+      |> Enum.with_index()
+      |> Enum.map_reduce(%{}, &process_single_tuple_type/2)
+    end
+
+    defp process_single_tuple_type({type, idx}, map_info_acc) when is_map(type) do
+      map_key = "map_#{idx}"
+      embed_type = {:embed, Ecto.Embedded.init(field: map_key, cardinality: :one, related: nil)}
+      {embed_type, Map.put(map_info_acc, map_key, idx)}
+    end
+
+    defp process_single_tuple_type({type, _idx}, map_info_acc) do
+      {Peri.Ecto.Type.from(type), map_info_acc}
     end
 
     defp cast_elements(tuple, types) do
@@ -297,17 +292,13 @@ if Code.ensure_loaded?(Ecto) do
       end
     end
 
-    # Helper to validate a map against a schema for Either type
     defp either_validate_map(map_val, schema) do
-      try do
-        # Use the existing Peri validation
-        case Peri.validate(schema, map_val) do
-          {:ok, validated} -> {:ok, validated}
-          _ -> :error
-        end
-      rescue
+      case Peri.validate(schema, map_val) do
+        {:ok, validated} -> {:ok, validated}
         _ -> :error
       end
+    rescue
+      _ -> :error
     end
 
     @impl true
@@ -347,41 +338,43 @@ if Code.ensure_loaded?(Ecto) do
 
     def cast(value, %{values: {fst, snd}, original_schema: original_schema})
         when is_ecto_embed(snd) and is_map(value) do
-      # Access original schema info if available
-      {_fst_original, snd_original} = original_schema || {nil, nil}
-
       # Try the first type first
       case Ecto.Type.cast(fst, value) do
         {:ok, casted_value} ->
           {:ok, casted_value}
 
         :error ->
-          # Try the embedded schema using original schema if available
-          if is_map(snd_original) do
-            case either_validate_map(value, snd_original) do
-              {:ok, validated_map} -> {:ok, validated_map}
-              _ -> :error
-            end
-          else
-            # Try using embed info directly
-            embed_mod = snd |> elem(1) |> Map.get(:related)
-
-            changeset =
-              if embed_mod do
-                # If related module is specified, use it
-                struct(embed_mod) |> Ecto.Changeset.cast(value, Map.keys(value))
-              else
-                # Otherwise just use a basic changeset
-                Ecto.Changeset.cast({%{}, %{}}, value, Map.keys(value))
-              end
-
-            if changeset.valid? do
-              {:ok, Ecto.Changeset.apply_changes(changeset)}
-            else
-              :error
-            end
-          end
+          cast_second_embed(value, snd, original_schema)
       end
+    end
+
+    defp cast_second_embed(value, snd, original_schema) do
+      {_fst_original, snd_original} = original_schema || {nil, nil}
+
+      if is_map(snd_original) do
+        either_validate_map(value, snd_original)
+      else
+        cast_with_embed_info(value, snd)
+      end
+    end
+
+    defp cast_with_embed_info(value, embed_type) do
+      embed_mod = embed_type |> elem(1) |> Map.get(:related)
+      changeset = create_embed_changeset(value, embed_mod)
+
+      if changeset.valid? do
+        {:ok, Ecto.Changeset.apply_changes(changeset)}
+      else
+        :error
+      end
+    end
+
+    defp create_embed_changeset(value, nil) do
+      Ecto.Changeset.cast({%{}, %{}}, value, Map.keys(value))
+    end
+
+    defp create_embed_changeset(value, embed_mod) do
+      struct(embed_mod) |> Ecto.Changeset.cast(value, Map.keys(value))
     end
 
     # Fallback for when we don't have original schema info

@@ -448,7 +448,6 @@ defmodule Peri.EctoTest do
       assert %{value: ["is invalid"]} = errors_on(invalid_changeset)
     end
 
-    @tag :skip
     test "validates either type with simple types" do
       schema = %{
         value: {:either, {:string, :integer}}
@@ -471,7 +470,6 @@ defmodule Peri.EctoTest do
       refute invalid_changeset.valid?
     end
 
-    @tag :skip
     test "validates either type with single nested field map" do
       schema = %{
         user_data: {:either, {:string, %{name: :string}}}
@@ -494,7 +492,6 @@ defmodule Peri.EctoTest do
       refute invalid_changeset.valid?
     end
 
-    @tag :skip
     test "validates either type with nested map" do
       schema = %{
         user_data: {:either, {:string, %{name: :string, age: :integer}}}
@@ -543,7 +540,6 @@ defmodule Peri.EctoTest do
       refute invalid_changeset.valid?
     end
 
-    @tag :skip
     test "validates oneof type with nested map" do
       schema = %{
         user_data: {:oneof, [:string, %{name: :string, age: :integer}, :boolean]}
@@ -608,7 +604,6 @@ defmodule Peri.EctoTest do
              } = errors_on(invalid_changeset)
     end
 
-    @tag :skip
     test "validates conditional fields" do
       schema = %{
         provide_details: {:required, :boolean},
@@ -645,7 +640,6 @@ defmodule Peri.EctoTest do
       refute get_change(valid_without_details_changeset, :details)
     end
 
-    @tag :skip
     test "validates dependent field (field condition)" do
       schema = %{
         password: {:required, :string},
@@ -678,7 +672,6 @@ defmodule Peri.EctoTest do
       assert %{password_confirmation: ["must match password"]} = errors_on(invalid_changeset)
     end
 
-    @tag :skip
     test "validates dependent field (callback)" do
       schema = %{
         provide_email: {:required, :boolean},
