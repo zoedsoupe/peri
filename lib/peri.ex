@@ -80,7 +80,35 @@ defmodule Peri do
   - `{:literal, value}` - Exactly matches the specified value
   - `{:either, {type1, type2}}` - Either type1 or type2
   - `{:oneof, [type1, type2, ...]}` - One of the specified types
+  - `{:cond, condition, true_type, false_type}` - Conditional validation based on callback
+  - `{:dependent, callback}` - Dynamic type based on callback result
   - Nested maps for complex structures
+
+  ## Callback Functions for :cond and :dependent
+
+  Both `:cond` and `:dependent` types support 1-arity and 2-arity callbacks:
+
+  - **1-arity callbacks** receive the root data structure (backward compatible)
+  - **2-arity callbacks** receive `(current, root)` where:
+    - `current` is the data at the current validation context (e.g., list element)
+    - `root` is the entire root data structure
+
+  This is especially useful when validating elements within lists:
+
+  ```elixir
+  defschema :parent, %{
+    items: {:list, %{
+      type: :string,
+      value: {:dependent, fn current, _root ->
+        case current.type do
+          "number" -> {:ok, :integer}
+          "text" -> {:ok, :string}
+          _ -> {:ok, :any}
+        end
+      end}
+    }}
+  }
+  ```
 
   ## Functions
 
@@ -150,10 +178,16 @@ defmodule Peri do
   @type cond_def ::
           {:cond, condition :: (term -> boolean), true_branch :: schema_def,
            else_branch :: schema_def}
+          | {:cond, condition :: (current :: term, root :: term -> boolean),
+             true_branch :: schema_def, else_branch :: schema_def}
   @type dependent_def ::
           {:dependent, field :: atom, validation, type :: schema_def}
           | {:dependent,
              (term ->
+                {:ok, schema_def | nil}
+                | {:error, template :: String.t(), context :: map | keyword})}
+          | {:dependent,
+             (current :: term, root :: term ->
                 {:ok, schema_def | nil}
                 | {:error, template :: String.t(), context :: map | keyword})}
   @type literal :: integer | float | atom | String.t() | boolean
@@ -711,9 +745,7 @@ defmodule Peri do
   end
 
   defp validate_field(val, {:cond, condition, true_type, else_type}, parser) do
-    root = maybe_get_root_data(parser)
-
-    if condition.(root) do
+    if call_callback(condition, parser) do
       validate_field(val, true_type, parser)
     else
       validate_field(val, else_type, parser)
@@ -721,10 +753,8 @@ defmodule Peri do
   end
 
   defp validate_field(val, {:dependent, callback}, parser)
-       when is_function(callback, 1) do
-    root = maybe_get_root_data(parser)
-
-    with {:ok, type} <- callback.(root),
+       when is_function(callback) do
+    with {:ok, type} <- call_callback(callback, parser),
          {:ok, schema} <- validate_schema(type) do
       validate_field(val, schema, parser)
     end
@@ -732,9 +762,19 @@ defmodule Peri do
 
   defp validate_field(val, {:dependent, {mod, fun}}, parser)
        when is_atom(mod) and is_atom(fun) do
-    root = maybe_get_root_data(parser)
+    result =
+      cond do
+        function_exported?(mod, fun, 2) ->
+          current = maybe_get_current_data(parser)
+          root = maybe_get_root_data(parser)
+          apply(mod, fun, [current, root])
 
-    with {:ok, type} <- apply(mod, fun, [root]),
+        function_exported?(mod, fun, 1) ->
+          root = maybe_get_root_data(parser)
+          apply(mod, fun, [root])
+      end
+
+    with {:ok, type} <- result,
          {:ok, schema} <- validate_schema(type) do
       validate_field(val, schema, parser)
     end
@@ -742,6 +782,8 @@ defmodule Peri do
 
   defp validate_field(val, {:dependent, {mod, fun, args}}, parser)
        when is_atom(mod) and is_atom(fun) and is_list(args) do
+    # For MFA with args, we only support the old 1-arity style
+    # since adding current as first arg would be a breaking change
     root = maybe_get_root_data(parser)
 
     with {:ok, type} <- apply(mod, fun, [root | args]),
@@ -887,8 +929,17 @@ defmodule Peri do
   end
 
   defp validate_field(data, {:list, type}, source) when is_list(data) do
-    Enum.reduce_while(data, {:ok, []}, fn el, {:ok, vals} ->
-      case validate_field(el, type, source) do
+    data
+    |> Enum.with_index()
+    |> Enum.reduce_while({:ok, []}, fn {el, index}, {:ok, vals} ->
+      # Create a parser for the list element when source is a Parser
+      element_source =
+        case source do
+          %Peri.Parser{} = parser -> Peri.Parser.for_list_element(el, parser, index)
+          _ -> source
+        end
+
+      case validate_field(el, type, element_source) do
         :ok -> {:cont, {:ok, vals}}
         {:ok, val} -> {:cont, {:ok, [val | vals]}}
         {:error, errors} -> {:halt, {:error, errors}}
@@ -991,6 +1042,29 @@ defmodule Peri do
   # if schema is matches a raw data structure, it will not use the Peri.Parser
   defp maybe_get_root_data(%Peri.Parser{} = p), do: p.root_data
   defp maybe_get_root_data(data), do: data
+
+  defp maybe_get_current_data(%Peri.Parser{} = p), do: p.current_data || p.data
+  defp maybe_get_current_data(data), do: data
+
+  # Helper to call callbacks with appropriate arity
+  defp call_callback(callback, parser) when is_function(callback, 1) do
+    # 1-arity: receives root data for backward compatibility
+    root = maybe_get_root_data(parser)
+    callback.(root)
+  end
+
+  defp call_callback(callback, parser) when is_function(callback, 2) do
+    # 2-arity: receives (current, root)
+    current = maybe_get_current_data(parser)
+    root = maybe_get_root_data(parser)
+    callback.(current, root)
+  end
+
+  defp call_callback(callback, parser) do
+    # Fallback for non-function callbacks (shouldn't happen with proper validation)
+    root = maybe_get_root_data(parser)
+    callback.(root)
+  end
 
   @doc """
   Validates a schema definition to ensure it adheres to the expected structure and types.
@@ -1165,13 +1239,20 @@ defmodule Peri do
        when is_atom(mod) and is_atom(fun) and is_list(args),
        do: :ok
 
-  defp validate_type({:cond, cb, type, else_type}, p) when is_function(cb, 1) do
+  defp validate_type({:cond, cb, type, else_type}, p)
+       when is_function(cb, 1) or is_function(cb, 2) do
     with :ok <- validate_type(type, p) do
       validate_type(else_type, p)
     end
   end
 
-  defp validate_type({:dependent, cb}, _) when is_function(cb, 1), do: :ok
+  defp validate_type({:dependent, cb}, _) when is_function(cb, 1) or is_function(cb, 2), do: :ok
+
+  defp validate_type({:dependent, {mod, fun}}, _) when is_atom(mod) and is_atom(fun), do: :ok
+
+  defp validate_type({:dependent, {mod, fun, args}}, _)
+       when is_atom(mod) and is_atom(fun) and is_list(args),
+       do: :ok
 
   defp validate_type({:dependent, _, cb, type}, p) when is_function(cb, 2) do
     validate_type(type, p)

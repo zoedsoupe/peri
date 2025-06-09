@@ -12,7 +12,7 @@ defmodule Peri.Parser do
   - `:path` - The current path within the data structure being validated.
   """
 
-  defstruct [:data, :errors, :path, :root_data]
+  defstruct [:data, :errors, :path, :root_data, :current_data]
 
   @doc """
   Initializes a new `Peri.Parser` struct with the given data.
@@ -26,7 +26,7 @@ defmodule Peri.Parser do
       %Peri.Parser{data: %{name: "Alice"}, errors: [], path: []}
   """
   def new(data, root_data: root) do
-    %__MODULE__{data: data, root_data: root, errors: [], path: []}
+    %__MODULE__{data: data, root_data: root, current_data: data, errors: [], path: []}
   end
 
   @doc """
@@ -63,5 +63,29 @@ defmodule Peri.Parser do
   """
   def add_error(%__MODULE__{} = state, %Peri.Error{} = err) do
     %{state | errors: [err | state.errors]}
+  end
+
+  @doc """
+  Creates a new parser for a list element, preserving the root data.
+
+  ## Parameters
+  - `element_data` - The data for the current list element.
+  - `parent_parser` - The parent parser containing root data and path information.
+  - `index` - The index of the element in the list.
+
+  ## Examples
+
+      iex> parent = Peri.Parser.new(%{items: [1, 2, 3]}, root_data: %{items: [1, 2, 3]})
+      iex> Peri.Parser.for_list_element(1, parent, 0)
+      %Peri.Parser{data: 1, current_data: 1, root_data: %{items: [1, 2, 3]}, errors: [], path: [0]}
+  """
+  def for_list_element(element_data, %__MODULE__{} = parent_parser, index) do
+    %__MODULE__{
+      data: element_data,
+      current_data: element_data,
+      root_data: parent_parser.root_data || parent_parser.data,
+      errors: [],
+      path: parent_parser.path ++ [index]
+    }
   end
 end

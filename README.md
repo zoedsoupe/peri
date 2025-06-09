@@ -68,7 +68,7 @@ end
 - `{:custom, {mod, fun, args}}` - Validates that the field passes the custom validation function.
 - `{:dependent, field, condition, type}` - Validates the field based on the value of another field. Check the [dependent schema examples](#dependent-schemas) section for more info.
 - `{:dependent, condition}` - Validates the field based on the value of multiple data values. Check the [dependent schema examples](#dependent-schemas) section for more info.
-  - `{:dependent, {mod, fun}}` - Validates the field based on the value of multiple data values but executes `mod.fun/1` in runtime.
+  - `{:dependent, {mod, fun}}` - Validates the field based on the value of multiple data values but executes `mod.fun/1` or `mod.fun/2` in runtime.
 - `{:cond, condition, type, else_type}` - Conditional validation based on a condition function. Check the [conditional schema examples](#conditional-schemas) section for more info.
 
 ## Defining Schemas
@@ -163,6 +163,49 @@ end
 In this example we can read the `info.details` field schema definition as: "if the `provide_details` field is `true` then the `info.details` field should be parsed as the `details` schema, else, it should be parsed as `nil`".
 
 > Notice that the condition callback should return boolean
+
+#### Callback Arities for :cond and :dependent
+
+Both `:cond` and `:dependent` types support 1-arity and 2-arity callbacks:
+
+- **1-arity callbacks** receive the root data structure (backward compatible)
+- **2-arity callbacks** receive `(current, root)` where:
+  - `current` is the data at the current validation context (e.g., list element being validated)
+  - `root` is the entire root data structure
+
+This is especially useful when validating elements within lists:
+
+```elixir
+defmodule ListSchema do
+  import Peri
+
+  defschema(:item, %{
+    type: :string,
+    # 2-arity callback - receives current item, not parent
+    value: {:dependent, fn current, _root ->
+      case current.type do
+        "number" -> {:ok, :integer}
+        "text" -> {:ok, :string}
+        _ -> {:ok, :any}
+      end
+    end}
+  })
+
+  defschema(:parent, %{
+    items: {:list, get_schema(:item)}
+  })
+end
+
+# This will correctly validate each item based on its own type field
+data = %{
+  items: [
+    %{type: "number", value: 42},      # validates as integer
+    %{type: "text", value: "hello"}    # validates as string
+  ]
+}
+ListSchema.parent(data)
+# => {:ok, data}
+```
 
 ### Dependent Schemas
 
