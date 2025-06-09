@@ -38,13 +38,13 @@ end
   - `{:min, min}` - Validates that the string field has at least the `min` length
   - `{:max, max}` - Validates that the string field has at maximum the `max` length
 - `:integer` - Validates that the field is an integer.
-  - `{:eq, val}` - Validates taht the integer field is equal to `val`
-  - `{:neq, val}` - Validates taht the integer field is not equal to `val`
-  - `{:lt, val}` - Validates taht the integer field is lesss than `val`
-  - `{:lte, val}` - Validates taht the integer field is less than or equal to `val`
-  - `{:gt, val}` - Validates taht the integer field is greater than `val`
-  - `{:gte, val}` - Validates taht the integer field is greater than or equal to `val`
-  - `{:range, {min, max}}` - Validates taht the integer field is inside the range of `min` to `max` (inclusive)
+  - `{:eq, val}` - Validates that the integer field is equal to `val`
+  - `{:neq, val}` - Validates that the integer field is not equal to `val`
+  - `{:lt, val}` - Validates that the integer field is less than `val`
+  - `{:lte, val}` - Validates that the integer field is less than or equal to `val`
+  - `{:gt, val}` - Validates that the integer field is greater than `val`
+  - `{:gte, val}` - Validates that the integer field is greater than or equal to `val`
+  - `{:range, {min, max}}` - Validates that the integer field is inside the range of `min` to `max` (inclusive)
 - `:float` - Validates that the field is a float.
 - `:boolean` - Validates that the field is a boolean.
 - `:map` - Validates that the field is a map, doesn't validate underlying definition.
@@ -61,8 +61,8 @@ end
 - `{:literal, value}` - Validates that the field is exactly equal to the specified literal value.
 - `{:tuple, types}` - Validates that the field is a tuple with elements of the specified types.
 - `{type, {:default, default}}` - Provides a default value if the field is missing or `nil`.
-  - `{type, {:default, &some_fun/0}}` - The default values is retrieved from callinf `some_fun/0` if the field is missing.
-  - `{type, {:default, {mod, fun}}}` - The default values is retrieved from callinf `mod.fun/0` if the field is missing.
+  - `{type, {:default, &some_fun/0}}` - The default values is retrieved from calling `some_fun/0` if the field is missing.
+  - `{type, {:default, {mod, fun}}}` - The default values is retrieved from calling `mod.fun/0` if the field is missing.
 - `{type, {:transform, mapper}}` - Transforms the field value using the specified mapper function. It can be a 1 or 2 arity function: when is a single arity the mapper function will only receive the defined field value, while with 2 arity will receive the current defined field value and the whole data as the second argument.
   - `{type, {:transform, {mod, fun}}}` - Transforms the field value using the specified `mod.fun/1` function. Notice that `fun` can be a 2 arity so it can receive the whole data being validated, in case on dependent fields transformations.
   - `{type, {:transform, {mod, fun, args}}}` - Transforms the field value using the specified MFA. Notice that `fun` will be at least a 2 arity one so it can receive the whole data being validated, in case on dependent fields transformations and the maximum arity allowed will be 2 + `length(args)`.
@@ -73,7 +73,7 @@ end
 - `{:custom, {mod, fun, args}}` - Validates that the field passes the custom validation function.
 - `{:dependent, field, condition, type}` - Validates the field based on the value of another field. Check the [dependent schema examples](#dependent-schemas) section for more info.
 - `{:dependent, condition}` - Validates the field based on the value of multiple data values. Check the [dependent schema examples](#dependent-schemas) section for more info.
-  - `{:dependent, {mod, fun}}` - Validates the field based on the value of multiple data values but executes `mod.fun/1` in runtime.
+  - `{:dependent, {mod, fun}}` - Validates the field based on the value of multiple data values but executes `mod.fun/1` or `mod.fun/2` in runtime.
 - `{:cond, condition, type, else_type}` - Conditional validation based on a condition function. Check the [conditional schema examples](#conditional-schemas) section for more info.
 
 ## Defining Schemas
@@ -169,6 +169,49 @@ In this example we can read the `info.details` field schema definition as: "if t
 
 > Notice that the condition callback should return boolean
 
+#### Callback Arities for :cond and :dependent
+
+Both `:cond` and `:dependent` types support 1-arity and 2-arity callbacks:
+
+- **1-arity callbacks** receive the root data structure (backward compatible)
+- **2-arity callbacks** receive `(current, root)` where:
+  - `current` is the data at the current validation context (e.g., list element being validated)
+  - `root` is the entire root data structure
+
+This is especially useful when validating elements within lists:
+
+```elixir
+defmodule ListSchema do
+  import Peri
+
+  defschema(:item, %{
+    type: :string,
+    # 2-arity callback - receives current item, not parent
+    value: {:dependent, fn current, _root ->
+      case current.type do
+        "number" -> {:ok, :integer}
+        "text" -> {:ok, :string}
+        _ -> {:ok, :any}
+      end
+    end}
+  })
+
+  defschema(:parent, %{
+    items: {:list, get_schema(:item)}
+  })
+end
+
+# This will correctly validate each item based on its own type field
+data = %{
+  items: [
+    %{type: "number", value: 42},      # validates as integer
+    %{type: "text", value: "hello"}    # validates as string
+  ]
+}
+ListSchema.parent(data)
+# => {:ok, data}
+```
+
 ### Dependent Schemas
 
 You can parse fields that depend on onther fields, let's check some examples
@@ -186,7 +229,7 @@ defmodule UserSchemas do
   }
 
   # if confirmation has the same value of password, the validation is ok
-  defp validate_confirmation(%{password: password}, password), do: :ok
+  defp validate_confirmation(password, password), do: :ok
 
   defp validate_confirmation(_confirmation, _password) do
     {:error, "confirmation should be equal to password", []}
@@ -234,7 +277,7 @@ defmodule TypeDependentSchema do
 end
 ```
 
-In this example we have different schemas parsing rules based on the structure and values of the given data. Basically this type deifinition could be read as:
+In this example we have different schemas parsing rules based on the structure and values of the given data. Basically this type definition could be read as:
 
 - if the field `info.provide_email` and `info.provide_country` is both `true`, then the `info.details` field is required to provide both `email` and `country` fields.
 - if the field `info.provide_email` is `true` but `info.provide_country` is `false`, so `info.details` should only contains the `info.details.email` field.
