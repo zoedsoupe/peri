@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.3] - 2025-06-10
+
+### Added
+
+- Support for 2-arity callbacks in `:cond` and `:dependent` types (#28)
+  - 1-arity callbacks receive the root data structure (backward compatible)
+  - 2-arity callbacks receive `(current, root)` where:
+    - `current` is the data at the current validation context (e.g., list element being validated)
+    - `root` is the entire root data structure
+  - This is especially useful when validating elements within lists, allowing callbacks to access the current element's data instead of the parent structure
+  - MFA (Module, Function, Arguments) style callbacks also support 2-arity functions
+
 ## [0.3.1] - 2025-03-14
 
 ### Fixed
@@ -120,6 +132,7 @@ All notable changes to this project will be documented in this file.
 ### Added
 - Initial version of Peri with basic schema validation functionalities. [7044ea7]
 
+[0.3.3]: https://github.com/zoedsoupe/peri/compare/v0.3.1...v0.3.3
 [0.3.1]: https://github.com/zoedsoupe/peri/compare/v0.2.11...v0.3.1
 [0.2.11]: https://github.com/zoedsoupe/peri/compare/v0.2.10...v0.2.11
 [0.2.10]: https://github.com/zoedsoupe/peri/compare/v0.2.8...v0.2.10
