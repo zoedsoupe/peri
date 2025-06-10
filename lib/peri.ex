@@ -1469,23 +1469,14 @@ defmodule Peri do
     defp process_special_fields(changeset, special_keys, attrs, definition) do
       Enum.reduce(special_keys, changeset, fn key, acc ->
         value = get_nested_value(attrs, key)
-
-        if is_nil(value) do
-          acc
-        else
-          # For fields with :any type, we need to cast them properly
-          # The validation will happen in the validation phase
-          case definition[key][:type] do
-            :any ->
-              # For :any type, just put the value as-is
-              # The validation functions will handle it
-              Ecto.Changeset.put_change(acc, key, value)
-
-            _ ->
-              Ecto.Changeset.put_change(acc, key, value)
-          end
-        end
+        process_special_field(acc, key, value, definition)
       end)
+    end
+
+    defp process_special_field(changeset, _key, nil, _definition), do: changeset
+
+    defp process_special_field(changeset, key, value, _definition) do
+      Ecto.Changeset.put_change(changeset, key, value)
     end
 
     defp cast_nested_result(changeset, key, nested) do

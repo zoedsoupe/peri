@@ -152,26 +152,13 @@ if Code.ensure_loaded?(Ecto) do
     end
 
     def parse_peri({key, {:map, value_type}}, ecto) when is_atom(value_type) do
-      # For maps with only value type specified, use :map type
       ecto = put_in(ecto[key][:type], :map)
+      put_validation(ecto, key, map_value_validation(key, value_type))
+    end
 
-      put_validation(ecto, key, fn changeset ->
-        validate_change(changeset, key, fn ^key, val when is_map(val) ->
-          errors =
-            Enum.flat_map(val, fn {_k, v} ->
-              case validate_map_value(v, value_type) do
-                :ok -> []
-                {:error, _msg} -> [{key, "is invalid"}]
-              end
-            end)
-
-          if errors == [] do
-            []
-          else
-            [{key, "is invalid"}]
-          end
-        end)
-      end)
+    def parse_peri({key, {:map, key_type, value_type}}, ecto) do
+      ecto = put_in(ecto[key][:type], :map)
+      put_validation(ecto, key, map_key_value_validation(key, key_type, value_type))
     end
 
     def parse_peri({key, {:tuple, types}}, ecto) when is_list(types) do
@@ -374,65 +361,35 @@ if Code.ensure_loaded?(Ecto) do
     end
 
     def parse_peri({key, {:literal, literal}}, ecto) do
-      # Store the literal value for validation
       ecto = put_in(ecto[key][:literal], literal)
-
-      # Determine the appropriate Ecto type based on the literal value
-      type =
-        case literal do
-          s when is_binary(s) -> :string
-          i when is_integer(i) -> :integer
-          f when is_float(f) -> :float
-          b when is_boolean(b) -> :boolean
-          a when is_atom(a) -> Type.from(:atom)
-          _ -> :string
-        end
-
-      ecto = put_in(ecto[key][:type], type)
-
-      # Add validation for the literal value
-      put_validation(ecto, key, fn changeset ->
-        validate_change(changeset, key, fn ^key, val ->
-          if val === literal do
-            []
-          else
-            [{key, "expected literal value #{inspect(literal)} but got #{inspect(val)}"}]
-          end
-        end)
-      end)
-    end
-
-    def parse_peri({key, {:map, key_type, value_type}}, ecto) do
-      # For now, just use :map type and add custom validation
-      ecto = put_in(ecto[key][:type], :map)
-
-      put_validation(ecto, key, fn changeset ->
-        validate_change(changeset, key, fn ^key, val when is_map(val) ->
-          errors =
-            Enum.flat_map(val, fn {k, v} ->
-              key_errors =
-                case validate_map_key(k, key_type) do
-                  :ok -> []
-                  {:error, msg} -> [{key, "invalid key type: #{msg}"}]
-                end
-
-              value_errors =
-                case validate_map_value(v, value_type) do
-                  :ok -> []
-                  {:error, msg} -> [{key, "invalid value type: #{msg}"}]
-                end
-
-              key_errors ++ value_errors
-            end)
-
-          errors
-        end)
-      end)
+      ecto = put_in(ecto[key][:type], literal_type(literal))
+      put_validation(ecto, key, literal_validation(key, literal))
     end
 
     def parse_peri({key, type}, _ecto) do
       type = inspect(type, pretty: true)
       raise Peri.Error, message: "Ecto doesn't support `#{type}` type for #{key}"
+    end
+
+    defp literal_type(s) when is_binary(s), do: :string
+    defp literal_type(i) when is_integer(i), do: :integer
+    defp literal_type(f) when is_float(f), do: :float
+    defp literal_type(b) when is_boolean(b), do: :boolean
+    defp literal_type(a) when is_atom(a), do: Type.from(:atom)
+    defp literal_type(_), do: :string
+
+    defp literal_validation(key, literal) do
+      fn changeset ->
+        validate_change(changeset, key, fn ^key, val ->
+          validate_literal_value(val, literal, key)
+        end)
+      end
+    end
+
+    defp validate_literal_value(val, literal, _key) when val === literal, do: []
+
+    defp validate_literal_value(val, literal, key) do
+      [{key, "expected literal value #{inspect(literal)} but got #{inspect(val)}"}]
     end
 
     defp validate_map_key(key, :atom) when is_atom(key), do: :ok
@@ -446,6 +403,57 @@ if Code.ensure_loaded?(Ecto) do
     defp validate_map_value(value, :boolean) when is_boolean(value), do: :ok
     defp validate_map_value(value, :atom) when is_atom(value), do: :ok
     defp validate_map_value(_value, type), do: {:error, "expected #{type}"}
+
+    defp map_value_validation(key, value_type) do
+      fn changeset ->
+        validate_change(changeset, key, fn ^key, val when is_map(val) ->
+          validate_map_values(val, key, value_type)
+        end)
+      end
+    end
+
+    defp validate_map_values(map, key, value_type) do
+      has_errors =
+        Enum.any?(map, fn {_k, v} ->
+          match?({:error, _}, validate_map_value(v, value_type))
+        end)
+
+      if has_errors, do: [{key, "is invalid"}], else: []
+    end
+
+    defp map_key_value_validation(field_key, key_type, value_type) do
+      fn changeset ->
+        validate_change(changeset, field_key, fn ^field_key, val when is_map(val) ->
+          collect_map_errors(val, field_key, key_type, value_type)
+        end)
+      end
+    end
+
+    defp collect_map_errors(map, field_key, key_type, value_type) do
+      Enum.flat_map(map, fn {k, v} ->
+        collect_entry_errors(k, v, field_key, key_type, value_type)
+      end)
+    end
+
+    defp collect_entry_errors(k, v, field_key, key_type, value_type) do
+      key_errors = validate_map_key_errors(k, field_key, key_type)
+      value_errors = validate_map_value_errors(v, field_key, value_type)
+      key_errors ++ value_errors
+    end
+
+    defp validate_map_key_errors(k, field_key, key_type) do
+      case validate_map_key(k, key_type) do
+        :ok -> []
+        {:error, msg} -> [{field_key, "invalid key type: #{msg}"}]
+      end
+    end
+
+    defp validate_map_value_errors(v, field_key, value_type) do
+      case validate_map_value(v, value_type) do
+        :ok -> []
+        {:error, msg} -> [{field_key, "invalid value type: #{msg}"}]
+      end
+    end
 
     defp custom_validation(key, callback) do
       fn changeset ->
