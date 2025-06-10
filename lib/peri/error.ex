@@ -60,6 +60,14 @@ defmodule Peri.Error do
           errors: list(t()) | nil
         }
 
+  if Code.ensure_loaded?(Jason) and not Code.ensure_loaded?(JSON) do
+    @derive {Jason.Encoder, except: [:__exception__]}
+  end
+
+  if Code.ensure_loaded?(JSON) do
+    @derive {JSON.Encoder, except: [:__exception__]}
+  end
+
   @derive {Inspect, only: ~w(path key content message errors)a}
   defstruct [:path, :key, :content, :message, :errors, __exception__: true]
 
@@ -163,12 +171,12 @@ defmodule Peri.Error do
   end
 
   def update_error_paths(%Peri.Error{path: path, errors: nil} = error, new_path) do
-    %Peri.Error{error | path: new_path ++ path}
+    %{error | path: new_path ++ path}
   end
 
   def update_error_paths(%Peri.Error{path: path, errors: errors} = error, new_path) do
     updated_errors = Enum.map(errors, &update_error_paths(&1, new_path))
-    %Peri.Error{error | path: new_path ++ path, errors: updated_errors}
+    %{error | path: new_path ++ path, errors: updated_errors}
   end
 
   def format_error_message(reason, context) when is_list(context) and is_binary(reason) do
@@ -258,35 +266,5 @@ defmodule Peri.Error do
 
   defp transform_errors(errors) when is_list(errors) do
     Enum.map(errors, &error_to_map/1)
-  end
-
-  if Code.ensure_loaded?(:json) do
-    def error_to_json(%Peri.Error{} = err) do
-      err
-      |> Peri.Error.error_to_map()
-      |> transform_nil()
-      |> :json.encode()
-    end
-
-    defp transform_nil(err) do
-      for {k, v} <- err do
-        cond do
-          is_nil(v) -> {k, :null}
-          is_map(v) -> {k, transform_nil(v)}
-          true -> {k, v}
-        end
-      end
-      |> Map.new()
-    end
-  end
-
-  if Code.ensure_loaded?(Jason) do
-    defimpl Jason.Encoder, for: __MODULE__ do
-      def encode(%Peri.Error{} = err, opts) do
-        err
-        |> Peri.Error.error_to_map()
-        |> Jason.Encode.map(opts)
-      end
-    end
   end
 end
