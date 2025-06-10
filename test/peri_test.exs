@@ -406,8 +406,9 @@ defmodule PeriTest do
     test "validates nil with {:required, :map} type" do
       schema = %{data: {:required, :map}}
       data = %{data: nil}
-      assert {:error, [%Peri.Error{path: [:data], message: "is required, expected type of :map"}]} = 
-        Peri.validate(schema, data)
+
+      assert {:error, [%Peri.Error{path: [:data], message: "is required, expected type of :map"}]} =
+               Peri.validate(schema, data)
     end
 
     test "validates empty map returns consistent result" do
@@ -416,7 +417,7 @@ defmodule PeriTest do
       data = %{data: %{}}
       result1 = Peri.validate(schema1, data)
       assert result1 == {:ok, data}
-      
+
       # Direct field validation should also be consistent
       assert Peri.validate({:map, :string}, %{}) == {:ok, %{}}
     end

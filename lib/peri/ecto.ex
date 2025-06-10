@@ -154,16 +154,17 @@ if Code.ensure_loaded?(Ecto) do
     def parse_peri({key, {:map, value_type}}, ecto) when is_atom(value_type) do
       # For maps with only value type specified, use :map type
       ecto = put_in(ecto[key][:type], :map)
-      
+
       put_validation(ecto, key, fn changeset ->
         validate_change(changeset, key, fn ^key, val when is_map(val) ->
-          errors = Enum.flat_map(val, fn {_k, v} ->
-            case validate_map_value(v, value_type) do
-              :ok -> []
-              {:error, _msg} -> [{key, "is invalid"}]
-            end
-          end)
-          
+          errors =
+            Enum.flat_map(val, fn {_k, v} ->
+              case validate_map_value(v, value_type) do
+                :ok -> []
+                {:error, _msg} -> [{key, "is invalid"}]
+              end
+            end)
+
           if errors == [] do
             []
           else
@@ -236,15 +237,20 @@ if Code.ensure_loaded?(Ecto) do
           ecto
         end
 
-      # Use :any type to allow all values through casting
-      ecto = put_in(ecto[key][:type], :any)
+      # If we have nested schemas, we need custom validation because Either type
+      # doesn't handle nested schemas well
+      if map_size(nested_schemas) > 0 do
+        ecto = put_in(ecto[key][:type], :any)
+        ecto = put_in(ecto[key][:original_fst], fst)
+        ecto = put_in(ecto[key][:original_snd], snd)
 
-      ecto = put_in(ecto[key][:original_fst], fst)
-      ecto = put_in(ecto[key][:original_snd], snd)
-
-      put_validation(ecto, key, fn changeset ->
-        validate_either_type(changeset, key, fst, snd, ecto)
-      end)
+        put_validation(ecto, key, fn changeset ->
+          validate_either_with_nested(changeset, key, fst, snd, nested_schemas)
+        end)
+      else
+        # Use the Either type for simple types
+        put_in(ecto[key][:type], Type.from({:either, {fst, snd}}))
+      end
     end
 
     def parse_peri({key, {:oneof, types}}, ecto) when is_list(types) do
@@ -267,6 +273,7 @@ if Code.ensure_loaded?(Ecto) do
           validate_oneof_nested(changeset, key, map_types, other_types, types)
         end)
       else
+        # For oneof without maps, use the OneOf type which handles validation
         put_in(ecto[key][:type], Type.from({:oneof, types}))
       end
     end
@@ -286,7 +293,9 @@ if Code.ensure_loaded?(Ecto) do
           |> put_in([key, :type], :any)
           |> put_in([key, :conditional], true)
         else
-          put_in(ecto[key][:type], true_branch[:type] || :string)
+          ecto
+          |> put_in([key, :type], true_branch[:type] || :string)
+          |> put_in([key, :conditional], true)
         end
 
       put_validation(ecto, key, fn changeset ->
@@ -367,19 +376,20 @@ if Code.ensure_loaded?(Ecto) do
     def parse_peri({key, {:literal, literal}}, ecto) do
       # Store the literal value for validation
       ecto = put_in(ecto[key][:literal], literal)
-      
+
       # Determine the appropriate Ecto type based on the literal value
-      type = case literal do
-        s when is_binary(s) -> :string
-        i when is_integer(i) -> :integer
-        f when is_float(f) -> :float
-        b when is_boolean(b) -> :boolean
-        a when is_atom(a) -> Type.from(:atom)
-        _ -> :string
-      end
-      
+      type =
+        case literal do
+          s when is_binary(s) -> :string
+          i when is_integer(i) -> :integer
+          f when is_float(f) -> :float
+          b when is_boolean(b) -> :boolean
+          a when is_atom(a) -> Type.from(:atom)
+          _ -> :string
+        end
+
       ecto = put_in(ecto[key][:type], type)
-      
+
       # Add validation for the literal value
       put_validation(ecto, key, fn changeset ->
         validate_change(changeset, key, fn ^key, val ->
@@ -395,23 +405,26 @@ if Code.ensure_loaded?(Ecto) do
     def parse_peri({key, {:map, key_type, value_type}}, ecto) do
       # For now, just use :map type and add custom validation
       ecto = put_in(ecto[key][:type], :map)
-      
+
       put_validation(ecto, key, fn changeset ->
         validate_change(changeset, key, fn ^key, val when is_map(val) ->
-          errors = Enum.flat_map(val, fn {k, v} ->
-            key_errors = case validate_map_key(k, key_type) do
-              :ok -> []
-              {:error, msg} -> [{key, "invalid key type: #{msg}"}]
-            end
-            
-            value_errors = case validate_map_value(v, value_type) do
-              :ok -> []
-              {:error, msg} -> [{key, "invalid value type: #{msg}"}]
-            end
-            
-            key_errors ++ value_errors
-          end)
-          
+          errors =
+            Enum.flat_map(val, fn {k, v} ->
+              key_errors =
+                case validate_map_key(k, key_type) do
+                  :ok -> []
+                  {:error, msg} -> [{key, "invalid key type: #{msg}"}]
+                end
+
+              value_errors =
+                case validate_map_value(v, value_type) do
+                  :ok -> []
+                  {:error, msg} -> [{key, "invalid value type: #{msg}"}]
+                end
+
+              key_errors ++ value_errors
+            end)
+
           errors
         end)
       end)
@@ -454,15 +467,15 @@ if Code.ensure_loaded?(Ecto) do
       add_error(changeset, key, message, context)
     end
 
-    # Helper function to validate either type
-    defp validate_either_type(changeset, key, fst, snd, _ecto) do
+    # Helper function to validate either type with nested schemas
+    defp validate_either_with_nested(changeset, key, fst, snd, _nested_schemas) do
       value = get_field(changeset, key)
 
       if is_nil(value) do
         changeset
       else
-        fst_valid = validate_either_branch(value, fst)
-        snd_valid = validate_either_branch(value, snd)
+        fst_valid = validate_either_nested_branch(value, fst)
+        snd_valid = validate_either_nested_branch(value, snd)
 
         if fst_valid or snd_valid do
           changeset
@@ -472,12 +485,15 @@ if Code.ensure_loaded?(Ecto) do
       end
     end
 
-    defp validate_either_branch(value, schema) when is_map(schema) do
+    defp validate_either_nested_branch(value, schema) when is_map(schema) do
       match?({:ok, _}, Peri.validate(schema, value))
     end
 
-    defp validate_either_branch(value, type) do
-      match?({:ok, _}, Ecto.Type.cast(Peri.Ecto.Type.from(type), value))
+    defp validate_either_nested_branch(value, type) do
+      case Ecto.Type.cast(Peri.Ecto.Type.from(type), value) do
+        {:ok, _} -> true
+        _ -> false
+      end
     end
 
     defp validate_conditional_field(

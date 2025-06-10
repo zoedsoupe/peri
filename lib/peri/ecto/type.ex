@@ -32,6 +32,7 @@ if Code.ensure_loaded?(Ecto) do
       end
     end
 
+    def from(type) when is_map(type), do: :map
     def from(type), do: type
   end
 

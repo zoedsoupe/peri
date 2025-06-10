@@ -266,7 +266,7 @@ defmodule Peri.EctoTest do
 
       assert valid_changeset.valid?
       refute invalid_changeset.valid?
-      
+
       # Check for validation errors
       errors = errors_on(invalid_changeset)
       assert is_list(errors[:atom_to_string])
@@ -348,10 +348,10 @@ defmodule Peri.EctoTest do
       refute invalid_changeset.valid?
 
       assert %{
-        status: ["expected literal value \"active\" but got \"inactive\""],
-        type: ["expected literal value :admin but got :user"],
-        count: ["expected literal value 42 but got 43"]
-      } = errors_on(invalid_changeset)
+               status: ["expected literal value \"active\" but got \"inactive\""],
+               type: ["expected literal value :admin but got :user"],
+               count: ["expected literal value 42 but got 43"]
+             } = errors_on(invalid_changeset)
     end
   end
 
@@ -360,7 +360,9 @@ defmodule Peri.EctoTest do
       defmodule DefaultHelpers do
         def current_timestamp, do: DateTime.utc_now()
         def default_name, do: "Anonymous"
-        def create_id(prefix, length), do: "#{prefix}-#{:crypto.strong_rand_bytes(length) |> Base.encode16()}"
+
+        def create_id(prefix, length),
+          do: "#{prefix}-#{:crypto.strong_rand_bytes(length) |> Base.encode16()}"
       end
 
       schema = %{
@@ -411,7 +413,7 @@ defmodule Peri.EctoTest do
       assert changeset.valid?
       user = get_change(changeset, :user)
       assert get_field(user, :name) == "Guest"
-      
+
       # For nested defaults, the behavior is that defaults apply at their level
       # The settings field may not have defaults if no attrs were provided for it
       # This is a known limitation of nested defaults in schemaless changesets
@@ -615,7 +617,7 @@ defmodule Peri.EctoTest do
       changeset = Peri.to_changeset!(schema, attrs)
       assert is_changeset(changeset)
       assert changeset.valid?
-      
+
       user = get_change(changeset, :user)
       assert get_field(user, :name) == "JOHN"
       profile = get_change(user, :profile)
@@ -640,9 +642,9 @@ defmodule Peri.EctoTest do
       refute invalid_changeset.valid?
 
       assert %{
-        exact_int: ["must be equal to 42"],
-        exact_float: ["must be equal to 3.14"]
-      } = errors_on(invalid_changeset)
+               exact_int: ["must be equal to 42"],
+               exact_float: ["must be equal to 3.14"]
+             } = errors_on(invalid_changeset)
     end
 
     test "validates neq (not equal to) constraint" do
@@ -661,9 +663,9 @@ defmodule Peri.EctoTest do
       refute invalid_changeset.valid?
 
       assert %{
-        not_zero: ["must be not equal to 0"],
-        not_pi: ["must be not equal to 3.14"]
-      } = errors_on(invalid_changeset)
+               not_zero: ["must be not equal to 0"],
+               not_pi: ["must be not equal to 3.14"]
+             } = errors_on(invalid_changeset)
     end
 
     test "validates lt (less than) constraint" do
@@ -682,9 +684,9 @@ defmodule Peri.EctoTest do
       refute invalid_changeset.valid?
 
       assert %{
-        small_int: ["must be less than 100"],
-        small_float: ["must be less than 1.0"]
-      } = errors_on(invalid_changeset)
+               small_int: ["must be less than 100"],
+               small_float: ["must be less than 1.0"]
+             } = errors_on(invalid_changeset)
     end
 
     test "validates gt (greater than) constraint" do
@@ -703,9 +705,9 @@ defmodule Peri.EctoTest do
       refute invalid_changeset.valid?
 
       assert %{
-        positive_int: ["must be greater than 0"],
-        big_float: ["must be greater than 100.0"]
-      } = errors_on(invalid_changeset)
+               positive_int: ["must be greater than 0"],
+               big_float: ["must be greater than 100.0"]
+             } = errors_on(invalid_changeset)
     end
 
     test "validates lte (less than or equal) constraint" do
@@ -724,9 +726,9 @@ defmodule Peri.EctoTest do
       refute invalid_changeset.valid?
 
       assert %{
-        max_int: ["must be less than or equal to 100"],
-        max_float: ["must be less than or equal to 1.0"]
-      } = errors_on(invalid_changeset)
+               max_int: ["must be less than or equal to 100"],
+               max_float: ["must be less than or equal to 1.0"]
+             } = errors_on(invalid_changeset)
     end
   end
 
@@ -1179,7 +1181,9 @@ defmodule Peri.EctoTest do
       # This actually matches the first type schema, so it should be valid
       mixed_attrs = %{data: %{name: "John", id: 123}}
       # This doesn't match either schema - wrong types for all fields
-      invalid_attrs = %{data: %{name: 123, type: "not_an_atom", id: "not_int", active: "not_bool"}}
+      invalid_attrs = %{
+        data: %{name: 123, type: "not_an_atom", id: "not_int", active: "not_bool"}
+      }
 
       valid_first_changeset = Peri.to_changeset!(schema, valid_first_type)
       valid_second_changeset = Peri.to_changeset!(schema, valid_second_type)
@@ -1234,11 +1238,13 @@ defmodule Peri.EctoTest do
   describe "oneof type edge cases" do
     test "validates oneof with multiple map types" do
       schema = %{
-        config: {:oneof, [
-          %{type: :string, host: :string, port: :integer},
-          %{type: :string, path: :string},
-          %{type: :string, size: :integer}
-        ]}
+        config:
+          {:oneof,
+           [
+             %{type: :string, host: :string, port: :integer},
+             %{type: :string, path: :string},
+             %{type: :string, size: :integer}
+           ]}
       }
 
       valid_db = %{config: %{type: "database", host: "localhost", port: 5432}}
@@ -1295,8 +1301,9 @@ defmodule Peri.EctoTest do
 
       assert valid_changeset.valid?
       refute invalid_changeset.valid?
-      
-      assert %{environment: ["should be equal to literal production"]} = errors_on(invalid_changeset)
+
+      assert %{environment: ["should be equal to literal production"]} =
+               errors_on(invalid_changeset)
     end
   end
 
@@ -1305,13 +1312,17 @@ defmodule Peri.EctoTest do
       schema = %{
         company: %{
           name: {:required, :string},
-          departments: {:list, %{
-            name: {:required, :string},
-            employees: {:list, %{
-              name: {:required, :string},
-              skills: {:list, :string}
-            }}
-          }}
+          departments:
+            {:list,
+             %{
+               name: {:required, :string},
+               employees:
+                 {:list,
+                  %{
+                    name: {:required, :string},
+                    skills: {:list, :string}
+                  }}
+             }}
         }
       }
 
@@ -1337,8 +1348,10 @@ defmodule Peri.EctoTest do
             %{
               name: "Engineering",
               employees: [
-                %{name: "Alice", skills: ["Elixir", 123]},  # Invalid skill type
-                %{skills: ["JavaScript"]}  # Missing name
+                # Invalid skill type
+                %{name: "Alice", skills: ["Elixir", 123]},
+                # Missing name
+                %{skills: ["JavaScript"]}
               ]
             }
           ]
@@ -1388,12 +1401,6 @@ defmodule Peri.EctoTest do
       empty_changeset = Peri.to_changeset!(schema, empty_map_attrs)
       missing_changeset = Peri.to_changeset!(schema, missing_attrs)
 
-      # Debug the validation
-      if not valid_changeset.valid? do
-        IO.inspect(valid_changeset, label: "Valid changeset")
-        IO.inspect(errors_on(valid_changeset), label: "Errors")
-      end
-
       assert valid_changeset.valid?
       # Empty map for :map type is valid in Ecto
       # For nested schemas, the theme field is optional so empty map is valid
@@ -1411,8 +1418,10 @@ defmodule Peri.EctoTest do
       }
 
       valid_attrs = %{mixed: {"hello", 42, true, :ok}}
-      invalid_size = %{mixed: {"hello", 42, true}}  # Wrong size
-      invalid_type = %{mixed: {"hello", "42", true, :ok}}  # Wrong type
+      # Wrong size
+      invalid_size = %{mixed: {"hello", 42, true}}
+      # Wrong type
+      invalid_type = %{mixed: {"hello", "42", true, :ok}}
 
       valid_changeset = Peri.to_changeset!(schema, valid_attrs)
       invalid_size_changeset = Peri.to_changeset!(schema, invalid_size)
@@ -1429,14 +1438,15 @@ defmodule Peri.EctoTest do
     test "validates conditional with different branch types" do
       schema = %{
         age: {:required, :integer},
-        guardian: {:cond, fn %{age: age} -> age < 18 end, 
-                   {:required, %{name: :string, phone: :string}}, 
-                   nil}
+        guardian:
+          {:cond, fn %{age: age} -> age < 18 end, {:required, %{name: :string, phone: :string}},
+           nil}
       }
 
       minor = %{age: 16, guardian: %{name: "Parent", phone: "123-456"}}
       adult = %{age: 25}
-      invalid_minor = %{age: 16}  # Missing required guardian
+      # Missing required guardian
+      invalid_minor = %{age: 16}
 
       minor_changeset = Peri.to_changeset!(schema, minor)
       adult_changeset = Peri.to_changeset!(schema, adult)

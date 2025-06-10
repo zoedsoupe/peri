@@ -125,37 +125,37 @@ defmodule Peri.Ecto.TypeTest do
   describe "Peri.Ecto.Type.Tuple" do
     test "casts valid tuples" do
       {:parameterized, {_, params}} = Type.from({:tuple, [:string, :integer]})
-      
+
       assert {:ok, {"hello", 42}} = Type.Tuple.cast({"hello", 42}, params)
     end
 
     test "rejects tuples with wrong size" do
       {:parameterized, {_, params}} = Type.from({:tuple, [:string, :integer]})
-      
+
       assert :error = Type.Tuple.cast({"hello"}, params)
       assert :error = Type.Tuple.cast({"hello", 42, "extra"}, params)
     end
 
     test "rejects tuples with wrong types" do
       {:parameterized, {_, params}} = Type.from({:tuple, [:string, :integer]})
-      
+
       assert :error = Type.Tuple.cast({123, "string"}, params)
       assert :error = Type.Tuple.cast({"hello", "not_an_integer"}, params)
     end
 
     test "casts tuples with nested maps" do
       {:parameterized, {_, params}} = Type.from({:tuple, [:string, %{name: :string}]})
-      
+
       assert {:ok, {"id", %{name: "John"}}} = Type.Tuple.cast({"id", %{name: "John"}}, params)
     end
 
     test "dumps tuples to maps and loads them back" do
       {:parameterized, {_, params}} = Type.from({:tuple, [:string, :integer]})
       tuple = {"hello", 42}
-      
+
       assert {:ok, dumped} = Type.Tuple.dump(tuple, nil, params)
       assert dumped == %{0 => "hello", 1 => 42}
-      
+
       assert {:ok, loaded} = Type.Tuple.load(dumped, nil, params)
       assert loaded == tuple
     end
@@ -170,43 +170,43 @@ defmodule Peri.Ecto.TypeTest do
   describe "Peri.Ecto.Type.Either" do
     test "casts values matching first type" do
       {:parameterized, {_, params}} = Type.from({:either, {:string, :integer}})
-      
+
       assert {:ok, "hello"} = Type.Either.cast("hello", params)
     end
 
     test "casts values matching second type" do
       {:parameterized, {_, params}} = Type.from({:either, {:string, :integer}})
-      
+
       assert {:ok, 42} = Type.Either.cast(42, params)
     end
 
     test "rejects values matching neither type" do
       {:parameterized, {_, params}} = Type.from({:either, {:string, :integer}})
-      
+
       assert :error = Type.Either.cast(:atom, params)
       assert :error = Type.Either.cast(%{}, params)
     end
 
     test "casts either with map as first type" do
       {:parameterized, {_, params}} = Type.from({:either, {%{name: :string}, :integer}})
-      
+
       assert {:ok, %{name: "John"}} = Type.Either.cast(%{name: "John"}, params)
       assert {:ok, 42} = Type.Either.cast(42, params)
     end
 
     test "casts either with map as second type" do
       {:parameterized, {_, params}} = Type.from({:either, {:string, %{id: :integer}}})
-      
+
       assert {:ok, "text"} = Type.Either.cast("text", params)
       assert {:ok, %{id: 123}} = Type.Either.cast(%{id: 123}, params)
     end
 
     test "dumps and loads values" do
       {:parameterized, {_, params}} = Type.from({:either, {:string, :integer}})
-      
+
       assert {:ok, "hello"} = Type.Either.dump("hello", nil, params)
       assert {:ok, 42} = Type.Either.dump(42, nil, params)
-      
+
       assert {:ok, "hello"} = Type.Either.load("hello", nil, params)
       assert {:ok, 42} = Type.Either.load(42, nil, params)
     end
@@ -221,7 +221,7 @@ defmodule Peri.Ecto.TypeTest do
   describe "Peri.Ecto.Type.OneOf" do
     test "casts values matching any of the types" do
       {:parameterized, {_, params}} = Type.from({:oneof, [:string, :integer, :boolean]})
-      
+
       assert {:ok, "hello"} = Type.OneOf.cast("hello", params)
       assert {:ok, 42} = Type.OneOf.cast(42, params)
       assert {:ok, true} = Type.OneOf.cast(true, params)
@@ -229,7 +229,7 @@ defmodule Peri.Ecto.TypeTest do
 
     test "rejects values matching none of the types" do
       {:parameterized, {_, params}} = Type.from({:oneof, [:string, :integer, :boolean]})
-      
+
       assert :error = Type.OneOf.cast(:atom, params)
       assert :error = Type.OneOf.cast(%{}, params)
       assert :error = Type.OneOf.cast([1, 2, 3], params)
@@ -237,16 +237,16 @@ defmodule Peri.Ecto.TypeTest do
 
     test "casts oneof with map types" do
       {:parameterized, {_, params}} = Type.from({:oneof, [:string, %{id: :integer}]})
-      
+
       assert {:ok, "text"} = Type.OneOf.cast("text", params)
       assert {:ok, %{id: 123}} = Type.OneOf.cast(%{id: 123}, params)
     end
 
     test "dumps and loads values" do
       {:parameterized, {_, params}} = Type.from({:oneof, [:string, :integer, :boolean]})
-      
+
       values = ["hello", 42, true]
-      
+
       for value <- values do
         assert {:ok, ^value} = Type.OneOf.dump(value, nil, params)
         assert {:ok, ^value} = Type.OneOf.load(value, nil, params)

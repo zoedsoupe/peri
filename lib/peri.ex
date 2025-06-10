@@ -1345,10 +1345,10 @@ defmodule Peri do
 
       {process_defaults(definition), process_types(definition)}
       |> Ecto.Changeset.cast(attrs, Map.keys(definition) -- (nested_keys ++ special_keys))
+      |> process_special_fields(special_keys, attrs, definition)
       |> process_validations(definition)
       |> process_required(definition)
       |> process_nested(nested, attrs)
-      |> process_special_fields(special_keys, attrs, definition)
     end
 
     defp process_defaults(definition) do
@@ -1377,10 +1377,11 @@ defmodule Peri do
       # Get required fields, but exclude nested fields and conditional fields that will be processed separately
       required =
         definition
-        |> Enum.filter(fn 
-          {_key, %{required: true, nested: nil, conditional: true}} -> false
-          {_key, %{required: true, nested: nil}} -> true
-          _ -> false
+        |> Enum.filter(fn
+          {_key, def} ->
+            def[:required] == true &&
+              is_nil(def[:nested]) &&
+              not Map.get(def, :conditional, false)
         end)
         |> Enum.map(fn {key, _} -> key end)
 
@@ -1465,14 +1466,24 @@ defmodule Peri do
 
     defp validate_composite_nested(changeset, _key, _value, _schemas), do: changeset
 
-    defp process_special_fields(changeset, special_keys, attrs, _definition) do
+    defp process_special_fields(changeset, special_keys, attrs, definition) do
       Enum.reduce(special_keys, changeset, fn key, acc ->
         value = get_nested_value(attrs, key)
 
         if is_nil(value) do
           acc
         else
-          Ecto.Changeset.put_change(acc, key, value)
+          # For fields with :any type, we need to cast them properly
+          # The validation will happen in the validation phase
+          case definition[key][:type] do
+            :any ->
+              # For :any type, just put the value as-is
+              # The validation functions will handle it
+              Ecto.Changeset.put_change(acc, key, value)
+
+            _ ->
+              Ecto.Changeset.put_change(acc, key, value)
+          end
         end
       end)
     end
@@ -1488,10 +1499,11 @@ defmodule Peri do
     end
 
     defp cast_nested_list_result(changeset, key, results) do
-      all_valid = Enum.all?(results, fn 
-        %Ecto.Changeset{} = cs -> cs.valid?
-        _ -> true
-      end)
+      all_valid =
+        Enum.all?(results, fn
+          %Ecto.Changeset{} = cs -> cs.valid?
+          _ -> true
+        end)
 
       if all_valid do
         # For valid results, keep the changesets in changes
@@ -1503,8 +1515,6 @@ defmodule Peri do
         %{changeset | changes: changes, valid?: false}
       end
     end
-
-
 
     defp transfer_nested_errors(changeset, key, nested) do
       # For nested changesets, we need to put the invalid changeset in changes
