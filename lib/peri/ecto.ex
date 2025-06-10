@@ -151,6 +151,28 @@ if Code.ensure_loaded?(Ecto) do
       put_in(ecto[key][:type], {:array, Type.from(type)})
     end
 
+    def parse_peri({key, {:map, value_type}}, ecto) when is_atom(value_type) do
+      # For maps with only value type specified, use :map type
+      ecto = put_in(ecto[key][:type], :map)
+      
+      put_validation(ecto, key, fn changeset ->
+        validate_change(changeset, key, fn ^key, val when is_map(val) ->
+          errors = Enum.flat_map(val, fn {_k, v} ->
+            case validate_map_value(v, value_type) do
+              :ok -> []
+              {:error, _msg} -> [{key, "is invalid"}]
+            end
+          end)
+          
+          if errors == [] do
+            []
+          else
+            [{key, "is invalid"}]
+          end
+        end)
+      end)
+    end
+
     def parse_peri({key, {:tuple, types}}, ecto) when is_list(types) do
       ecto = put_in(ecto[key][:type], Type.from({:tuple, types}))
 
@@ -342,10 +364,75 @@ if Code.ensure_loaded?(Ecto) do
       parse_peri({key, {:custom, callback}}, ecto)
     end
 
+    def parse_peri({key, {:literal, literal}}, ecto) do
+      # Store the literal value for validation
+      ecto = put_in(ecto[key][:literal], literal)
+      
+      # Determine the appropriate Ecto type based on the literal value
+      type = case literal do
+        s when is_binary(s) -> :string
+        i when is_integer(i) -> :integer
+        f when is_float(f) -> :float
+        b when is_boolean(b) -> :boolean
+        a when is_atom(a) -> Type.from(:atom)
+        _ -> :string
+      end
+      
+      ecto = put_in(ecto[key][:type], type)
+      
+      # Add validation for the literal value
+      put_validation(ecto, key, fn changeset ->
+        validate_change(changeset, key, fn ^key, val ->
+          if val === literal do
+            []
+          else
+            [{key, "expected literal value #{inspect(literal)} but got #{inspect(val)}"}]
+          end
+        end)
+      end)
+    end
+
+    def parse_peri({key, {:map, key_type, value_type}}, ecto) do
+      # For now, just use :map type and add custom validation
+      ecto = put_in(ecto[key][:type], :map)
+      
+      put_validation(ecto, key, fn changeset ->
+        validate_change(changeset, key, fn ^key, val when is_map(val) ->
+          errors = Enum.flat_map(val, fn {k, v} ->
+            key_errors = case validate_map_key(k, key_type) do
+              :ok -> []
+              {:error, msg} -> [{key, "invalid key type: #{msg}"}]
+            end
+            
+            value_errors = case validate_map_value(v, value_type) do
+              :ok -> []
+              {:error, msg} -> [{key, "invalid value type: #{msg}"}]
+            end
+            
+            key_errors ++ value_errors
+          end)
+          
+          errors
+        end)
+      end)
+    end
+
     def parse_peri({key, type}, _ecto) do
       type = inspect(type, pretty: true)
       raise Peri.Error, message: "Ecto doesn't support `#{type}` type for #{key}"
     end
+
+    defp validate_map_key(key, :atom) when is_atom(key), do: :ok
+    defp validate_map_key(key, :string) when is_binary(key), do: :ok
+    defp validate_map_key(key, :integer) when is_integer(key), do: :ok
+    defp validate_map_key(_key, type), do: {:error, "expected #{type}"}
+
+    defp validate_map_value(value, :string) when is_binary(value), do: :ok
+    defp validate_map_value(value, :integer) when is_integer(value), do: :ok
+    defp validate_map_value(value, :float) when is_float(value), do: :ok
+    defp validate_map_value(value, :boolean) when is_boolean(value), do: :ok
+    defp validate_map_value(value, :atom) when is_atom(value), do: :ok
+    defp validate_map_value(_value, type), do: {:error, "expected #{type}"}
 
     defp custom_validation(key, callback) do
       fn changeset ->
