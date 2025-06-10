@@ -1,7 +1,7 @@
 defmodule Peri.MixProject do
   use Mix.Project
 
-  @version "0.4.0-rc2"
+  @version "0.4.0"
   @source_url "https://github.com/zoedsoupe/peri"
 
   def project do
@@ -52,7 +52,16 @@ defmodule Peri.MixProject do
   defp docs do
     [
       main: "readme",
-      extras: ["README.md"],
+      extras: [
+        "README.md",
+        "pages/types.md",
+        "pages/validation.md",
+        "pages/ecto.md",
+        "pages/generation.md"
+      ],
+      groups_for_extras: [
+        Guides: ~r/pages\/.*/
+      ],
       source_ref: "v#{@version}",
       source_url: @source_url
     ]

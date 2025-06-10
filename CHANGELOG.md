@@ -2,6 +2,40 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.0] - 2025-10-06
+
+### Added
+
+- **Ecto Integration**: New `Peri.to_changeset!/2` function to generate Ecto changesets from Peri schemas
+  - Automatically generated `<name>_changeset/1` functions when defining schemas with `defschema` (when Ecto is loaded)
+  - Support for all Peri types in Ecto changesets including nested schemas, custom types, and validations
+  - Custom Ecto types: `Peri.Ecto.Type.PID`, `Peri.Ecto.Type.Atom`, `Peri.Ecto.Type.Any`, `Peri.Ecto.Type.Tuple`, `Peri.Ecto.Type.Either`, `Peri.Ecto.Type.OneOf`
+  - Full support for embedded schemas with `:oneof`, `:either`, and nested map validations
+  - Comprehensive validation rules are preserved when converting to changesets
+
+- **New Types**:
+  - `:duration` type for validating `%Duration{}` structs
+  
+- **JSON Support**: 
+  - Added `Jason.Encoder` protocol implementation for `Peri.Error`
+  - Support for encoding errors as JSON when Jason is available
+  
+- **Performance Benchmarks**:
+  - Added benchmark suite comparing Peri validation with Ecto changeset generation
+  - Benchmarks for both simple and complex schemas
+
+### Changed
+
+- Updated Elixir version requirement in development environment to 1.19.0-rc.0
+- Updated nix flake configuration with elixir-overlay
+- Improved error handling and JSON encoding for `Peri.Error`
+
+### Internal
+
+- Major refactoring of the core `Peri` module to support Ecto integration
+- Added `Peri.Ecto` module for parsing Peri schemas into Ecto-compatible definitions
+- Enhanced type system to support bidirectional conversion between Peri and Ecto types
+
 ## [0.3.3] - 2025-06-10
 
 ### Added
@@ -132,6 +166,7 @@ All notable changes to this project will be documented in this file.
 ### Added
 - Initial version of Peri with basic schema validation functionalities. [7044ea7]
 
+[0.4.0]: https://github.com/zoedsoupe/peri/compare/v0.3.3...v0.4.0
 [0.3.3]: https://github.com/zoedsoupe/peri/compare/v0.3.1...v0.3.3
 [0.3.1]: https://github.com/zoedsoupe/peri/compare/v0.2.11...v0.3.1
 [0.2.11]: https://github.com/zoedsoupe/peri/compare/v0.2.10...v0.2.11
