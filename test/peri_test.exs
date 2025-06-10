@@ -390,6 +390,36 @@ defmodule PeriTest do
       data = %{}
       assert map_of_integers(data) == {:ok, data}
     end
+
+    test "validates empty map with :map type" do
+      schema = %{data: :map}
+      data = %{data: %{}}
+      assert Peri.validate(schema, data) == {:ok, data}
+    end
+
+    test "validates empty map with {:required, :map} type" do
+      schema = %{data: {:required, :map}}
+      data = %{data: %{}}
+      assert Peri.validate(schema, data) == {:ok, data}
+    end
+
+    test "validates nil with {:required, :map} type" do
+      schema = %{data: {:required, :map}}
+      data = %{data: nil}
+      assert {:error, [%Peri.Error{path: [:data], message: "is required, expected type of :map"}]} = 
+        Peri.validate(schema, data)
+    end
+
+    test "validates empty map returns consistent result" do
+      # Test that empty maps return consistent results
+      schema1 = %{data: {:map, :string}}
+      data = %{data: %{}}
+      result1 = Peri.validate(schema1, data)
+      assert result1 == {:ok, data}
+      
+      # Direct field validation should also be consistent
+      assert Peri.validate({:map, :string}, %{}) == {:ok, %{}}
+    end
   end
 
   defschema(:literal_values, %{
