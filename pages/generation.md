@@ -10,7 +10,7 @@ Add StreamData to your dependencies:
 # mix.exs
 defp deps do
   [
-    {:peri, "~> 0.4"},
+    {:peri, "~> 0.5"},
     {:stream_data, "~> 1.0", only: [:test, :dev]}
   ]
 end

@@ -2,6 +2,27 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.0] - 2025-06-18
+
+### Added
+
+- **Validation Modes**: New permissive mode allows preserving fields not defined in the schema (#33)
+  - Default mode remains `:strict` which filters out undefined fields
+  - New `:permissive` mode preserves all input fields while still validating defined fields
+  - Support for mode option in `defschema` macro: `defschema :name, schema, mode: :permissive`
+  - Useful for API gateways, progressive validation, and middleware scenarios
+
+### Fixed
+
+- Fixed nested schemas in lists not having their keys atomized properly (#32)
+  - String keys in nested schemas within lists are now correctly converted to atoms
+  - Maintains consistent behavior with top-level schema validation
+
+### Internal
+
+- Added `CLAUDE.md` file for AI-assisted development guidance
+- Enhanced `.formatter.exs` to export `defschema/3` for proper formatting
+
 ## [0.4.1] - 2025-06-18
 
 ### Changed
@@ -174,6 +195,7 @@ All notable changes to this project will be documented in this file.
 ### Added
 - Initial version of Peri with basic schema validation functionalities. [7044ea7]
 
+[0.5.0]: https://github.com/zoedsoupe/peri/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/zoedsoupe/peri/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/zoedsoupe/peri/compare/v0.3.3...v0.4.0
 [0.3.3]: https://github.com/zoedsoupe/peri/compare/v0.3.1...v0.3.3
