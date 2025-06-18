@@ -232,6 +232,12 @@ defmodule Peri do
           age: :integer,
           email: {:required, :string}
         }
+
+        # With permissive mode
+        defschema :flexible_user, %{
+          name: :string,
+          email: {:required, :string}
+        }, mode: :permissive
       end
 
       user_data = %{name: "John", age: 30, email: "john@example.com"}
@@ -241,8 +247,13 @@ defmodule Peri do
       invalid_data = %{name: "John", age: 30}
       MySchemas.user(invalid_data)
       # => {:error, [email: "is required"]}
+
+      # Permissive mode preserves extra fields
+      flexible_data = %{name: "John", email: "john@example.com", role: "admin"}
+      MySchemas.flexible_user(flexible_data)
+      # => {:ok, %{name: "John", email: "john@example.com", role: "admin"}}
   """
-  defmacro defschema(name, schema) do
+  defmacro defschema(name, schema, opts \\ []) do
     bang = :"#{name}!"
 
     quote do
@@ -258,13 +269,13 @@ defmodule Peri do
 
       def unquote(name)(data) do
         with {:ok, schema} <- Peri.validate_schema(unquote(schema)) do
-          Peri.validate(schema, data)
+          Peri.validate(schema, data, unquote(opts))
         end
       end
 
       def unquote(bang)(data) do
         with {:ok, valid_schema} <- Peri.validate_schema(unquote(schema)),
-             {:ok, valid_data} <- Peri.validate(valid_schema, data) do
+             {:ok, valid_data} <- Peri.validate(valid_schema, data, unquote(opts)) do
           valid_data
         else
           {:error, errors} -> raise Peri.InvalidSchema, errors
@@ -304,6 +315,12 @@ defmodule Peri do
     - `schema`: The schema definition to validate against.
     - `data`: The data to be validated.
 
+  ## Options
+
+    - `:mode` - Validation mode. Can be `:strict` (default) or `:permissive`.
+      - `:strict` - Only fields defined in the schema are returned.
+      - `:permissive` - All fields from the input data are preserved.
+
   ## Returns
 
     - `true` if the data conforms to the schema.
@@ -320,8 +337,10 @@ defmodule Peri do
       iex> Peri.conforms?(schema, invalid_data)
       false
   """
-  def conforms?(schema, data) do
-    case validate(schema, data) do
+  def conforms?(schema, data, opts \\ []) do
+    mode = Keyword.get(opts, :mode, :strict)
+
+    case validate(schema, data, mode: mode) do
       {:ok, _} -> true
       {:error, _errors} -> false
     end
@@ -364,7 +383,7 @@ defmodule Peri do
   end
 
   @doc """
-  Validates a given data map against a schema.
+  Validates a given data map against a schema with options.
 
   Returns `{:ok, data}` if the data is valid according to the schema, or `{:error, errors}` if there are validation errors.
 
@@ -372,35 +391,47 @@ defmodule Peri do
 
     - schema: The schema definition map.
     - data: The data map to be validated.
+    - opts: Options for validation.
+
+  ## Options
+
+    - `:mode` - Validation mode. Can be `:strict` (default) or `:permissive`.
+      - `:strict` - Only fields defined in the schema are returned.
+      - `:permissive` - All fields from the input data are preserved.
 
   ## Examples
 
-      schema = %{
-        name: :string,
-        age: :integer,
-        email: {:required, :string}
-      }
+      schema = %{name: :string, age: :integer}
+      data = %{name: "John", age: 30, extra: "field"}
 
-      data = %{name: "John", age: 30, email: "john@example.com"}
+      # Strict mode (default)
       Peri.validate(schema, data)
-      # => {:ok, %{name: "John", age: 30, email: "john@example.com"}}
+      # => {:ok, %{name: "John", age: 30}}
 
-      invalid_data = %{name: "John", age: 30}
-      Peri.validate(schema, invalid_data)
-      # => {:error, [email: "is required"]}
+      # Permissive mode
+      Peri.validate(schema, data, mode: :permissive)
+      # => {:ok, %{name: "John", age: 30, extra: "field"}}
   """
-  def validate(schema, data) when is_enumerable(schema) and is_enumerable(data) do
-    data = filter_data(schema, data)
+  def validate(schema, data, opts \\ [])
+
+  def validate(schema, data, opts) when is_enumerable(schema) and is_enumerable(data) do
+    mode = Keyword.get(opts, :mode, :strict)
+
+    if mode not in [:strict, :permissive] do
+      raise ArgumentError, "Invalid mode: #{inspect(mode)}. Must be :strict or :permissive"
+    end
+
+    data = filter_data(schema, data, mode: mode)
     state = Peri.Parser.new(data, root_data: data)
 
-    case traverse_schema(schema, state) do
+    case traverse_schema(schema, state, mode: mode) do
       %Peri.Parser{errors: [], data: result} -> {:ok, result}
       %Peri.Parser{errors: errors} -> {:error, errors}
     end
   end
 
-  def validate(schema, data) do
-    case validate_field(data, schema, data) do
+  def validate(schema, data, opts) do
+    case validate_field(data, schema, data, opts) do
       :ok ->
         {:ok, data}
 
@@ -439,32 +470,36 @@ defmodule Peri do
   end
 
   # if data is struct, well, we do not need to filter it
-  defp filter_data(_schema, data) when is_struct(data), do: data
+  defp filter_data(_schema, data, _opts) when is_struct(data), do: data
 
-  defp filter_data(schema, data) do
-    acc = make_filter_data_accumulator(schema, data)
+  defp filter_data(schema, data, opts) do
+    mode = Keyword.get(opts, :mode, :strict)
 
-    Enum.reduce(schema, acc, fn {key, type}, acc ->
-      string_key = to_string(key)
-      value = get_enumerable_value(data, key)
-      original_key = if enumerable_has_key?(data, key), do: key, else: string_key
+    if mode == :permissive do
+      data
+    else
+      acc = make_filter_data_accumulator(schema, data)
+      result = Enum.reduce(schema, acc, &do_filter_data(data, &1, &2, opts))
+      if is_list(result), do: Enum.reverse(result), else: result
+    end
+  end
 
-      cond do
-        is_enumerable(data) and not enumerable_has_key?(data, key) ->
-          acc
+  defp do_filter_data(data, {key, type}, acc, opts) do
+    string_key = to_string(key)
+    value = get_enumerable_value(data, key)
+    original_key = if enumerable_has_key?(data, key), do: key, else: string_key
 
-        is_enumerable(value) and is_enumerable(type) ->
-          nested_filtered_value = filter_data(type, value)
-          put_in_enum(acc, original_key, nested_filtered_value)
+    cond do
+      is_enumerable(data) and not enumerable_has_key?(data, key) ->
+        acc
 
-        true ->
-          put_in_enum(acc, original_key, value)
-      end
-    end)
-    |> then(fn
-      %{} = data -> data
-      data when is_list(data) -> Enum.reverse(data)
-    end)
+      is_enumerable(value) and is_enumerable(type) ->
+        nested_filtered_value = filter_data(type, value, opts)
+        put_in_enum(acc, original_key, nested_filtered_value)
+
+      true ->
+        put_in_enum(acc, original_key, value)
+    end
   end
 
   # we need to build structs after validating schema
@@ -492,11 +527,11 @@ defmodule Peri do
   end
 
   @doc false
-  defp traverse_schema(schema, %Peri.Parser{} = state, path \\ []) do
+  defp traverse_schema(schema, %Peri.Parser{} = state, opts, path \\ []) do
     Enum.reduce(schema, state, fn {key, type}, parser ->
       value = get_enumerable_value(parser.data, key)
 
-      case validate_field(value, type, parser) do
+      case validate_field(value, type, parser, opts) do
         :ok ->
           parser
 
@@ -587,34 +622,34 @@ defmodule Peri do
   defguard is_numeric_type(t) when t in [:integer, :float]
 
   @doc false
-  defp validate_field(nil, nil, _data), do: :ok
-  defp validate_field(_, :any, _data), do: :ok
-  defp validate_field(pid, :pid, _data) when is_pid(pid), do: :ok
-  defp validate_field(%Date{}, :date, _data), do: :ok
-  defp validate_field(%Time{}, :time, _data), do: :ok
-  defp validate_field(%Duration{}, :duration, _data), do: :ok
-  defp validate_field(%DateTime{}, :datetime, _data), do: :ok
-  defp validate_field(%NaiveDateTime{}, :naive_datetime, _data), do: :ok
-  defp validate_field(val, :atom, _data) when is_atom(val), do: :ok
-  defp validate_field(val, :map, _data) when is_map(val), do: :ok
-  defp validate_field(val, :string, _data) when is_binary(val), do: :ok
-  defp validate_field(val, :integer, _data) when is_integer(val), do: :ok
-  defp validate_field(val, :float, _data) when is_float(val), do: :ok
-  defp validate_field(val, :boolean, _data) when is_boolean(val), do: :ok
-  defp validate_field(val, :list, _data) when is_list(val), do: :ok
+  defp validate_field(nil, nil, _data, _opts), do: :ok
+  defp validate_field(_, :any, _data, _opts), do: :ok
+  defp validate_field(pid, :pid, _data, _opts) when is_pid(pid), do: :ok
+  defp validate_field(%Date{}, :date, _data, _opts), do: :ok
+  defp validate_field(%Time{}, :time, _data, _opts), do: :ok
+  defp validate_field(%Duration{}, :duration, _data, _opts), do: :ok
+  defp validate_field(%DateTime{}, :datetime, _data, _opts), do: :ok
+  defp validate_field(%NaiveDateTime{}, :naive_datetime, _data, _opts), do: :ok
+  defp validate_field(val, :atom, _data, _opts) when is_atom(val), do: :ok
+  defp validate_field(val, :map, _data, _opts) when is_map(val), do: :ok
+  defp validate_field(val, :string, _data, _opts) when is_binary(val), do: :ok
+  defp validate_field(val, :integer, _data, _opts) when is_integer(val), do: :ok
+  defp validate_field(val, :float, _data, _opts) when is_float(val), do: :ok
+  defp validate_field(val, :boolean, _data, _opts) when is_boolean(val), do: :ok
+  defp validate_field(val, :list, _data, _opts) when is_list(val), do: :ok
 
-  defp validate_field(val, {:literal, literal}, _data) when val === literal, do: :ok
+  defp validate_field(val, {:literal, literal}, _data, _opts) when val === literal, do: :ok
 
-  defp validate_field(val, {:literal, literal}, _data) do
+  defp validate_field(val, {:literal, literal}, _data, _opts) do
     {:error, "expected literal value %{expected} but got %{actual}",
      [expected: inspect(literal), actual: inspect(val)]}
   end
 
-  defp validate_field(nil, {:required, type}, _data) do
+  defp validate_field(nil, {:required, type}, _data, _opts) do
     {:error, "is required, expected type of %{expected}", expected: type}
   end
 
-  defp validate_field(_val, {:required, {type, {:default, default}}}, _data) do
+  defp validate_field(_val, {:required, {type, {:default, default}}}, _data, _opts) do
     template =
       "cannot set default value of #{inspect(default)} for required field of type %{type}"
 
@@ -622,9 +657,10 @@ defmodule Peri do
   end
 
   # Empty maps and lists are valid for required fields - only nil is invalid
-  defp validate_field(val, {:required, type}, data), do: validate_field(val, type, data)
+  defp validate_field(val, {:required, type}, data, opts),
+    do: validate_field(val, type, data, opts)
 
-  defp validate_field(val, {:string, {:regex, regex}}, _data) when is_binary(val) do
+  defp validate_field(val, {:string, {:regex, regex}}, _data, _opts) when is_binary(val) do
     if Regex.match?(regex, val) do
       :ok
     else
@@ -632,7 +668,7 @@ defmodule Peri do
     end
   end
 
-  defp validate_field(val, {:string, {:eq, eq}}, _data) when is_binary(val) do
+  defp validate_field(val, {:string, {:eq, eq}}, _data, _opts) when is_binary(val) do
     if val === eq do
       :ok
     else
@@ -640,7 +676,7 @@ defmodule Peri do
     end
   end
 
-  defp validate_field(val, {:string, {:min, min}}, _data) when is_binary(val) do
+  defp validate_field(val, {:string, {:min, min}}, _data, _opts) when is_binary(val) do
     if String.length(val) >= min do
       :ok
     else
@@ -648,7 +684,7 @@ defmodule Peri do
     end
   end
 
-  defp validate_field(val, {:string, {:max, max}}, _data) when is_binary(val) do
+  defp validate_field(val, {:string, {:max, max}}, _data, _opts) when is_binary(val) do
     if String.length(val) <= max do
       :ok
     else
@@ -656,7 +692,7 @@ defmodule Peri do
     end
   end
 
-  defp validate_field(val, {type, {:eq, value}}, _data)
+  defp validate_field(val, {type, {:eq, value}}, _data, _opts)
        when is_numeric_type(type) and is_numeric(val) do
     if val == value do
       :ok
@@ -665,7 +701,7 @@ defmodule Peri do
     end
   end
 
-  defp validate_field(val, {type, {:neq, value}}, _data)
+  defp validate_field(val, {type, {:neq, value}}, _data, _opts)
        when is_numeric_type(type) and is_numeric(val) do
     if val != value do
       :ok
@@ -674,7 +710,7 @@ defmodule Peri do
     end
   end
 
-  defp validate_field(val, {type, {:gt, value}}, _data)
+  defp validate_field(val, {type, {:gt, value}}, _data, _opts)
        when is_numeric_type(type) and is_numeric(val) do
     if val > value do
       :ok
@@ -683,7 +719,7 @@ defmodule Peri do
     end
   end
 
-  defp validate_field(val, {type, {:gte, value}}, _data)
+  defp validate_field(val, {type, {:gte, value}}, _data, _opts)
        when is_numeric_type(type) and is_numeric(val) do
     if val >= value do
       :ok
@@ -692,7 +728,7 @@ defmodule Peri do
     end
   end
 
-  defp validate_field(val, {type, {:lte, value}}, _data)
+  defp validate_field(val, {type, {:lte, value}}, _data, _opts)
        when is_numeric_type(type) and is_numeric(val) do
     if val <= value do
       :ok
@@ -701,7 +737,7 @@ defmodule Peri do
     end
   end
 
-  defp validate_field(val, {type, {:lt, value}}, _data)
+  defp validate_field(val, {type, {:lt, value}}, _data, _opts)
        when is_numeric_type(type) and is_numeric(val) do
     if val < value do
       :ok
@@ -710,7 +746,7 @@ defmodule Peri do
     end
   end
 
-  defp validate_field(val, {type, {:range, {min, max}}}, _data)
+  defp validate_field(val, {type, {:range, {min, max}}}, _data, _opts)
        when is_numeric_type(type) and is_numeric(val) do
     info = [min: min, max: max]
     template = "should be in the range of %{min}..%{max} (inclusive)"
@@ -722,46 +758,46 @@ defmodule Peri do
     end
   end
 
-  defp validate_field(val, {type, {:default, {mod, fun}}}, data)
+  defp validate_field(val, {type, {:default, {mod, fun}}}, data, opts)
        when is_atom(mod) and is_atom(fun) do
-    validate_field(val, {type, {:default, apply(mod, fun, [])}}, data)
+    validate_field(val, {type, {:default, apply(mod, fun, [])}}, data, opts)
   end
 
-  defp validate_field(val, {type, {:default, {mod, fun, args}}}, data)
+  defp validate_field(val, {type, {:default, {mod, fun, args}}}, data, opts)
        when is_atom(mod) and is_atom(fun) and is_list(args) do
-    validate_field(val, {type, {:default, apply(mod, fun, args)}}, data)
+    validate_field(val, {type, {:default, apply(mod, fun, args)}}, data, opts)
   end
 
-  defp validate_field(val, {type, {:default, default}}, data)
+  defp validate_field(val, {type, {:default, default}}, data, opts)
        when is_function(default, 0) do
-    validate_field(val, {type, {:default, default.()}}, data)
+    validate_field(val, {type, {:default, default.()}}, data, opts)
   end
 
-  defp validate_field(val, {type, {:default, default}}, data) do
+  defp validate_field(val, {type, {:default, default}}, data, opts) do
     val = if is_nil(val), do: default, else: val
 
-    with :ok <- validate_field(val, type, data) do
+    with :ok <- validate_field(val, type, data, opts) do
       {:ok, val}
     end
   end
 
-  defp validate_field(val, {:cond, condition, true_type, else_type}, parser) do
+  defp validate_field(val, {:cond, condition, true_type, else_type}, parser, opts) do
     if call_callback(condition, parser) do
-      validate_field(val, true_type, parser)
+      validate_field(val, true_type, parser, opts)
     else
-      validate_field(val, else_type, parser)
+      validate_field(val, else_type, parser, opts)
     end
   end
 
-  defp validate_field(val, {:dependent, callback}, parser)
+  defp validate_field(val, {:dependent, callback}, parser, opts)
        when is_function(callback) do
     with {:ok, type} <- call_callback(callback, parser),
          {:ok, schema} <- validate_schema(type) do
-      validate_field(val, schema, parser)
+      validate_field(val, schema, parser, opts)
     end
   end
 
-  defp validate_field(val, {:dependent, {mod, fun}}, parser)
+  defp validate_field(val, {:dependent, {mod, fun}}, parser, opts)
        when is_atom(mod) and is_atom(fun) do
     result =
       cond do
@@ -777,58 +813,56 @@ defmodule Peri do
 
     with {:ok, type} <- result,
          {:ok, schema} <- validate_schema(type) do
-      validate_field(val, schema, parser)
+      validate_field(val, schema, parser, opts)
     end
   end
 
-  defp validate_field(val, {:dependent, {mod, fun, args}}, parser)
+  defp validate_field(val, {:dependent, {mod, fun, args}}, parser, opts)
        when is_atom(mod) and is_atom(fun) and is_list(args) do
-    # For MFA with args, we only support the old 1-arity style
-    # since adding current as first arg would be a breaking change
     root = maybe_get_root_data(parser)
 
     with {:ok, type} <- apply(mod, fun, [root | args]),
          {:ok, schema} <- validate_schema(type) do
-      validate_field(val, schema, parser)
+      validate_field(val, schema, parser, opts)
     end
   end
 
-  defp validate_field(val, {:dependent, field, condition, type}, parser) do
+  defp validate_field(val, {:dependent, field, condition, type}, parser, opts) do
     root = maybe_get_root_data(parser)
     dependent_val = get_enumerable_value(root, field)
 
     with :ok <- condition.(val, dependent_val) do
-      validate_field(val, type, root)
+      validate_field(val, type, root, opts)
     end
   end
 
-  defp validate_field(nil, s, data) when is_enumerable(s) do
-    validate_field(%{}, s, data)
+  defp validate_field(nil, s, data, opts) when is_enumerable(s) do
+    validate_field(%{}, s, data, opts)
   end
 
-  defp validate_field(nil, _schema, _data), do: :ok
+  defp validate_field(nil, _schema, _data, _opts), do: :ok
 
-  defp validate_field(val, {type, {:transform, mapper}}, data)
+  defp validate_field(val, {type, {:transform, mapper}}, data, opts)
        when is_function(mapper, 1) do
-    case validate_field(val, type, data) do
+    case validate_field(val, type, data, opts) do
       :ok -> {:ok, mapper.(val)}
       {:ok, val} -> {:ok, mapper.(val)}
       err -> err
     end
   end
 
-  defp validate_field(val, {type, {:transform, mapper}}, data)
+  defp validate_field(val, {type, {:transform, mapper}}, data, opts)
        when is_function(mapper, 2) do
-    case validate_field(val, type, data) do
+    case validate_field(val, type, data, opts) do
       :ok -> {:ok, mapper.(val, maybe_get_root_data(data))}
       {:ok, val} -> {:ok, mapper.(val, maybe_get_root_data(data))}
       err -> err
     end
   end
 
-  defp validate_field(val, {type, {:transform, {mod, fun}}}, data)
+  defp validate_field(val, {type, {:transform, {mod, fun}}}, data, opts)
        when is_atom(mod) and is_atom(fun) do
-    with {:ok, val} <- validate_and_extract(val, type, data) do
+    with {:ok, val} <- validate_and_extract(val, type, data, opts) do
       cond do
         function_exported?(mod, fun, 1) ->
           {:ok, apply(mod, fun, [val])}
@@ -843,9 +877,9 @@ defmodule Peri do
     end
   end
 
-  defp validate_field(val, {type, {:transform, {mod, fun, args}}}, data)
+  defp validate_field(val, {type, {:transform, {mod, fun, args}}}, data, opts)
        when is_atom(mod) and is_atom(fun) and is_list(args) do
-    with {:ok, val} <- validate_and_extract(val, type, data) do
+    with {:ok, val} <- validate_and_extract(val, type, data, opts) do
       cond do
         function_exported?(mod, fun, length(args) + 2) ->
           {:ok, apply(mod, fun, [val, maybe_get_root_data(data) | args])}
@@ -860,33 +894,33 @@ defmodule Peri do
     end
   end
 
-  defp validate_field(val, {:custom, callback}, _data) when is_function(callback, 1) do
+  defp validate_field(val, {:custom, callback}, _data, _opts) when is_function(callback, 1) do
     callback.(val)
   end
 
-  defp validate_field(val, {:custom, {mod, fun}}, _data)
+  defp validate_field(val, {:custom, {mod, fun}}, _data, _opts)
        when is_atom(mod) and is_atom(fun) do
     apply(mod, fun, [val])
   end
 
-  defp validate_field(val, {:custom, {mod, fun, args}}, _data)
+  defp validate_field(val, {:custom, {mod, fun, args}}, _data, _opts)
        when is_atom(mod) and is_atom(fun) and is_list(args) do
     apply(mod, fun, [val | args])
   end
 
-  defp validate_field(val, {:either, {type_1, type_2}}, data) do
-    with {:error, _} <- normalize_validation_result(validate_field(val, type_1, data)),
-         {:error, _} <- normalize_validation_result(validate_field(val, type_2, data)) do
+  defp validate_field(val, {:either, {type_1, type_2}}, data, opts) do
+    with {:error, _} <- normalize_validation_result(validate_field(val, type_1, data, opts)),
+         {:error, _} <- normalize_validation_result(validate_field(val, type_2, data, opts)) do
       info = [first_type: type_1, second_type: type_2, actual: inspect(val)]
       template = "expected either %{first_type} or %{second_type}, got: %{actual}"
       {:error, template, info}
     end
   end
 
-  defp validate_field(val, {:oneof, types}, data) do
+  defp validate_field(val, {:oneof, types}, data, opts) do
     types
     |> Enum.reduce_while(:error, fn type, :error ->
-      case validate_field(val, type, data) do
+      case validate_field(val, type, data, opts) do
         :ok -> {:halt, :ok}
         {:ok, val} -> {:halt, {:ok, val}}
         {:error, _reason, _info} -> {:cont, :error}
@@ -909,9 +943,9 @@ defmodule Peri do
     end)
   end
 
-  defp validate_field(source, {:tuple, types}, data) when is_tuple(source) do
+  defp validate_field(source, {:tuple, types}, data, opts) when is_tuple(source) do
     if tuple_size(source) == length(types) do
-      validate_tuple_elements(source, types, data)
+      validate_tuple_elements(source, types, data, opts)
     else
       info = [length: length(types), actual: length(Tuple.to_list(source))]
       template = "expected tuple of size %{length} received tuple with %{actual} length"
@@ -919,7 +953,7 @@ defmodule Peri do
     end
   end
 
-  defp validate_field(val, {:enum, choices}, _data) do
+  defp validate_field(val, {:enum, choices}, _data, _opts) do
     if val in choices do
       :ok
     else
@@ -929,18 +963,17 @@ defmodule Peri do
     end
   end
 
-  defp validate_field(data, {:list, type}, source) when is_list(data) do
+  defp validate_field(data, {:list, type}, source, opts) when is_list(data) do
     data
     |> Enum.with_index()
     |> Enum.reduce_while({:ok, []}, fn {el, index}, {:ok, vals} ->
-      # Create a parser for the list element when source is a Parser
       element_source =
         case source do
           %Peri.Parser{} = parser -> Peri.Parser.for_list_element(el, parser, index)
           _ -> source
         end
 
-      case validate_field(el, type, element_source) do
+      case validate_field(el, type, element_source, opts) do
         :ok -> {:cont, {:ok, vals}}
         {:ok, val} -> {:cont, {:ok, [val | vals]}}
         {:error, errors} -> {:halt, {:error, errors}}
@@ -954,9 +987,9 @@ defmodule Peri do
     end)
   end
 
-  defp validate_field(data, {:map, type}, source) when is_map(data) do
+  defp validate_field(data, {:map, type}, source, opts) when is_map(data) do
     Enum.reduce_while(data, {:ok, %{}}, fn {key, val}, {:ok, map_acc} ->
-      case validate_field(val, type, source) do
+      case validate_field(val, type, source, opts) do
         :ok -> {:cont, {:ok, Map.put(map_acc, key, val)}}
         {:ok, validated_val} -> {:cont, {:ok, Map.put(map_acc, key, validated_val)}}
         {:error, errors} -> {:halt, {:error, errors}}
@@ -970,10 +1003,10 @@ defmodule Peri do
     end)
   end
 
-  defp validate_field(data, {:map, key_type, value_type}, source) when is_map(data) do
+  defp validate_field(data, {:map, key_type, value_type}, source, opts) when is_map(data) do
     Enum.reduce_while(data, {:ok, %{}}, fn {key, val}, {:ok, map_acc} ->
-      with :ok <- validate_field(key, key_type, source),
-           :ok <- validate_field(val, value_type, source) do
+      with :ok <- validate_field(key, key_type, source, opts),
+           :ok <- validate_field(val, value_type, source, opts) do
         {:cont, {:ok, Map.put(map_acc, key, val)}}
       else
         {:ok, validated_val} ->
@@ -990,30 +1023,30 @@ defmodule Peri do
     end)
   end
 
-  defp validate_field(data, schema, _data)
+  defp validate_field(data, schema, _data, _opts)
        when is_enumerable(data) and not is_enumerable(schema) do
     {:error, "expected a nested schema but received schema: %{type}", [type: schema]}
   end
 
-  defp validate_field(data, schema, p) when is_enumerable(data) do
+  defp validate_field(data, schema, p, opts) when is_enumerable(data) do
     root = maybe_get_root_data(p)
-    filtered_data = filter_data(schema, data)
+    filtered_data = filter_data(schema, data, opts)
 
-    case traverse_schema(schema, Peri.Parser.new(filtered_data, root_data: root)) do
+    case traverse_schema(schema, Peri.Parser.new(filtered_data, root_data: root), opts) do
       %Peri.Parser{errors: []} = parser -> {:ok, parser.data}
       %Peri.Parser{errors: errors} -> {:error, errors}
     end
   end
 
-  defp validate_field(val, type, _data) do
+  defp validate_field(val, type, _data, _opts) do
     info = [expected: type, actual: inspect(val, pretty: true)]
     {:error, "expected type of %{expected} received %{actual} value", info}
   end
 
-  defp validate_tuple_elements(source, types, data) do
+  defp validate_tuple_elements(source, types, data, opts) do
     Enum.with_index(types)
     |> Enum.reduce_while({:ok, []}, fn {type, index}, {:ok, vals} ->
-      case validate_field(elem(source, index), type, data) do
+      case validate_field(elem(source, index), type, data, opts) do
         :ok ->
           {:cont, {:ok, vals}}
 
@@ -1036,9 +1069,8 @@ defmodule Peri do
     end)
   end
 
-  #  Handles the validation step and extracts the value if valid
-  defp validate_and_extract(val, type, data) do
-    case validate_field(val, type, data) do
+  defp validate_and_extract(val, type, data, opts) do
+    case validate_field(val, type, data, opts) do
       :ok -> {:ok, val}
       {:ok, val} -> {:ok, val}
       err -> err
@@ -1052,22 +1084,18 @@ defmodule Peri do
   defp maybe_get_current_data(%Peri.Parser{} = p), do: p.current_data || p.data
   defp maybe_get_current_data(data), do: data
 
-  # Helper to call callbacks with appropriate arity
   defp call_callback(callback, parser) when is_function(callback, 1) do
-    # 1-arity: receives root data for backward compatibility
     root = maybe_get_root_data(parser)
     callback.(root)
   end
 
   defp call_callback(callback, parser) when is_function(callback, 2) do
-    # 2-arity: receives (current, root)
     current = maybe_get_current_data(parser)
     root = maybe_get_root_data(parser)
     callback.(current, root)
   end
 
   defp call_callback(callback, parser) do
-    # Fallback for non-function callbacks (shouldn't happen with proper validation)
     root = maybe_get_root_data(parser)
     callback.(root)
   end
