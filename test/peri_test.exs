@@ -636,7 +636,8 @@ defmodule PeriTest do
 
     test "validates list of maps with extra fields" do
       data = %{users: [%{name: "Alice", age: 30, extra: "field"}, %{name: "Bob", age: 25}]}
-      assert list_of_maps_example(data) == {:ok, data}
+      expected = %{users: [%{name: "Alice", age: 30}, %{name: "Bob", age: 25}]}
+      assert list_of_maps_example(data) == {:ok, expected}
     end
 
     test "handles empty list of maps" do

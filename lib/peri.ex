@@ -997,8 +997,9 @@ defmodule Peri do
 
   defp validate_field(data, schema, p) when is_enumerable(data) do
     root = maybe_get_root_data(p)
+    filtered_data = filter_data(schema, data)
 
-    case traverse_schema(schema, Peri.Parser.new(data, root_data: root)) do
+    case traverse_schema(schema, Peri.Parser.new(filtered_data, root_data: root)) do
       %Peri.Parser{errors: []} = parser -> {:ok, parser.data}
       %Peri.Parser{errors: errors} -> {:error, errors}
     end
