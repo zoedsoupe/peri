@@ -2,7 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
-## [0.4.0] - 2025-10-06
+## [0.4.1] - 2025-06-18
+
+### Changed
+
+- **BREAKING**: Minimum Elixir version requirement is now 1.17 due to `Duration` struct usage introduced in 0.4.0
+  - The `Duration` struct was introduced in Elixir 1.17
+  - Previous `mix.exs` incorrectly specified `~> 1.16` compatibility
+
+## [0.4.0] - 2025-10-06 [YANKED]
 
 ### Added
 
@@ -166,6 +174,7 @@ All notable changes to this project will be documented in this file.
 ### Added
 - Initial version of Peri with basic schema validation functionalities. [7044ea7]
 
+[0.4.1]: https://github.com/zoedsoupe/peri/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/zoedsoupe/peri/compare/v0.3.3...v0.4.0
 [0.3.3]: https://github.com/zoedsoupe/peri/compare/v0.3.1...v0.3.3
 [0.3.1]: https://github.com/zoedsoupe/peri/compare/v0.2.11...v0.3.1

@@ -1,14 +1,14 @@
 defmodule Peri.MixProject do
   use Mix.Project
 
-  @version "0.4.0"
+  @version "0.4.1"
   @source_url "https://github.com/zoedsoupe/peri"
 
   def project do
     [
       app: :peri,
       version: @version,
-      elixir: "~> 1.16",
+      elixir: "~> 1.17",
       start_permanent: Mix.env() == :prod,
       docs: docs(),
       deps: deps(),
