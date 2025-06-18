@@ -2,6 +2,77 @@
 
 Advanced validation patterns for dynamic and context-aware schemas.
 
+## Validation Modes
+
+Peri supports two validation modes to control how extra fields are handled:
+
+### Strict Mode (Default)
+
+By default, Peri operates in strict mode, which filters out any fields not defined in the schema:
+
+```elixir
+schema = %{
+  name: :string,
+  age: :integer
+}
+
+data = %{name: "John", age: 30, extra: "field"}
+
+{:ok, result} = Peri.validate(schema, data)
+# result => %{name: "John", age: 30}
+```
+
+### Permissive Mode
+
+Permissive mode preserves all fields from the input data, even those not defined in the schema:
+
+```elixir
+{:ok, result} = Peri.validate(schema, data, mode: :permissive)
+# result => %{name: "John", age: 30, extra: "field"}
+```
+
+### Using Permissive Mode with defschema
+
+You can define schemas that always use permissive mode:
+
+```elixir
+defmodule MySchemas do
+  import Peri
+
+  # Strict mode (default)
+  defschema :user_strict, %{
+    name: :string,
+    email: {:required, :string}
+  }
+
+  # Permissive mode
+  defschema :user_permissive, %{
+    name: :string,
+    email: {:required, :string}
+  }, mode: :permissive
+end
+
+data = %{name: "John", email: "john@example.com", role: "admin"}
+
+# Strict mode filters out 'role'
+{:ok, strict} = MySchemas.user_strict(data)
+# strict => %{name: "John", email: "john@example.com"}
+
+# Permissive mode keeps 'role'
+{:ok, permissive} = MySchemas.user_permissive(data)  
+# permissive => %{name: "John", email: "john@example.com", role: "admin"}
+```
+
+### Use Cases for Permissive Mode
+
+Permissive mode is useful when:
+- Building API gateways that need to forward extra fields
+- Implementing progressive validation in layers
+- Working with evolving data structures where new fields may be added
+- Creating middleware that validates known fields but passes through metadata
+
+**Note**: Fields not defined in the schema are not validated, they are simply passed through unchanged.
+
 ## Conditional Validation
 
 Use `:cond` to validate fields based on runtime conditions.
