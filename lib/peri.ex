@@ -138,7 +138,8 @@ defmodule Peri do
   ```
   """
 
-  @type validation :: (term -> :ok | {:error, template :: String.t(), context :: map | keyword})
+  @type validation :: (term -> validation_result)
+  @type validation_result :: :ok | {:error, template :: String.t(), context :: map | keyword}
   @type time_def :: :time | :date | :datetime | :naive_datetime | :duration
   @type string_def ::
           :string
@@ -172,7 +173,7 @@ defmodule Peri do
           | {schema_def, {:transform, {module, atom}}}
           | {schema_def, {:transform, {module, atom, list(term)}}}
   @type custom_def ::
-          {:custom, (term -> term)}
+          {:custom, validation}
           | {:custom, {module, atom}}
           | {:custom, {module, atom, list(term)}}
   @type cond_def ::
