@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.1] - 2025-6-29
+
+### Added
+
+- Split out `validation_result` from validation type for reuse (#34)
+
 ## [0.5.0] - 2025-06-18
 
 ### Added
