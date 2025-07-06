@@ -33,6 +33,7 @@ Peri provides a comprehensive set of built-in types for schema validation.
 | `{:map, type}` | Map with values of specified type | `{:map, :integer}` |
 | `{:map, key_type, value_type}` | Map with typed keys and values | `{:map, :atom, :string}` |
 | `{:tuple, types}` | Tuple with elements of specified types | `{:tuple, [:float, :float]}` |
+| `{:schema, map_schema, {:additional_keys, type}}` | Map with some strictly defined fields, with extras under a different type | `{:schema, %{main: :string}, {:additional_keys, :integer}}` |
 
 ## String Constraints
 

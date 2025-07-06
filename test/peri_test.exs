@@ -87,6 +87,26 @@ defmodule PeriTest do
     end
   end
 
+  defschema(:nested_explicit, %{
+    user:
+      {:schema,
+       %{
+         name: :string,
+         profile:
+           {:schema,
+            %{
+              age: {:required, :integer},
+              email: {:required, :string}
+            }}
+       }}
+  })
+
+  defschema(:nested_additional_keys, %{
+    definitions:
+      {:schema, %{main: {:required, %{id: :string, foobar: :integer}}},
+       {:additional_keys, {:oneof, [:string, :integer, :boolean]}}}
+  })
+
   describe "nested schema validation" do
     test "validates nested schema with valid data" do
       data = %{user: %{name: "Jane", profile: %{age: 25, email: "jane@example.com"}}}
@@ -158,6 +178,106 @@ defmodule PeriTest do
                ]
              } =
                nested(data)
+    end
+
+    test "validates nested schema with an explicit type" do
+      data = %{user: %{name: "Jane", profile: %{age: 25, email: "jane@example.com"}}}
+      assert {:ok, ^data} = nested_explicit(data)
+    end
+
+    test "validates additional keys in a nested schema" do
+      data = %{
+        definitions: %{
+          :main => %{id: "1234", foobar: 55},
+          :foo => 412,
+          "bar" => "lorem ipsum",
+          "foobar" => true
+        }
+      }
+
+      assert {:ok, ^data} = nested_additional_keys(data)
+    end
+
+    test "validates invalid additional keys in a nested schema" do
+      data = %{
+        definitions: %{
+          :main => %{id: "1234", foobar: 55},
+          :foo => [412],
+          "bar" => %{},
+          "foobar" => true
+        }
+      }
+
+      assert {:error,
+              [
+                %Peri.Error{
+                  path: [:definitions],
+                  key: :definitions,
+                  content: %{actual: "[412]", oneof: ":string or :integer or :boolean"},
+                  message: "expected one of :string or :integer or :boolean, got: [412]",
+                  errors: nil
+                }
+              ]} = nested_additional_keys(data)
+    end
+
+    test "validates additional keys in a nested schema when the data's key is a string" do
+      data = %{
+        "definitions" => %{
+          "main" => %{id: "1234", foobar: 55},
+          :foo => 412,
+          "bar" => "lorem ipsum",
+          "foobar" => true
+        }
+      }
+
+      expected = %{
+        definitions: %{
+          :main => %{id: "1234", foobar: 55},
+          :foo => 412,
+          "bar" => "lorem ipsum",
+          "foobar" => true
+        }
+      }
+
+      assert {:ok, ^expected} = nested_additional_keys(data)
+    end
+
+    test "validates nested schema of an invalid type with additional keys" do
+      data = %{
+        definitions: %{
+          :main => %{id: "1234", foobar: "fifty-five"},
+          :foo => 412,
+          "bar" => %{},
+          "foobar" => true
+        }
+      }
+
+      assert {:error,
+              [
+                %Peri.Error{
+                  path: [:definitions],
+                  key: :definitions,
+                  content: nil,
+                  message: nil,
+                  errors: [
+                    %Peri.Error{
+                      path: [:definitions, :main],
+                      key: :main,
+                      content: nil,
+                      message: nil,
+                      errors: [
+                        %Peri.Error{
+                          path: [:definitions, :main, :foobar],
+                          key: :foobar,
+                          content: %{actual: "\"fifty-five\"", expected: :integer},
+                          message: "expected type of :integer received \"fifty-five\" value",
+                          errors: nil
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]} = nested_additional_keys(data)
     end
   end
 
