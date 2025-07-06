@@ -28,3 +28,5 @@ peri-*.tar
 /priv/plts/
 
 .claude
+.nix-mix
+.direnv
