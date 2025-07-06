@@ -2595,4 +2595,44 @@ defmodule PeriTest do
       assert {:ok, ^data_y} = schema_oneof(data_y)
     end
   end
+
+  defschema(:schema_multiopts, %{
+    x: {:string, min: 3, max: 10, regex: ~r/^[a-z0-9-]+$/},
+    y: {:integer, gt: 6, lte: 14}
+  })
+
+  test "validates :string and :integer with multiple options" do
+    data = %{x: "foobar", y: 12}
+
+    assert {:ok, ^data} = schema_multiopts(data)
+  end
+
+  test "returns all errors when bad data is passed to a validator with multiple options" do
+    data = %{x: "a!", y: 16}
+
+    assert {:error,
+            [
+              %Peri.Error{
+                path: [:x],
+                key: :x,
+                content: %{regex: ~r/^[a-z0-9-]+$/},
+                message: "should match the ~r/^[a-z0-9-]+$/ pattern",
+                errors: nil
+              },
+              %Peri.Error{
+                path: [:x],
+                key: :x,
+                content: %{length: 3},
+                message: "should have the minimum length of 3",
+                errors: nil
+              },
+              %Peri.Error{
+                path: [:y],
+                key: :y,
+                content: %{value: 14},
+                message: "should be less then or equal to 14",
+                errors: nil
+              }
+            ]} = schema_multiopts(data)
+  end
 end
