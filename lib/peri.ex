@@ -140,30 +140,20 @@ defmodule Peri do
 
   @type validation :: (term -> validation_result)
   @type validation_result :: :ok | {:error, template :: String.t(), context :: map | keyword}
+  @type string_option ::
+          {:regex, Regex.t()} | {:eq, String.t()} | {:min, integer} | {:max, integer}
+  @type numeric_option(type) ::
+          {:eq, type}
+          | {:neq, type}
+          | {:lt, type}
+          | {:lte, type}
+          | {:gt, type}
+          | {:gte, type}
+          | {:range, {min :: type, max :: type}}
   @type time_def :: :time | :date | :datetime | :naive_datetime | :duration
-  @type string_def ::
-          :string
-          | {:string, {:regex, Regex.t()} | {:eq, String.t()} | {:min, integer} | {:max, integer}}
-  @type int_def ::
-          :integer
-          | {:integer,
-             {:eq, integer}
-             | {:neq, integer}
-             | {:lt, integer}
-             | {:lte, integer}
-             | {:gt, integer}
-             | {:gte, integer}
-             | {:range, {min :: integer, max :: integer}}}
-  @type float_def ::
-          :float
-          | {:float,
-             {:eq, float}
-             | {:neq, float}
-             | {:lt, float}
-             | {:lte, float}
-             | {:gt, float}
-             | {:gte, :float}
-             | {:range, {min :: float, max :: float}}}
+  @type string_def :: :string | {:string, string_option | list(string_option)}
+  @type int_def :: :integer | {:integer, numeric_option(integer) | list(numeric_option(integer))}
+  @type float_def :: :float | {:float, numeric_option(float) | list(numeric_option(float))}
   @type default_def ::
           {schema_def, {:default, term}}
           | {schema_def, {:default, (-> term)}}
@@ -539,11 +529,8 @@ defmodule Peri do
         {:ok, value} ->
           Peri.Parser.update_data(parser, key, value)
 
-        {:error, [%Peri.Error{} = nested_err | _]} ->
-          nested_err
-          |> Peri.Error.update_error_paths(path ++ [key])
-          |> then(&Peri.Error.new_parent(path, key, [&1]))
-          |> then(&Peri.Parser.add_error(parser, &1))
+        {:error, [_ | _] = nested_errs} ->
+          reduce_errors(path, key, nested_errs, parser)
 
         {:error, reason, info} ->
           err = Peri.Error.new_child(path, key, reason, info)
@@ -622,6 +609,8 @@ defmodule Peri do
   """
   defguard is_numeric_type(t) when t in [:integer, :float]
 
+  defguard is_type_with_multiple_options(t) when is_numeric_type(t) or t === :string
+
   @doc false
   defp validate_field(nil, nil, _data, _opts), do: :ok
   defp validate_field(_, :any, _data, _opts), do: :ok
@@ -660,6 +649,17 @@ defmodule Peri do
   # Empty maps and lists are valid for required fields - only nil is invalid
   defp validate_field(val, {:required, type}, data, opts),
     do: validate_field(val, type, data, opts)
+
+  defp validate_field(val, {type, options}, data, opts)
+       when is_type_with_multiple_options(type) and is_list(options) do
+    options
+    |> Enum.map(fn option -> validate_field(val, {type, option}, data, opts) end)
+    |> Enum.filter(fn x -> x != :ok end)
+    |> case do
+      [] -> :ok
+      errs -> {:error, errs}
+    end
+  end
 
   defp validate_field(val, {:string, {:regex, regex}}, _data, _opts) when is_binary(val) do
     if Regex.match?(regex, val) do
@@ -1177,11 +1177,8 @@ defmodule Peri do
         :ok ->
           parser
 
-        {:error, [%Peri.Error{} = nested_err | _]} ->
-          nested_err
-          |> Peri.Error.update_error_paths(path ++ [key])
-          |> then(&Peri.Error.new_parent(path, key, [&1]))
-          |> then(&Peri.Parser.add_error(parser, &1))
+        {:error, [_ | _] = nested_errs} ->
+          reduce_errors(path, key, nested_errs, parser)
 
         {:error, reason, info} ->
           err = Peri.Error.new_child(path, key, reason, [{:schema, schema} | info])
@@ -1207,6 +1204,17 @@ defmodule Peri do
   defp validate_type(:pid, _parser), do: :ok
   defp validate_type({type, {:default, _val}}, p), do: validate_type(type, p)
   defp validate_type({:enum, choices}, _) when is_list(choices), do: :ok
+
+  defp validate_type({type, options}, p)
+       when is_type_with_multiple_options(type) and is_list(options) do
+    Enum.reduce_while(options, :ok, fn option, :ok ->
+      case validate_type({type, option}, p) do
+        :ok -> {:cont, :ok}
+        {:error, errors} -> {:halt, {:error, errors}}
+        {:error, template, info} -> {:halt, {:error, template, info}}
+      end
+    end)
+  end
 
   defp validate_type({:string, {:regex, %Regex{}}}, _p), do: :ok
   defp validate_type({:string, {:eq, eq}}, _p) when is_binary(eq), do: :ok
@@ -1552,4 +1560,18 @@ defmodule Peri do
   defp normalize_validation_result({:ok, val}), do: {:ok, val}
   defp normalize_validation_result({:error, reason, info}), do: {:error, [reason, info]}
   defp normalize_validation_result({:error, errors}), do: {:error, errors}
+
+  defp reduce_errors(path, key, [_ | _] = errors, parser) do
+    Enum.reduce(errors, parser, fn
+      %Peri.Error{} = err, parser ->
+        err
+        |> Peri.Error.update_error_paths(path ++ [key])
+        |> then(&Peri.Error.new_parent(path, key, [&1]))
+        |> then(&Peri.Parser.add_error(parser, &1))
+
+      {:error, reason, info}, parser ->
+        err = Peri.Error.new_child(path, key, reason, info)
+        Peri.Parser.add_error(parser, err)
+    end)
+  end
 end

@@ -42,6 +42,7 @@ Peri provides a comprehensive set of built-in types for schema validation.
 | `{:string, {:eq, value}}` | String equal to value | `{:string, {:eq, "exact"}}` |
 | `{:string, {:min, length}}` | String with minimum length | `{:string, {:min, 3}}` |
 | `{:string, {:max, length}}` | String with maximum length | `{:string, {:max, 50}}` |
+| `{:string, [...options]}` | String with multiple options | `{:string, [min: 8, max: 64, regex: ~r/^[a-zA-Z0-9-]+$/]}` |
 
 ## Integer Constraints
 
@@ -54,6 +55,20 @@ Peri provides a comprehensive set of built-in types for schema validation.
 | `{:integer, {:lt, value}}` | Integer less than value | `{:integer, {:lt, 100}}` |
 | `{:integer, {:lte, value}}` | Integer less than or equal | `{:integer, {:lte, 99}}` |
 | `{:integer, {:range, {min, max}}}` | Integer within range (inclusive) | `{:integer, {:range, {18, 65}}}` |
+| `{:integer, [...options]}` | Integer with multiple options | `{:integer, [gt: 12, lte: 96]}` |
+
+## Float Constraints
+
+| Type | Description | Example |
+|------|-------------|---------|
+| `{:float, {:eq, value}}` | Float equal to value | `{:float, {:eq, 3.1415}}` |
+| `{:float, {:neq, value}}` | Float not equal to value | `{:float, {:neq, 1.9}}` |
+| `{:float, {:gt, value}}` | Float greater than value | `{:float, {:gt, 1.0}}` |
+| `{:float, {:gte, value}}` | Float greater than or equal | `{:float, {:gte, 9.12}}` |
+| `{:float, {:lt, value}}` | Float less than value | `{:float, {:lt, 10.0}}` |
+| `{:float, {:lte, value}}` | Float less than or equal | `{:float, {:lte, 99.999}}` |
+| `{:float, {:range, {min, max}}}` | Float within range (inclusive) | `{:float, {:range, {8.3, 15.3}}}` |
+| `{:float, [...options]}` | Float with multiple options | `{:float, [gt: 1.52, lte: 29.123]}` |
 
 ## Choice Types
 
