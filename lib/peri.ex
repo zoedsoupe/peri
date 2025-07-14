@@ -75,6 +75,8 @@ defmodule Peri do
   - `{:list, type}` - List of elements of the given type
   - `{:map, type}` - Map with values of the given type
   - `{:map, key_type, value_type}` - Map with keys and values of specified types
+  - `{:schema, schema}` - Explicitly tagged nested schema
+  - `{:schema, map_schema, {:additional_keys, type}}` - Nested schema map, with extra entries validated using another type
   - `{:tuple, [type1, type2, ...]}` - Tuple with elements of specified types
   - `{:enum, [value1, value2, ...]}` - One of the specified values
   - `{:literal, value}` - Exactly matches the specified value
@@ -181,6 +183,9 @@ defmodule Peri do
              (current :: term, root :: term ->
                 {:ok, schema_def | nil}
                 | {:error, template :: String.t(), context :: map | keyword})}
+  @type explicit_schema_def ::
+          {:schema, schema}
+          | {:schema, map_schema, {:additional_keys, schema_def}}
   @type literal :: integer | float | atom | String.t() | boolean
   @type schema_def ::
           :any
@@ -194,7 +199,7 @@ defmodule Peri do
           | {:enum, list(term)}
           | {:list, schema_def}
           | {:map, schema_def}
-          | {:map, schema_def, schema_def}
+          | {:map, key_type :: schema_def, value_type :: schema_def}
           | {:tuple, list(schema_def)}
           | {:literal, literal}
           | time_def
@@ -204,10 +209,10 @@ defmodule Peri do
           | default_def
           | transform_def
           | custom_def
+  @type map_schema :: %{(String.t() | atom) => schema_def}
   @type schema ::
           schema_def
-          | %{String.t() => schema_def}
-          | %{atom => schema_def}
+          | map_schema
           | [{atom, schema_def}]
 
   @doc """
@@ -1024,6 +1029,36 @@ defmodule Peri do
     end)
   end
 
+  defp validate_field(data, {:schema, schema}, source, opts) do
+    validate_field(data, schema, source, opts)
+  end
+
+  defp validate_field(
+         data,
+         {:schema, schema, {:additional_keys, value_schema}},
+         source,
+         opts
+       )
+       when is_map(data) and is_map(schema) do
+    # Split data not in the schema so that the additional validator doesn't try
+    # to validate over the defined keys.
+    additional_keys =
+      Enum.reduce(Map.keys(schema), MapSet.new(Map.keys(data)), fn key, acc ->
+        acc |> MapSet.delete(key) |> MapSet.delete(to_string(key))
+      end)
+
+    additional_data =
+      data
+      |> Enum.filter(fn {key, _} -> MapSet.member?(additional_keys, key) end)
+      |> Map.new()
+
+    with {:ok, schema_data} <- validate_field(data, schema, source, opts),
+         {:ok, additional_data} <-
+           validate_field(additional_data, {:map, value_schema}, source, opts) do
+      {:ok, Map.merge(schema_data, additional_data)}
+    end
+  end
+
   defp validate_field(data, schema, _data, _opts)
        when is_enumerable(data) and not is_enumerable(schema) do
     {:error, "expected a nested schema but received schema: %{type}", [type: schema]}
@@ -1272,6 +1307,14 @@ defmodule Peri do
 
   defp validate_type({:map, key_type, value_type}, p) do
     with :ok <- validate_type(key_type, p) do
+      validate_type(value_type, p)
+    end
+  end
+
+  defp validate_type({:schema, type}, p), do: validate_type(type, p)
+
+  defp validate_type({:schema, type, {:additional_keys, value_type}}, p) when is_map(type) do
+    with :ok <- validate_type(type, p) do
       validate_type(value_type, p)
     end
   end
