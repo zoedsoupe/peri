@@ -2,6 +2,48 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.6.0](https://github.com/zoedsoupe/peri/compare/v0.5.1...v0.6.0) (2025-07-16)
+
+
+### Features
+
+* `:schema` validator that can accept additional keys ([#37](https://github.com/zoedsoupe/peri/issues/37)) ([098be96](https://github.com/zoedsoupe/peri/commit/098be96a106671119bc7ea83d6fe9099a2319c36))
+* add ci ([16cf116](https://github.com/zoedsoupe/peri/commit/16cf116b6e89e1d06c65ac15e26428475b305c44))
+* add MFA support for transform, default and dependent directives ([8928e59](https://github.com/zoedsoupe/peri/commit/8928e59d68a5183f415caa4537ce2d16fb7c5281))
+* add typespecs ([802e9f6](https://github.com/zoedsoupe/peri/commit/802e9f66390991dbf119046ab14708d89f02b16c))
+* basic jason protocol support ([9031b1e](https://github.com/zoedsoupe/peri/commit/9031b1e42bea82c10e081646f18369c8dca6434a))
+* cond type receives whole data and should be treated as required ([336316c](https://github.com/zoedsoupe/peri/commit/336316c3b9ab2dc4cc79ffaa51333d9a5c8742e9))
+* data generation ([c85b972](https://github.com/zoedsoupe/peri/commit/c85b9720e972ea50e6caec0d8a30d67301b7ce97))
+* data generations ([ecc2d2c](https://github.com/zoedsoupe/peri/commit/ecc2d2ca07147fd1d2c9262ba9f7de7ee1f0f02f))
+* default values type ([821935f](https://github.com/zoedsoupe/peri/commit/821935f6198531985a752d9582e6abb55e8f844e))
+* ecto integration ([#18](https://github.com/zoedsoupe/peri/issues/18)) ([8d3fe0d](https://github.com/zoedsoupe/peri/commit/8d3fe0d0eb0cef328ab550ecb15dad252c692ecd))
+* handle structs as data ([#9](https://github.com/zoedsoupe/peri/issues/9)) ([859a0fd](https://github.com/zoedsoupe/peri/commit/859a0fdff9781f93bab913095e8ef6c2ec446256))
+* implement schema validation, bang functions and improve error inspecting ([fc061f0](https://github.com/zoedsoupe/peri/commit/fc061f055fbb93ccce75201f3c6fc19579043d0f))
+* improve error handling ([f4d504b](https://github.com/zoedsoupe/peri/commit/f4d504b3ca3f4c24c21512e4a59fd4d60a550d5b))
+* multiple field dependencies dependent type ([1be99ef](https://github.com/zoedsoupe/peri/commit/1be99ef5abc1128643a2a8b50be750bb28ce7622))
+* multiple validator options ([#35](https://github.com/zoedsoupe/peri/issues/35)) ([2c5ec2f](https://github.com/zoedsoupe/peri/commit/2c5ec2fccdb90663372f90fe6d21ec9ce9f48133))
+* new schema types for map and literal ([#22](https://github.com/zoedsoupe/peri/issues/22)) ([feaf2c7](https://github.com/zoedsoupe/peri/commit/feaf2c7cecee6f03e825f2cd2c0340049e3ac80f))
+* pass current elem in dependent/cond valdiations ([#28](https://github.com/zoedsoupe/peri/issues/28)) ([324b6f4](https://github.com/zoedsoupe/peri/commit/324b6f44577fe22ec74b80b9e068edf6b765793c))
+* pass root data to the dependet and cond types ([b79dfbd](https://github.com/zoedsoupe/peri/commit/b79dfbd0b1ca18a74cc283c620e6c85b7abd5a8e))
+* permissive schema ([#33](https://github.com/zoedsoupe/peri/issues/33)) ([3b4b137](https://github.com/zoedsoupe/peri/commit/3b4b1372d1ec00d9b38959549995d6654786e9a5))
+* split out `validation_result` from `validation` type for reuse ([#34](https://github.com/zoedsoupe/peri/issues/34)) ([b3bd773](https://github.com/zoedsoupe/peri/commit/b3bd77324398e3415345820f16877d3d77cc50f2))
+* transform type ([848eea7](https://github.com/zoedsoupe/peri/commit/848eea72b1717345d32ffce69790381621c5337c))
+* use Peri.Parser to manage schema parsing state ([68fa43f](https://github.com/zoedsoupe/peri/commit/68fa43f776182ce747644fb29166b05c52b517f9))
+
+
+### Bug Fixes
+
+* correctly handle multiple struct fields as input data ([3cfe428](https://github.com/zoedsoupe/peri/commit/3cfe4282bfd6cde105b6f7b15e68a49567047772))
+* credo warnings ([b0c906c](https://github.com/zoedsoupe/peri/commit/b0c906c1e8a14e19a429d7c81d6dd97acde477e7))
+* dependent validation behavior ([#26](https://github.com/zoedsoupe/peri/issues/26)) ([e815b20](https://github.com/zoedsoupe/peri/commit/e815b200a09f9424e2d2317569b7cf6be4c180de))
+* do not cast string/atom enum values ([1d11647](https://github.com/zoedsoupe/peri/commit/1d11647b2f6c9eae2edaf98f38b62c0131825c6b))
+* do not fetch peri parser on raw data schemas ([#10](https://github.com/zoedsoupe/peri/issues/10)) ([32aa540](https://github.com/zoedsoupe/peri/commit/32aa54029f81f90b91e18e04f735db5f7022dae8))
+* do not raise on schemas with string keys ([#4](https://github.com/zoedsoupe/peri/issues/4)) ([266b5a2](https://github.com/zoedsoupe/peri/commit/266b5a27f9278578b92cf8cdc0f95a19cda2d08b))
+* make :either behave consistently with :oneof for nested ([#21](https://github.com/zoedsoupe/peri/issues/21)) ([d494847](https://github.com/zoedsoupe/peri/commit/d49484746ff8f8c022f03917de5a9004b4234608))
+* nested schema on lists filter data and respect schema definition ([#32](https://github.com/zoedsoupe/peri/issues/32)) ([792fc9c](https://github.com/zoedsoupe/peri/commit/792fc9ca16a0810a1683d8c22e3aeaa60b1bb3e9))
+* some corrections for 0.2.10 ([b212bc1](https://github.com/zoedsoupe/peri/commit/b212bc1982f74f779439a01ad0deb1ba8cf29afb))
+* typos ([#25](https://github.com/zoedsoupe/peri/issues/25)) ([2e9782d](https://github.com/zoedsoupe/peri/commit/2e9782d2d1ec1c4c27905335140ea01469f972e9))
+
 ## [0.5.1] - 2025-6-29
 
 ### Added
