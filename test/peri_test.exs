@@ -2755,4 +2755,64 @@ defmodule PeriTest do
               }
             ]} = schema_multiopts(data)
   end
+
+  describe "regression tests for github issue #40" do
+    # https://github.com/zoedsoupe/peri/issues/40
+
+    test "schemas with nested required fields should be partially required" do
+      required = %{
+        id: {:required, :string},
+        profile:
+          {:required,
+           %{
+             name: {:required, :string},
+             email: :string
+           }}
+      }
+
+      assert {:ok, _} = Peri.validate(required, %{id: "123", profile: %{name: "john"}})
+
+      assert {:error,
+              [
+                %Peri.Error{
+                  path: [:profile],
+                  key: :profile,
+                  content: %{expected: %{name: {:required, :string}, email: :string}},
+                  message:
+                    "is required, expected type of %{name: {:required, :string}, email: :string}",
+                  errors: nil
+                }
+              ]} = Peri.validate(required, %{id: "123"})
+
+      optional = %{
+        id: {:required, :string},
+        profile: %{
+          name: {:required, :string},
+          email: :string
+        }
+      }
+
+      assert {:ok, _} = Peri.validate(optional, %{id: "123", profile: %{name: "john"}})
+      assert {:ok, _} = Peri.validate(optional, %{id: "123"})
+
+      assert {:error,
+              [
+                %Peri.Error{
+                  path: [:profile],
+                  key: :profile,
+                  content: nil,
+                  message: nil,
+                  errors: [
+                    %Peri.Error{
+                      path: [:profile, :name],
+                      key: :name,
+                      content: %{expected: :string},
+                      message: "is required, expected type of :string",
+                      errors: nil
+                    }
+                  ]
+                }
+              ]} = Peri.validate(optional, %{id: "123", profile: %{}})
+    end
+  end
 end

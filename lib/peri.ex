@@ -843,7 +843,11 @@ defmodule Peri do
   end
 
   defp validate_field(nil, s, data, opts) when is_enumerable(s) do
-    validate_field(%{}, s, data, opts)
+    if schema_has_defaults?(s) do
+      validate_field(%{}, s, data, opts)
+    else
+      :ok
+    end
   end
 
   defp validate_field(nil, _schema, _data, _opts), do: :ok
@@ -1119,6 +1123,19 @@ defmodule Peri do
 
   defp maybe_get_current_data(%Peri.Parser{} = p), do: p.current_data || p.data
   defp maybe_get_current_data(data), do: data
+
+  defp schema_has_defaults?(schema) when is_enumerable(schema) do
+    Enum.any?(schema, fn {_key, type} -> type_has_default?(type) end)
+  end
+
+  defp type_has_default?({_type, {:default, _default}}), do: true
+  defp type_has_default?({:required, type}), do: type_has_default?(type)
+
+  defp type_has_default?(nested) when is_enumerable(nested) do
+    schema_has_defaults?(nested)
+  end
+
+  defp type_has_default?(_), do: false
 
   defp call_callback(callback, parser) when is_function(callback, 1) do
     root = maybe_get_root_data(parser)
