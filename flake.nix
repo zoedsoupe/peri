@@ -1,6 +1,6 @@
 {
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.05";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.05-small";
     elixir-overlay.url = "github:zoedsoupe/elixir-overlay";
   };
 
@@ -20,17 +20,13 @@
   in {
     devShells = forAllSystems (pkgs: let
       inherit (pkgs) mkShell;
-      inherit (pkgs.beam.interpreters) erlang_27;
+      inherit (pkgs.beam.interpreters) erlang_28;
     in {
       default = mkShell {
         name = "peri";
         packages = with pkgs;
-          [elixir-bin."1.19.0-rc.0" erlang_27 postgresql]
-          ++ lib.optional stdenv.isLinux [inotify-tools]
-          ++ lib.optional stdenv.isDarwin [
-            darwin.apple_sdk.frameworks.CoreServices
-            darwin.apple_sdk.frameworks.CoreFoundation
-          ];
+          [(elixir-with-otp erlang_28).latest erlang_28]
+          ++ lib.optional stdenv.isLinux [inotify-tools];
       };
     });
   };

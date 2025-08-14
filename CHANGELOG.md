@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.6.1](https://github.com/zoedsoupe/peri/compare/v0.6.0...v0.6.1) (2025-08-14)
+
+
+### Bug Fixes
+
+* schema with nested required fields ([#41](https://github.com/zoedsoupe/peri/issues/41)) ([69e843a](https://github.com/zoedsoupe/peri/commit/69e843a528524e463bb2e9020eecc1fd39398362))
+
 ## [0.6.0](https://github.com/zoedsoupe/peri/compare/v0.5.1...v0.6.0) (2025-07-16)
 
 
