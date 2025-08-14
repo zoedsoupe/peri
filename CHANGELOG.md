@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.6.2](https://github.com/zoedsoupe/peri/compare/v0.6.1...v0.6.2) (2025-08-14)
+
+
+### Continuous Integration
+
+* add auto hex publish ([3d7e67a](https://github.com/zoedsoupe/peri/commit/3d7e67a7986cd6cbaaf9df193c75e95564e02548))
+
 ## [0.6.1](https://github.com/zoedsoupe/peri/compare/v0.6.0...v0.6.1) (2025-08-14)
 
 
