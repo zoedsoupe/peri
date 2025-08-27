@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.6.2](https://github.com/zoedsoupe/peri/compare/v0.6.1...v0.6.2) (2025-08-27)
+
+
+### Bug Fixes
+
+* default appliance on nested partial required schema ([#45](https://github.com/zoedsoupe/peri/issues/45)) ([01a6ca2](https://github.com/zoedsoupe/peri/commit/01a6ca25370f9748fa6cccb271076122387c948e))
+
+
+### Continuous Integration
+
+* add auto hex publish ([3d7e67a](https://github.com/zoedsoupe/peri/commit/3d7e67a7986cd6cbaaf9df193c75e95564e02548))
+
 ## [0.6.1](https://github.com/zoedsoupe/peri/compare/v0.6.0...v0.6.1) (2025-08-14)
 
 
