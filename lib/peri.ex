@@ -842,9 +842,14 @@ defmodule Peri do
     end
   end
 
-  defp validate_field(nil, s, data, opts) when is_enumerable(s) do
-    if schema_has_defaults?(s) do
-      validate_field(%{}, s, data, opts)
+  defp validate_field(nil, s, parser, opts) when is_enumerable(s) do
+    data = parser.root_data || parser.data
+    key = List.last(parser.path)
+
+    should_apply? = is_nil(key) or enumerable_has_key?(data, key)
+
+    if schema_has_defaults?(s) and should_apply? do
+      validate_field(%{}, s, parser, opts)
     else
       :ok
     end
