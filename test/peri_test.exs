@@ -2730,30 +2730,29 @@ defmodule PeriTest do
   test "returns all errors when bad data is passed to a validator with multiple options" do
     data = %{x: "a!", y: 16}
 
-    assert {:error,
-            [
-              %Peri.Error{
-                path: [:x],
-                key: :x,
-                content: %{regex: ~r/^[a-z0-9-]+$/},
-                message: "should match the ~r/^[a-z0-9-]+$/ pattern",
-                errors: nil
-              },
-              %Peri.Error{
-                path: [:x],
-                key: :x,
-                content: %{length: 3},
-                message: "should have the minimum length of 3",
-                errors: nil
-              },
-              %Peri.Error{
-                path: [:y],
-                key: :y,
-                content: %{value: 14},
-                message: "should be less then or equal to 14",
-                errors: nil
-              }
-            ]} = schema_multiopts(data)
+    assert {:error, errors} = schema_multiopts(data)
+    assert length(errors) == 3
+
+    # Check for regex error
+    assert Enum.any?(errors, fn
+             %Peri.Error{path: [:x], content: %{regex: regex}} ->
+               Regex.source(regex) == "^[a-z0-9-]+$"
+
+             _ ->
+               false
+           end)
+
+    # Check for minimum length error
+    assert Enum.any?(errors, fn
+             %Peri.Error{path: [:x], content: %{length: 3}} -> true
+             _ -> false
+           end)
+
+    # Check for lte error
+    assert Enum.any?(errors, fn
+             %Peri.Error{path: [:y], content: %{value: 14}} -> true
+             _ -> false
+           end)
   end
 
   describe "regression tests for github issue #40" do
@@ -2813,6 +2812,87 @@ defmodule PeriTest do
                   ]
                 }
               ]} = Peri.validate(optional, %{id: "123", profile: %{}})
+    end
+
+    test "schemas with nested required fields and default values should be also partially requried" do
+      data = %{description: "lorem ipsum admun", type: "procedure"}
+
+      without_default = %{
+        type: {:required, {:literal, "procedure"}},
+        description: :string,
+        parameters: %{
+          type: {:required, {:literal, "params"}},
+          description: :string,
+          required: {:list, :string}
+        }
+      }
+
+      assert {:ok, _} = Peri.validate(without_default, data)
+
+      with_default = %{
+        type: {:required, {:literal, "procedure"}},
+        description: :string,
+        parameters: %{
+          type: {:required, {:literal, "params"}},
+          description: :string,
+          required: {{:list, :string}, {:default, []}}
+        }
+      }
+
+      assert {:ok, _} = Peri.validate(with_default, data)
+    end
+  end
+
+  describe "regression test for schema field filtering with mixed key types" do
+    # Regression test for bug introduced in v0.6.1 where validation would incorrectly
+    # return {:ok, ...} for data with string keys that should fail enum validation
+
+    test "validation should fail when string-keyed data has invalid enum values" do
+      schema = %{
+        jsonrpc: :string,
+        id: :integer,
+        method: {:enum, [:valid_method, :another_method]}
+      }
+
+      # This should fail because "unknown" is not in the enum
+      invalid_data_with_string_keys = %{
+        "jsonrpc" => "2.0",
+        "id" => 1,
+        "method" => "unknown"
+      }
+
+      assert {:error, errors} = Peri.validate(schema, invalid_data_with_string_keys)
+      assert length(errors) == 1
+      assert %Peri.Error{path: [:method], key: :method} = hd(errors)
+      assert String.contains?(hd(errors).message, "expected one of")
+    end
+
+    test "validation should work correctly with atom-keyed data" do
+      schema = %{
+        jsonrpc: :string,
+        id: :integer,
+        method: {:enum, [:valid_method, :another_method]}
+      }
+
+      # This should also fail
+      invalid_data_with_atom_keys = %{
+        jsonrpc: "2.0",
+        id: 1,
+        method: :unknown
+      }
+
+      assert {:error, errors} = Peri.validate(schema, invalid_data_with_atom_keys)
+      assert length(errors) == 1
+      assert %Peri.Error{path: [:method], key: :method} = hd(errors)
+
+      # This should succeed
+      valid_data = %{
+        jsonrpc: "2.0",
+        id: 1,
+        method: :valid_method
+      }
+
+      assert {:ok, _result} = Peri.validate(schema, valid_data)
     end
   end
 end

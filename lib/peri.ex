@@ -525,7 +525,9 @@ defmodule Peri do
   @doc false
   defp traverse_schema(schema, %Peri.Parser{} = state, opts, path \\ []) do
     Enum.reduce(schema, state, fn {key, type}, parser ->
-      value = get_enumerable_value(parser.data, key)
+      exists? = enumerable_has_key?(parser.data, key)
+      value = if exists?, do: get_enumerable_value(parser.data, key)
+      parser = Peri.Parser.for_field(parser, key, exists?)
 
       case validate_field(value, type, parser, opts) do
         :ok ->
@@ -789,7 +791,7 @@ defmodule Peri do
 
   defp validate_field(val, {:cond, condition, true_type, else_type}, parser, opts) do
     if call_callback(condition, parser) do
-      validate_field(val, true_type, parser, opts)
+      validate_field(val, true_type, %{parser | field_presence?: true}, opts)
     else
       validate_field(val, else_type, parser, opts)
     end
@@ -842,9 +844,9 @@ defmodule Peri do
     end
   end
 
-  defp validate_field(nil, s, data, opts) when is_enumerable(s) do
-    if schema_has_defaults?(s) do
-      validate_field(%{}, s, data, opts)
+  defp validate_field(nil, s, parser, opts) when is_enumerable(s) do
+    if schema_has_defaults?(s) and parser.field_presence? do
+      validate_field(%{}, s, parser, opts)
     else
       :ok
     end
@@ -1070,9 +1072,16 @@ defmodule Peri do
 
   defp validate_field(data, schema, p, opts) when is_enumerable(data) do
     root = maybe_get_root_data(p)
+    current = maybe_get_current_data(p)
     filtered_data = filter_data(schema, data, opts)
 
-    case traverse_schema(schema, Peri.Parser.new(filtered_data, root_data: root), opts) do
+    new_parser = %Peri.Parser{
+      data: filtered_data,
+      root_data: root,
+      current_data: current
+    }
+
+    case traverse_schema(schema, new_parser, opts) do
       %Peri.Parser{errors: []} = parser -> {:ok, parser.data}
       %Peri.Parser{errors: errors} -> {:error, errors}
     end

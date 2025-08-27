@@ -12,7 +12,14 @@ defmodule Peri.Parser do
   - `:path` - The current path within the data structure being validated.
   """
 
-  defstruct [:data, :errors, :path, :root_data, :current_data]
+  defstruct [:data, :root_data, :current_data, field_presence?: true, errors: [], path: []]
+
+  def for_field(%__MODULE__{} = parent, key, exists?) do
+    root = parent.root_data || parent.data
+    current_data = parent.current_data || parent.data
+    path = List.wrap(parent.path) ++ List.wrap(key)
+    %{parent | current_data: current_data, root_data: root, field_presence?: exists?, path: path}
+  end
 
   @doc """
   Initializes a new `Peri.Parser` struct with the given data.
