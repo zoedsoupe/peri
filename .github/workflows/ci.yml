@@ -98,7 +98,7 @@ jobs:
         with:
           elixir-version: ${{ matrix.elixir }}
           otp-version: ${{ matrix.otp }}
-      
+
       - name: Cache Elixir deps
         uses: actions/cache@v4
         id: deps-cache

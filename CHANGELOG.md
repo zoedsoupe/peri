@@ -4,30 +4,26 @@ All notable changes to this project will be documented in this file.
 
 ## [0.6.2](https://github.com/zoedsoupe/peri/compare/v0.6.1...v0.6.2) (2025-08-27)
 
-
 ### Bug Fixes
 
-* default appliance on nested partial required schema ([#45](https://github.com/zoedsoupe/peri/issues/45)) ([01a6ca2](https://github.com/zoedsoupe/peri/commit/01a6ca25370f9748fa6cccb271076122387c948e))
-
+- default appliance on nested partial required schema ([#45](https://github.com/zoedsoupe/peri/issues/45)) ([01a6ca2](https://github.com/zoedsoupe/peri/commit/01a6ca25370f9748fa6cccb271076122387c948e))
 
 ### Continuous Integration
 
-* add auto hex publish ([3d7e67a](https://github.com/zoedsoupe/peri/commit/3d7e67a7986cd6cbaaf9df193c75e95564e02548))
+- add auto hex publish ([3d7e67a](https://github.com/zoedsoupe/peri/commit/3d7e67a7986cd6cbaaf9df193c75e95564e02548))
 
 ## [0.6.1](https://github.com/zoedsoupe/peri/compare/v0.6.0...v0.6.1) (2025-08-14)
 
-
 ### Bug Fixes
 
-* schema with nested required fields ([#41](https://github.com/zoedsoupe/peri/issues/41)) ([69e843a](https://github.com/zoedsoupe/peri/commit/69e843a528524e463bb2e9020eecc1fd39398362))
+- schema with nested required fields ([#41](https://github.com/zoedsoupe/peri/issues/41)) ([69e843a](https://github.com/zoedsoupe/peri/commit/69e843a528524e463bb2e9020eecc1fd39398362))
 
 ## [0.6.0](https://github.com/zoedsoupe/peri/compare/v0.5.1...v0.6.0) (2025-07-16)
 
-
 ### Features
 
-* `:schema` validator that can accept additional keys ([#37](https://github.com/zoedsoupe/peri/issues/37)) ([098be96](https://github.com/zoedsoupe/peri/commit/098be96a106671119bc7ea83d6fe9099a2319c36))
-* multiple validator options ([#35](https://github.com/zoedsoupe/peri/issues/35)) ([2c5ec2f](https://github.com/zoedsoupe/peri/commit/2c5ec2fccdb90663372f90fe6d21ec9ce9f48133))
+- `:schema` validator that can accept additional keys ([#37](https://github.com/zoedsoupe/peri/issues/37)) ([098be96](https://github.com/zoedsoupe/peri/commit/098be96a106671119bc7ea83d6fe9099a2319c36))
+- multiple validator options ([#35](https://github.com/zoedsoupe/peri/issues/35)) ([2c5ec2f](https://github.com/zoedsoupe/peri/commit/2c5ec2fccdb90663372f90fe6d21ec9ce9f48133))
 
 ## [0.5.1] - 2025-6-29
 
@@ -77,11 +73,9 @@ All notable changes to this project will be documented in this file.
 
 - **New Types**:
   - `:duration` type for validating `%Duration{}` structs
-  
-- **JSON Support**: 
+- **JSON Support**:
   - Added `Jason.Encoder` protocol implementation for `Peri.Error`
   - Support for encoding errors as JSON when Jason is available
-  
 - **Performance Benchmarks**:
   - Added benchmark suite comparing Peri validation with Ecto changeset generation
   - Benchmarks for both simple and complex schemas
@@ -168,64 +162,77 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
--	Numeric and String Validations: Implemented new validation types for numeric and string data, including regex patterns, equality, inequality, range, and length validations. This allows for more granular and specific data validations. [9bb797e]
+- Numeric and String Validations: Implemented new validation types for numeric and string data, including regex patterns, equality, inequality, range, and length validations. This allows for more granular and specific data validations. [9bb797e]
 
 ## [0.2.4] - 2024-06-21
+
 - Implemented new type `{type, {:default, default}}`. [a569ecf, 821935f]
 - Implemented new type `{type, {:transform, mapper}}`. [785179d]
 
 ## [0.2.3] - 2024-06-18
 
 ### Added
+
 - Implemented schema validation, bang functions, and improved error inspection. [fc061f0]
 
 ### Fixed
+
 - Improved error handling and inspecting. [f4d504b, afb054e]
 
 ## [0.2.2] - 2024-06-17
 
 ### Added
+
 - Native support for keyword lists. [9f8aaef]
 - `conforms?/1` function. [9a39ed8]
 
 ## [0.2.1] - 2024-06-16
 
 ### Added
+
 - Continuous Integration (CI) setup. [16cf116]
 
 ### Fixed
+
 - Corrected mix.exs file for hex package. [af5a744]
 
 ## [0.2.0] - 2024-06-15
 
 ### Added
+
 - Enhanced error handling features. [f4d504b, afb054e]
 
 ### Fixed
+
 - Documentation updates in README and Hex docs. [4fd48ce]
 
 ## [0.1.4] - 2024-06-10
 
 ### Added
+
 - Support for `any`, `atom`, `oneof`, and `either` types. [6a225f4]
 
 ## [0.1.2] - 2024-06-05
 
 ### Added
+
 - Removed unknown fields from schema validation. [3fa79d4]
 - Allowed custom, composable, and recursive schemas. [fd1f593]
 
 ### Fixed
+
 - Support for string map keys. [1b6edef]
 
 ## [0.1.1] - 2024-06-02
 
 ### Added
+
 - Support for `tuple`, `lists`, `enum`, and custom types. [7766adc]
 
 ## [0.1.0] - 2024-06-01
 
 ### Added
+
 - Initial version of Peri with basic schema validation functionalities. [7044ea7]
 
 [0.5.0]: https://github.com/zoedsoupe/peri/compare/v0.4.1...v0.5.0

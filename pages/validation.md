@@ -59,13 +59,14 @@ data = %{name: "John", email: "john@example.com", role: "admin"}
 # strict => %{name: "John", email: "john@example.com"}
 
 # Permissive mode keeps 'role'
-{:ok, permissive} = MySchemas.user_permissive(data)  
+{:ok, permissive} = MySchemas.user_permissive(data)
 # permissive => %{name: "John", email: "john@example.com", role: "admin"}
 ```
 
 ### Use Cases for Permissive Mode
 
 Permissive mode is useful when:
+
 - Building API gateways that need to forward extra fields
 - Implementing progressive validation in layers
 - Working with evolving data structures where new fields may be added
@@ -128,11 +129,11 @@ defmodule ProfileSchema do
   defp validate_contact(%{data: %{contact_type: :email}}) do
     {:ok, {:required, %{email: {:required, :string}}}}
   end
-  
+
   defp validate_contact(%{data: %{contact_type: :phone}}) do
     {:ok, {:required, %{phone: {:required, :string}}}}
   end
-  
+
   defp validate_contact(%{data: %{contact_type: :both}}) do
     {:ok, {:required, %{
       email: {:required, :string},
@@ -189,8 +190,8 @@ Receives the entire root data structure:
 ```elixir
 %{
   user_type: :premium,
-  features: {:cond, fn data -> data.user_type == :premium end, 
-             {:list, :string}, 
+  features: {:cond, fn data -> data.user_type == :premium end,
+             {:list, :string},
              {:literal, []}}
 }
 ```
@@ -282,8 +283,8 @@ Custom validators can provide detailed error context:
 defp validate_complex_rule(value) do
   case expensive_validation(value) do
     :ok -> :ok
-    {:error, reason} -> 
-      {:error, "validation failed: %{reason} for value %{value}", 
+    {:error, reason} ->
+      {:error, "validation failed: %{reason} for value %{value}",
        [reason: reason, value: inspect(value)]}
   end
 end

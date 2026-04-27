@@ -32,32 +32,32 @@ Peri.to_json_schema(schema)
 `{:meta, type, opts}` annotations are read during encoding. Blessed keys map to
 JSON Schema annotation keywords:
 
-| Peri meta key | JSON Schema key |
-|---------------|-----------------|
-| `:title`      | `title`         |
-| `:description`| `description`   |
-| `:example`    | `examples` (wrapped in array) |
-| `:deprecated` | `deprecated`    |
+| Peri meta key  | JSON Schema key               |
+| -------------- | ----------------------------- |
+| `:title`       | `title`                       |
+| `:description` | `description`                 |
+| `:example`     | `examples` (wrapped in array) |
+| `:deprecated`  | `deprecated`                  |
 
 Non-blessed user keys are preserved as Peri-side metadata only and are not
 written to the JSON Schema.
 
 ### Type mapping
 
-| Peri | JSON Schema |
-|------|-------------|
-| `:string`, `:integer`, `:float`, `:boolean` | `"type"` keyword |
-| `:date`, `:time`, `:datetime` | `"string"` + `"format"` |
-| `{:list, t}` | `"array"` + `"items"` |
-| `{:map, t}`, `{:map, k, v}` | `"object"` + `"additionalProperties"` |
-| `{:tuple, ts}` | fixed-length `"array"` |
-| `{:enum, vs}` | `"enum"` |
-| `{:literal, v}` | `"const"` |
-| `{:either, {a, b}}`, `{:oneof, ts}` | `"oneOf"` |
-| `{:required, t}` | adds key to parent `"required"` |
-| `{type, gte: n}` | `"minimum"` |
-| `{type, gt: n}` | `"exclusiveMinimum"` |
-| `{:string, {:regex, r}}` | `"pattern"` |
+| Peri                                        | JSON Schema                           |
+| ------------------------------------------- | ------------------------------------- |
+| `:string`, `:integer`, `:float`, `:boolean` | `"type"` keyword                      |
+| `:date`, `:time`, `:datetime`               | `"string"` + `"format"`               |
+| `{:list, t}`                                | `"array"` + `"items"`                 |
+| `{:map, t}`, `{:map, k, v}`                 | `"object"` + `"additionalProperties"` |
+| `{:tuple, ts}`                              | fixed-length `"array"`                |
+| `{:enum, vs}`                               | `"enum"`                              |
+| `{:literal, v}`                             | `"const"`                             |
+| `{:either, {a, b}}`, `{:oneof, ts}`         | `"oneOf"`                             |
+| `{:required, t}`                            | adds key to parent `"required"`       |
+| `{type, gte: n}`                            | `"minimum"`                           |
+| `{type, gt: n}`                             | `"exclusiveMinimum"`                  |
+| `{:string, {:regex, r}}`                    | `"pattern"`                           |
 
 ### Dynamic types
 

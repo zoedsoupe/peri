@@ -30,20 +30,20 @@ changeset = UserValidator.validate_user(attrs)
 
 Peri types are automatically mapped to appropriate Ecto types:
 
-| Peri Type | Ecto Type | Notes |
-|-----------|-----------|--------|
-| `:string` | `:string` | Direct mapping |
-| `:integer` | `:integer` | Direct mapping |
-| `:float` | `:float` | Direct mapping |
-| `:boolean` | `:boolean` | Direct mapping |
-| `:date` | `:date` | Direct mapping |
-| `:datetime` | `:utc_datetime` | UTC datetime |
-| `:naive_datetime` | `:naive_datetime` | Direct mapping |
+| Peri Type          | Ecto Type         | Notes                     |
+| ------------------ | ----------------- | ------------------------- |
+| `:string`          | `:string`         | Direct mapping            |
+| `:integer`         | `:integer`        | Direct mapping            |
+| `:float`           | `:float`          | Direct mapping            |
+| `:boolean`         | `:boolean`        | Direct mapping            |
+| `:date`            | `:date`           | Direct mapping            |
+| `:datetime`        | `:utc_datetime`   | UTC datetime              |
+| `:naive_datetime`  | `:naive_datetime` | Direct mapping            |
 | `{:enum, choices}` | Custom validation | Validates against choices |
-| `{:list, type}` | `{:array, type}` | Array of specified type |
-| `:any` | Custom type | Allows any value |
-| `:atom` | Custom type | Validates atoms |
-| `{:tuple, types}` | Custom type | Validates tuple structure |
+| `{:list, type}`    | `{:array, type}`  | Array of specified type   |
+| `:any`             | Custom type       | Allows any value          |
+| `:atom`            | Custom type       | Validates atoms           |
+| `{:tuple, types}`  | Custom type       | Validates tuple structure |
 
 ## Constraint Mapping
 
@@ -133,8 +133,8 @@ changeset = Peri.to_changeset!(schema, attrs)
 # Access errors like normal Ecto changeset
 changeset.errors
 # [
-#   name: {"can't be blank", [validation: :required]}, 
-#   age: {"must be greater than or equal to %{number}", 
+#   name: {"can't be blank", [validation: :required]},
+#   age: {"must be greater than or equal to %{number}",
 #         [validation: :number, kind: :greater_than_or_equal_to, number: 18]}
 # ]
 
@@ -164,7 +164,7 @@ defmodule MyAppWeb.UserController do
 
   def create(conn, params) do
     changeset = Peri.to_changeset!(get_schema(:user_params), params)
-    
+
     if changeset.valid? do
       user_data = Ecto.Changeset.apply_changes(changeset)
       # Process valid data...

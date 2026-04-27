@@ -72,6 +72,7 @@ mix run priv/benchs/complex.exs
 Basic types: `:string`, `:integer`, `:float`, `:boolean`, `:atom`, `:map`, `:pid`, `:any`
 
 Complex types:
+
 - `{:list, type}` - Lists of elements
 - `{:map, type}` or `{:map, key_type, value_type}` - Maps with typed values
 - `{:tuple, [types...]}` - Fixed-size tuples
@@ -93,6 +94,7 @@ Constraints: `:gt`, `:gte`, `:lt`, `:lte`, `:in`, `:regex`
 ## CI/CD Workflow
 
 GitHub Actions runs three jobs:
+
 1. **lint**: Checks formatting and runs Credo
 2. **static-analysis**: Runs Dialyzer with cached PLTs
 3. **test**: Runs the full test suite
