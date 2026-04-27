@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.0](https://github.com/zoedsoupe/peri/compare/v0.6.2...v0.7.0) (2026-04-27)
+
+
+### Features
+
+* add :meta wrapper and schema-level meta opts ([#47](https://github.com/zoedsoupe/peri/issues/47)) ([b63584c](https://github.com/zoedsoupe/peri/commit/b63584c6ef61c81521b991210129b175a616afd5))
+* add :multi directive for tagged unions ([#51](https://github.com/zoedsoupe/peri/issues/51)) ([4727871](https://github.com/zoedsoupe/peri/commit/47278718d4079977742df9c69f9e7476c9c4be3d))
+* add :ref directive for recursive and cross-module schemas ([#50](https://github.com/zoedsoupe/peri/issues/50)) ([b5c778b](https://github.com/zoedsoupe/peri/commit/b5c778bee3bd5d1cb317ff05d6281323bf8a575d))
+* add JSON Schema (Draft 7) bidirectional conversion ([#49](https://github.com/zoedsoupe/peri/issues/49)) ([7a78a14](https://github.com/zoedsoupe/peri/commit/7a78a14eda19abe6952e0ec5e852d5002ac78fc5))
+* add Peri.walk/2 schema rewriter ([#53](https://github.com/zoedsoupe/peri/issues/53)) ([1464f3f](https://github.com/zoedsoupe/peri/commit/1464f3f77f27a9471f80bd07532db96943dc444c))
+* per-field custom error overrides + i18n hook ([#52](https://github.com/zoedsoupe/peri/issues/52)) ([838514c](https://github.com/zoedsoupe/peri/commit/838514cff8c9b074dbfca79cd269d20b48ddb7b7))
+* per-field gen: override for StreamData generation ([#54](https://github.com/zoedsoupe/peri/issues/54)) ([029da56](https://github.com/zoedsoupe/peri/commit/029da561cb39f62ae6f9e9a8145e4bb09887706d))
+
 ## [0.6.2](https://github.com/zoedsoupe/peri/compare/v0.6.1...v0.6.2) (2025-08-27)
 
 ### Bug Fixes
