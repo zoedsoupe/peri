@@ -93,4 +93,37 @@ defmodule Peri.MetaTest do
       assert __MODULE__.__schema_meta__(:plain) == []
     end
   end
+
+  if Code.ensure_loaded?(StreamData) do
+    describe "Peri.Generatable with meta" do
+      test "unwraps meta and generates inner type" do
+        schema = %{n: {:meta, :integer, doc: "n"}}
+        {:ok, stream} = Peri.generate(schema)
+        [sample] = Enum.take(stream, 1)
+        assert is_integer(sample.n)
+      end
+    end
+  end
+
+  if Code.ensure_loaded?(Ecto) do
+    describe "Peri.Ecto with meta" do
+      test "to_changeset! unwraps meta wrapper" do
+        schema = %{
+          email: {:meta, {:required, :string}, doc: "Login"},
+          age: {:meta, :integer, description: "Years"}
+        }
+
+        cs = Peri.to_changeset!(schema, %{email: "a@b.io", age: 30})
+        assert cs.valid?
+        assert cs.changes == %{email: "a@b.io", age: 30}
+      end
+
+      test "meta-wrapped required is enforced via Ecto" do
+        schema = %{email: {:meta, {:required, :string}, doc: "Login"}}
+        cs = Peri.to_changeset!(schema, %{})
+        refute cs.valid?
+        assert {"can't be blank", _} = cs.errors[:email]
+      end
+    end
+  end
 end

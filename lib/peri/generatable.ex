@@ -82,6 +82,8 @@ if Code.ensure_loaded?(StreamData) do
 
     def gen({:required, type}), do: gen(type)
 
+    def gen({:meta, type, _opts}), do: gen(type)
+
     def gen({:enum, choices}) do
       choices
       |> Enum.map(&StreamData.constant/1)
