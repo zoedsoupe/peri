@@ -91,9 +91,9 @@ Peri provides a comprehensive set of built-in types for schema validation.
 | `{type, {:transform, fun}}`    | Transform value                         | `{:string, {:transform, &String.upcase/1}}`                            |
 | `{type, {:transform, {m, f}}}` | Transform with MFA                      | `{:string, {:transform, {MyMod, :clean}}}`                             |
 | `{:meta, type, opts}`          | Attach metadata, passthrough validation | `{:meta, {:required, :string}, doc: "Login email", example: "a@b.io"}` |
-| `{:ref, atom}`                 | Reference a schema in the same module   | `{:list, {:ref, :tree}}`                                                |
-| `{:ref, {Mod, atom}}`          | Reference a schema in another module    | `{:ref, {OtherMod, :node}}`                                             |
-| `{:multi, field, branches}`    | Tagged union dispatched on `field`      | `{:multi, :type, %{"circle" => %{r: :float}, "rect" => %{w: :float}}}`  |
+| `{:ref, atom}`                 | Reference a schema in the same module   | `{:list, {:ref, :tree}}`                                               |
+| `{:ref, {Mod, atom}}`          | Reference a schema in another module    | `{:ref, {OtherMod, :node}}`                                            |
+| `{:multi, field, branches}`    | Tagged union dispatched on `field`      | `{:multi, :type, %{"circle" => %{r: :float}, "rect" => %{w: :float}}}` |
 
 ## Schema Metadata
 
@@ -156,11 +156,11 @@ Override the default error template for any field using the `error:` opt in its
 options list. Accepted forms: a static string, or an MFA `{mod, fun, args}` that
 receives the `%Peri.Error{}` prepended to `args` and returns a string.
 
-| Form                                            | Description                                | Example                                         |
-| ----------------------------------------------- | ------------------------------------------ | ----------------------------------------------- |
-| `{type, [..., error: msg]}`                     | Static replacement message                 | `{:integer, gte: 18, error: "must be adult"}`   |
-| `{:required, type, [error: msg]}`               | Static message on a required field         | `{:required, :string, [error: "needed"]}`       |
-| `{:required, type, [error: {mod, fun, args}]}`  | MFA receives `%Peri.Error{}` and returns string | `{:required, :string, [error: {Msgs, :email, []}]}` |
+| Form                                           | Description                                     | Example                                             |
+| ---------------------------------------------- | ----------------------------------------------- | --------------------------------------------------- |
+| `{type, [..., error: msg]}`                    | Static replacement message                      | `{:integer, gte: 18, error: "must be adult"}`       |
+| `{:required, type, [error: msg]}`              | Static message on a required field              | `{:required, :string, [error: "needed"]}`           |
+| `{:required, type, [error: {mod, fun, args}]}` | MFA receives `%Peri.Error{}` and returns string | `{:required, :string, [error: {Msgs, :email, []}]}` |
 
 ```elixir
 defmodule MyApp.Schemas do
@@ -200,10 +200,10 @@ for derivations like "make every field optional" or "drop internal-only
 fields from a public DTO". The callback is invoked on every subtree, and its
 contract depends on context:
 
-| Position                            | Callback receives | Valid returns                                   |
-| ----------------------------------- | ----------------- | ----------------------------------------------- |
-| Map / keyword schema entry          | `{:field, k, v}`  | `{:cont, {:field, k', v'}}` or `:drop`          |
-| Any other subtree (type expression) | the node itself   | `{:cont, new_node}` (`:drop` raises here)       |
+| Position                            | Callback receives | Valid returns                             |
+| ----------------------------------- | ----------------- | ----------------------------------------- |
+| Map / keyword schema entry          | `{:field, k, v}`  | `{:cont, {:field, k', v'}}` or `:drop`    |
+| Any other subtree (type expression) | the node itself   | `{:cont, new_node}` (`:drop` raises here) |
 
 Map keys, constraint option lists (e.g. `[gte: 18, error: "..."]`), `:enum`
 members, `:literal` values, `:ref` names, `:multi` tags, callbacks, and
@@ -250,11 +250,11 @@ can be slow to generate via `Peri.generate/1` because StreamData's default
 strategy is rejection sampling. Supply a `gen:` opt with a custom generator
 to skip rejection altogether:
 
-| Form                              | Description                          |
-| --------------------------------- | ------------------------------------ |
-| `gen: {Mod, :fun, args}`          | MFA returning a `%StreamData{}`      |
-| `gen: {Mod, :fun}`                | MF (zero args), same return contract |
-| `gen: fn -> StreamData.… end`     | 0-arity function, same contract      |
+| Form                          | Description                          |
+| ----------------------------- | ------------------------------------ |
+| `gen: {Mod, :fun, args}`      | MFA returning a `%StreamData{}`      |
+| `gen: {Mod, :fun}`            | MF (zero args), same return contract |
+| `gen: fn -> StreamData.… end` | 0-arity function, same contract      |
 
 Accepted positions:
 
