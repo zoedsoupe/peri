@@ -87,6 +87,24 @@ defmodule Peri do
   - `{:meta, type, opts}` - Attach documentation/example/description to a field; passthrough at validation
   - Nested maps for complex structures
 
+  ## Custom Error Messages
+
+  Override the default validation message per field via the `error:` opt in the
+  type's options list. Accepts either a static string or an MFA tuple
+  `{module, function, args}`. The MFA receives the `%Peri.Error{}` (with its
+  `content`) prepended to `args` and must return a string.
+
+  ```elixir
+  %{
+    age:   {:integer, gte: 18, error: "must be adult"},
+    email: {:required, :string, [error: {MyApp.Errors, :email_msg, []}]}
+  }
+  ```
+
+  For i18n / Gettext, walk the resulting errors with
+  `Peri.Error.traverse_errors/2` and translate each leaf message — see that
+  function's docs for an example.
+
   ## Schema Metadata
 
   Fields can carry metadata via the `{:meta, type, opts}` wrapper. Metadata is
@@ -755,8 +773,18 @@ defmodule Peri do
   defp validate_field(val, {:required, type}, data, opts),
     do: validate_field(val, type, data, opts)
 
+  defp validate_field(val, {:required, type, error_opts}, data, opts) when is_list(error_opts) do
+    {override, _rest} = Keyword.pop(error_opts, :error)
+
+    val
+    |> validate_field({:required, type}, data, opts)
+    |> tag_error_override(override)
+  end
+
   defp validate_field(val, {type, options}, data, opts)
        when is_type_with_multiple_options(type) and is_list(options) do
+    {override, options} = Keyword.pop(options, :error)
+
     options
     |> Enum.map(fn option -> validate_field(val, {type, option}, data, opts) end)
     |> Enum.filter(fn x -> x != :ok end)
@@ -764,6 +792,7 @@ defmodule Peri do
       [] -> :ok
       errs -> {:error, errs}
     end
+    |> tag_error_override(override)
   end
 
   defp validate_field(val, {:string, {:regex, regex}}, _data, _opts) when is_binary(val) do
@@ -1231,6 +1260,38 @@ defmodule Peri do
   defp maybe_get_current_data(%Peri.Parser{} = p), do: p.current_data || p.data
   defp maybe_get_current_data(data), do: data
 
+  defp valid_error_opt?(opts) do
+    case Keyword.fetch(opts, :error) do
+      :error -> true
+      {:ok, msg} when is_binary(msg) -> true
+      {:ok, {mod, fun, args}} when is_atom(mod) and is_atom(fun) and is_list(args) -> true
+      {:ok, _} -> false
+    end
+  end
+
+  defp tag_error_override(:ok, _), do: :ok
+  defp tag_error_override({:ok, _} = result, _), do: result
+  defp tag_error_override(result, nil), do: result
+
+  defp tag_error_override({:error, template, info}, override) when is_list(info) do
+    {:error, template, Keyword.put(info, :__error_override__, override)}
+  end
+
+  defp tag_error_override({:error, errors}, override) when is_list(errors) do
+    tagged =
+      Enum.map(errors, fn
+        {:error, template, info} when is_list(info) ->
+          {:error, template, Keyword.put(info, :__error_override__, override)}
+
+        other ->
+          other
+      end)
+
+    {:error, tagged}
+  end
+
+  defp tag_error_override(other, _), do: other
+
   @ref_depth_limit 64
 
   defp resolve_ref({_mod, _name} = ref, _val, %Peri.Parser{ref_depth: d}, _opts)
@@ -1443,6 +1504,17 @@ defmodule Peri do
 
   defp validate_type({type, options}, p)
        when is_type_with_multiple_options(type) and is_list(options) do
+    if valid_error_opt?(options) do
+      options
+      |> Keyword.delete(:error)
+      |> reduce_type_options(type, p)
+    else
+      {:error, "expected error: opt to be a string or MFA tuple, got %{actual}",
+       actual: inspect(Keyword.get(options, :error))}
+    end
+  end
+
+  defp reduce_type_options(options, type, p) do
     Enum.reduce_while(options, :ok, fn option, :ok ->
       case validate_type({type, option}, p) do
         :ok -> {:cont, :ok}
@@ -1538,6 +1610,13 @@ defmodule Peri do
   end
 
   defp validate_type({:required, type}, p), do: validate_type(type, p)
+
+  defp validate_type({:required, type, opts}, p) when is_list(opts) do
+    if Keyword.keyword?(opts) and valid_error_opt?(opts),
+      do: validate_type(type, p),
+      else: {:error, "expected error: opts to be a keyword list", []}
+  end
+
   defp validate_type({:list, type}, p), do: validate_type(type, p)
   defp validate_type({:map, type}, p), do: validate_type(type, p)
 

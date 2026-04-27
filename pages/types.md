@@ -150,6 +150,49 @@ For untagged "any of these types" semantics, use `{:oneof, types}` instead.
 | `{:custom, {mod, fun}}`       | Custom validation MFA       | `{:custom, {MyMod, :validate}}`     |
 | `{:custom, {mod, fun, args}}` | Custom validation with args | `{:custom, {MyMod, :validate, []}}` |
 
+## Custom Error Messages
+
+Override the default error template for any field using the `error:` opt in its
+options list. Accepted forms: a static string, or an MFA `{mod, fun, args}` that
+receives the `%Peri.Error{}` prepended to `args` and returns a string.
+
+| Form                                            | Description                                | Example                                         |
+| ----------------------------------------------- | ------------------------------------------ | ----------------------------------------------- |
+| `{type, [..., error: msg]}`                     | Static replacement message                 | `{:integer, gte: 18, error: "must be adult"}`   |
+| `{:required, type, [error: msg]}`               | Static message on a required field         | `{:required, :string, [error: "needed"]}`       |
+| `{:required, type, [error: {mod, fun, args}]}`  | MFA receives `%Peri.Error{}` and returns string | `{:required, :string, [error: {Msgs, :email, []}]}` |
+
+```elixir
+defmodule MyApp.Schemas do
+  import Peri
+
+  defmodule Msgs do
+    def email_msg(%Peri.Error{content: ctx}), do: "email is invalid (#{inspect(ctx)})"
+  end
+
+  defschema :user, %{
+    age:   {:integer, gte: 18, error: "must be adult"},
+    email: {:required, :string, [error: {Msgs, :email_msg, []}]}
+  }
+end
+```
+
+For i18n, post-process the error list with `Peri.Error.traverse_errors/2`,
+which walks nested errors and replaces each leaf message with the callback's
+return value:
+
+```elixir
+{:error, errors} = MyApp.Schemas.user(%{age: 10})
+
+Peri.Error.traverse_errors(errors, fn err ->
+  Gettext.dgettext(MyAppWeb.Gettext, "errors", err.message, err.content || %{})
+end)
+```
+
+The MFA / static override fires first; `traverse_errors/2` runs over whatever
+message remains (overridden or default). No hard dependency on Gettext —
+the callback is opaque.
+
 ## Examples
 
 ### Simple User Schema

@@ -137,10 +137,11 @@ defmodule Peri.Error do
       }
   """
   def new_single(message, context) do
+    {override, context} = pop_override(context)
     msg = format_error_message(message, context)
     content = Enum.into(context, %{})
 
-    %__MODULE__{message: msg, content: content}
+    apply_override(%__MODULE__{message: msg, content: content}, override)
   end
 
   @doc """
@@ -164,10 +165,61 @@ defmodule Peri.Error do
       }
   """
   def new_child(path, key, message, context) do
+    {override, context} = pop_override(context)
     msg = format_error_message(message, context)
     content = Enum.into(context, %{})
 
     %__MODULE__{path: path ++ [key], key: key, message: msg, content: content}
+    |> apply_override(override)
+  end
+
+  @doc false
+  def pop_override(context) when is_list(context),
+    do: Keyword.pop(context, :__error_override__)
+
+  def pop_override(context), do: {nil, context}
+
+  defp apply_override(%__MODULE__{} = err, nil), do: err
+
+  defp apply_override(%__MODULE__{} = err, msg) when is_binary(msg),
+    do: %{err | message: msg}
+
+  defp apply_override(%__MODULE__{} = err, {mod, fun, args})
+       when is_atom(mod) and is_atom(fun) and is_list(args) do
+    case apply(mod, fun, [err | args]) do
+      msg when is_binary(msg) -> %{err | message: msg}
+      _ -> err
+    end
+  end
+
+  defp apply_override(%__MODULE__{} = err, _), do: err
+
+  @doc """
+  Recursively walks an error or list of errors, applying the callback to each
+  leaf and replacing its message with the callback's return value.
+
+  Mirrors `Ecto.Changeset.traverse_errors/2`. Useful for translating template
+  strings into user-facing locale messages, e.g.
+
+      Peri.Error.traverse_errors(errors, fn err ->
+        Gettext.dgettext(MyAppWeb.Gettext, "errors", err.message, err.content || %{})
+      end)
+
+  Returns the same error shape with translated messages. Non-string callback
+  results are coerced via `to_string/1`.
+  """
+  @spec traverse_errors([t()] | t(), (t() -> String.t() | term)) :: [t()] | t()
+  def traverse_errors(errors, fun) when is_list(errors) and is_function(fun, 1) do
+    Enum.map(errors, &traverse_errors(&1, fun))
+  end
+
+  def traverse_errors(%__MODULE__{errors: nil} = err, fun) when is_function(fun, 1) do
+    %{err | message: fun.(err) |> to_string()}
+  end
+
+  def traverse_errors(%__MODULE__{errors: nested} = err, fun)
+      when is_list(nested) and is_function(fun, 1) do
+    %{err | errors: Enum.map(nested, &traverse_errors(&1, fun))}
   end
 
   def update_error_paths(%Peri.Error{path: path, errors: nil} = error, new_path) do
