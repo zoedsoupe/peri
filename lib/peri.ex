@@ -84,7 +84,25 @@ defmodule Peri do
   - `{:oneof, [type1, type2, ...]}` - One of the specified types
   - `{:cond, condition, true_type, false_type}` - Conditional validation based on callback
   - `{:dependent, callback}` - Dynamic type based on callback result
+  - `{:meta, type, opts}` - Attach documentation/example/description to a field; passthrough at validation
   - Nested maps for complex structures
+
+  ## Schema Metadata
+
+  Fields can carry metadata via the `{:meta, type, opts}` wrapper. Metadata is
+  ignored at validation time but available for documentation, JSON Schema export
+  (planned), and tooling. Blessed keys: `:doc`, `:title`, `:description`,
+  `:example`, `:deprecated`. User keys are preserved opaquely.
+
+  ```elixir
+  defschema :user, %{
+    email: {:meta, {:required, :string}, doc: "Login email", example: "a@b.io"},
+    age: {:meta, {:integer, gte: 0}, description: "Years"}
+  }, title: "User", description: "Account holder"
+  ```
+
+  Schema-level meta opts are exposed via the generated `__schema_meta__/1`
+  function. Validation opts (e.g. `:mode`) are split out, not surfaced as meta.
 
   ## Callback Functions for :cond and :dependent
 
@@ -196,6 +214,7 @@ defmodule Peri do
           | {:either, {schema_def, schema_def}}
           | {:oneof, list(schema_def)}
           | {:required, schema_def}
+          | {:meta, schema_def, keyword}
           | {:enum, list(term)}
           | {:list, schema_def}
           | {:map, schema_def}
@@ -234,7 +253,16 @@ defmodule Peri do
           name: :string,
           email: {:required, :string}
         }, mode: :permissive
+
+        # With metadata (field-level and schema-level)
+        defschema :documented_user, %{
+          email: {:meta, {:required, :string}, doc: "Login email", example: "a@b.io"}
+        }, title: "User", description: "Account holder"
       end
+
+      # Schema-level metadata is accessible via __schema_meta__/1:
+      MySchemas.__schema_meta__(:documented_user)
+      # => [title: "User", description: "Account holder"]
 
       user_data = %{name: "John", age: 30, email: "john@example.com"}
       MySchemas.user(user_data)
@@ -249,12 +277,19 @@ defmodule Peri do
       MySchemas.flexible_user(flexible_data)
       # => {:ok, %{name: "John", email: "john@example.com", role: "admin"}}
   """
+  @validation_opts [:mode]
+
   defmacro defschema(name, schema, opts \\ []) do
     bang = :"#{name}!"
+    {validation_opts, meta_opts} = Keyword.split(opts, @validation_opts)
 
     quote do
       def get_schema(unquote(name)) do
         unquote(schema)
+      end
+
+      def __schema_meta__(unquote(name)) do
+        unquote(meta_opts)
       end
 
       if Code.ensure_loaded?(Ecto) do
@@ -265,13 +300,13 @@ defmodule Peri do
 
       def unquote(name)(data) do
         with {:ok, schema} <- Peri.validate_schema(unquote(schema)) do
-          Peri.validate(schema, data, unquote(opts))
+          Peri.validate(schema, data, unquote(validation_opts))
         end
       end
 
       def unquote(bang)(data) do
         with {:ok, valid_schema} <- Peri.validate_schema(unquote(schema)),
-             {:ok, valid_data} <- Peri.validate(valid_schema, data, unquote(opts)) do
+             {:ok, valid_data} <- Peri.validate(valid_schema, data, unquote(validation_opts)) do
           valid_data
         else
           {:error, errors} -> raise Peri.InvalidSchema, errors
@@ -480,6 +515,10 @@ defmodule Peri do
     end
   end
 
+  defp do_filter_data(data, {key, {:meta, type, _meta_opts}}, acc, opts) do
+    do_filter_data(data, {key, type}, acc, opts)
+  end
+
   defp do_filter_data(data, {key, type}, acc, opts) do
     string_key = to_string(key)
     value = get_enumerable_value(data, key)
@@ -641,6 +680,9 @@ defmodule Peri do
     {:error, "expected literal value %{expected} but got %{actual}",
      [expected: inspect(literal), actual: inspect(val)]}
   end
+
+  defp validate_field(val, {:meta, type, _meta_opts}, data, opts),
+    do: validate_field(val, type, data, opts)
 
   defp validate_field(nil, {:required, type}, _data, _opts) do
     {:error, "is required, expected type of %{expected}", expected: type}
@@ -1325,6 +1367,18 @@ defmodule Peri do
   defp validate_type({:required, {type, {:default, val}}}, _) do
     template = "cannot set default value of %{value} for required field of type %{type}"
     {:error, template, [value: val, type: type]}
+  end
+
+  defp validate_type({:meta, type, meta_opts}, p) when is_list(meta_opts) do
+    if Keyword.keyword?(meta_opts),
+      do: validate_type(type, p),
+      else:
+        {:error, "expected meta opts to be a keyword list, got %{actual}",
+         actual: inspect(meta_opts)}
+  end
+
+  defp validate_type({:meta, _type, meta_opts}, _p) do
+    {:error, "expected meta opts to be a keyword list, got %{actual}", actual: inspect(meta_opts)}
   end
 
   defp validate_type({:required, type}, p), do: validate_type(type, p)

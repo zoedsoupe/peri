@@ -66,6 +66,10 @@ if Code.ensure_loaded?(Ecto) do
       parse_peri({key, type}, ecto)
     end
 
+    def parse_peri({key, {:meta, type, _opts}}, ecto) do
+      parse_peri({key, type}, ecto)
+    end
+
     def parse_peri({key, {type, {:default, {mod, fun}}}}, ecto) do
       put_in(ecto[key][:default], apply(mod, fun, []))
       |> then(&parse_peri({key, type}, &1))
