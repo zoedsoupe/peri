@@ -90,6 +90,30 @@ Peri provides a comprehensive set of built-in types for schema validation.
 | `{type, {:default, {m, f}}}` | Default from MFA | `{:string, {:default, {MyMod, :get_default}}}` |
 | `{type, {:transform, fun}}` | Transform value | `{:string, {:transform, &String.upcase/1}}` |
 | `{type, {:transform, {m, f}}}` | Transform with MFA | `{:string, {:transform, {MyMod, :clean}}}` |
+| `{:meta, type, opts}` | Attach metadata, passthrough validation | `{:meta, {:required, :string}, doc: "Login email", example: "a@b.io"}` |
+
+## Schema Metadata
+
+The `{:meta, type, opts}` wrapper attaches documentation/tooling info to a field
+without affecting validation. Blessed keys: `:doc`, `:title`, `:description`,
+`:example`, `:deprecated`. User keys are preserved opaquely.
+
+`defschema` accepts schema-level meta opts (any non-validation key), exposed via
+the generated `__schema_meta__/1`:
+
+```elixir
+defmodule MySchemas do
+  import Peri
+
+  defschema :user, %{
+    email: {:meta, {:required, :string}, doc: "Login email", example: "a@b.io"},
+    age: {:meta, {:integer, gte: 0}, description: "Years"}
+  }, title: "User", description: "Account holder"
+end
+
+MySchemas.__schema_meta__(:user)
+# => [title: "User", description: "Account holder"]
+```
 
 ## Custom Validation
 

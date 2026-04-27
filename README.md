@@ -10,6 +10,7 @@ Peri is a schema validation library for Elixir, inspired by Clojure's Plumatic S
 - **Data Generation**: Generate sample data based on your schemas using StreamData
 - **Ecto Integration**: Convert Peri schemas to Ecto changesets for seamless database integration
 - **Validation Modes**: Choose between strict (default) and permissive validation modes
+- **Schema Metadata**: Attach docs, examples, and tooling hints via `{:meta, type, opts}` and schema-level meta opts
 
 ## Installation
 
