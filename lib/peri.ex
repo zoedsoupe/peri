@@ -1369,8 +1369,13 @@ defmodule Peri do
     {:error, template, [value: val, type: type]}
   end
 
-  defp validate_type({:meta, type, meta_opts}, p) when is_list(meta_opts),
-    do: validate_type(type, p)
+  defp validate_type({:meta, type, meta_opts}, p) when is_list(meta_opts) do
+    if Keyword.keyword?(meta_opts),
+      do: validate_type(type, p),
+      else:
+        {:error, "expected meta opts to be a keyword list, got %{actual}",
+         actual: inspect(meta_opts)}
+  end
 
   defp validate_type({:meta, _type, meta_opts}, _p) do
     {:error, "expected meta opts to be a keyword list, got %{actual}", actual: inspect(meta_opts)}
