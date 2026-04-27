@@ -31,7 +31,7 @@ defmodule Peri.MixProject do
       {:stream_data, "~> 1.1", optional: true},
       {:ecto, "~> 3.12", optional: true},
       {:benchee, "~> 1.0", only: :dev},
-      {:ex_doc, ">= 0.0.0", only: [:dev], runtime: false},
+      {:ex_doc, ">= 0.0.0", only: [:dev, :test], runtime: false},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.3", only: [:dev, :test], runtime: false}
     ]
