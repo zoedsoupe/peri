@@ -12,7 +12,15 @@ defmodule Peri.Parser do
   - `:path` - The current path within the data structure being validated.
   """
 
-  defstruct [:data, :root_data, :current_data, field_presence?: true, errors: [], path: []]
+  defstruct [
+    :data,
+    :root_data,
+    :current_data,
+    field_presence?: true,
+    errors: [],
+    path: [],
+    ref_depth: 0
+  ]
 
   def for_field(%__MODULE__{} = parent, key, exists?) do
     root = parent.root_data || parent.data
@@ -92,7 +100,14 @@ defmodule Peri.Parser do
       current_data: element_data,
       root_data: parent_parser.root_data || parent_parser.data,
       errors: [],
-      path: parent_parser.path ++ [index]
+      path: parent_parser.path ++ [index],
+      ref_depth: parent_parser.ref_depth
     }
   end
+
+  @doc """
+  Increments the ref-resolution depth counter. Used by `{:ref, _}`
+  directive resolution to bound recursion on cyclic data.
+  """
+  def bump_ref_depth(%__MODULE__{ref_depth: d} = state), do: %{state | ref_depth: d + 1}
 end

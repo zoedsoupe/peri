@@ -215,6 +215,8 @@ defmodule Peri do
           | {:oneof, list(schema_def)}
           | {:required, schema_def}
           | {:meta, schema_def, keyword}
+          | {:ref, atom}
+          | {:ref, {module, atom}}
           | {:enum, list(term)}
           | {:list, schema_def}
           | {:map, schema_def}
@@ -282,6 +284,7 @@ defmodule Peri do
   defmacro defschema(name, schema, opts \\ []) do
     bang = :"#{name}!"
     {validation_opts, meta_opts} = Keyword.split(opts, @validation_opts)
+    schema = rewrite_local_refs(schema)
 
     quote do
       def get_schema(unquote(name)) do
@@ -313,6 +316,20 @@ defmodule Peri do
         end
       end
     end
+  end
+
+  # Rewrites `{:ref, atom}` to `{:ref, {__MODULE__, atom}}` at macro expansion
+  # so local refs resolve against the calling module without forcing users to
+  # spell out the module name. Cross-module refs `{:ref, {Mod, name}}` pass
+  # through unchanged.
+  defp rewrite_local_refs(ast) do
+    Macro.prewalk(ast, fn
+      {:ref, name} when is_atom(name) and name not in [:ref] ->
+        quote do: {:ref, {__MODULE__, unquote(name)}}
+
+      other ->
+        other
+    end)
   end
 
   @doc """
@@ -707,6 +724,15 @@ defmodule Peri do
 
   defp validate_field(val, {:meta, type, _meta_opts}, data, opts),
     do: validate_field(val, type, data, opts)
+
+  defp validate_field(val, {:ref, {mod, name}}, parser, opts)
+       when is_atom(mod) and is_atom(name) do
+    resolve_ref({mod, name}, val, parser, opts)
+  end
+
+  defp validate_field(val, {:ref, name}, parser, opts) when is_atom(name) do
+    resolve_ref({nil, name}, val, parser, opts)
+  end
 
   defp validate_field(nil, {:required, type}, _data, _opts) do
     {:error, "is required, expected type of %{expected}", expected: type}
@@ -1199,6 +1225,46 @@ defmodule Peri do
   defp maybe_get_current_data(%Peri.Parser{} = p), do: p.current_data || p.data
   defp maybe_get_current_data(data), do: data
 
+  @ref_depth_limit 64
+
+  defp resolve_ref({_mod, _name} = ref, _val, %Peri.Parser{ref_depth: d}, _opts)
+       when d >= @ref_depth_limit do
+    {:error, "ref resolution exceeded depth limit of %{limit} at %{ref}",
+     limit: @ref_depth_limit, ref: inspect(ref)}
+  end
+
+  defp resolve_ref({mod, name}, val, parser, opts) when is_atom(mod) and is_atom(name) do
+    case fetch_ref_schema(mod, name) do
+      {:ok, schema} ->
+        validate_field(val, schema, Peri.Parser.bump_ref_depth(parser), opts)
+
+      {:error, reason} ->
+        {:error, reason, ref: inspect({mod, name})}
+    end
+  end
+
+  defp fetch_ref_schema(nil, name) do
+    {:error, "ref #{inspect(name)} has no module to resolve against; use {:ref, {Mod, name}}"}
+  end
+
+  defp fetch_ref_schema(mod, name) do
+    cond do
+      not Code.ensure_loaded?(mod) ->
+        {:error, "module #{inspect(mod)} not loaded for ref #{inspect(name)}"}
+
+      not function_exported?(mod, :get_schema, 1) ->
+        {:error, "#{inspect(mod)} does not export get_schema/1 for ref #{inspect(name)}"}
+
+      true ->
+        try do
+          {:ok, mod.get_schema(name)}
+        rescue
+          FunctionClauseError ->
+            {:error, "ref #{inspect(name)} not defined in #{inspect(mod)}"}
+        end
+    end
+  end
+
   defp schema_has_defaults?(schema) when is_enumerable(schema) do
     Enum.any?(schema, fn {_key, type} -> type_has_default?(type) end)
   end
@@ -1404,6 +1470,10 @@ defmodule Peri do
   defp validate_type({:meta, _type, meta_opts}, _p) do
     {:error, "expected meta opts to be a keyword list, got %{actual}", actual: inspect(meta_opts)}
   end
+
+  defp validate_type({:ref, name}, _p) when is_atom(name), do: :ok
+
+  defp validate_type({:ref, {mod, name}}, _p) when is_atom(mod) and is_atom(name), do: :ok
 
   defp validate_type({:required, type}, p), do: validate_type(type, p)
   defp validate_type({:list, type}, p), do: validate_type(type, p)

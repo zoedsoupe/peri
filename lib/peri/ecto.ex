@@ -70,6 +70,14 @@ if Code.ensure_loaded?(Ecto) do
       parse_peri({key, type}, ecto)
     end
 
+    # Refs degrade to :map on the changeset side. Recursive schemas can't
+    # be expressed as a fixed Ecto type; treating refs as opaque maps lets
+    # changeset generation succeed without losing the validation path
+    # (Peri.validate/2 still resolves the ref properly).
+    def parse_peri({key, {:ref, _}}, ecto) do
+      parse_peri({key, :map}, ecto)
+    end
+
     def parse_peri({key, {type, {:default, {mod, fun}}}}, ecto) do
       put_in(ecto[key][:default], apply(mod, fun, []))
       |> then(&parse_peri({key, type}, &1))

@@ -31,13 +31,29 @@ defmodule Peri.JSONSchema.Encoder do
   @meta_keys [:title, :description, :example, :deprecated]
 
   @spec encode(Peri.schema(), opts) :: map
-  def encode(schema, opts \\ [])
+  def encode(schema, opts \\ []) do
+    {result, defs} = encode_with_defs(schema, opts)
 
-  def encode(schema, opts) when is_map(schema) do
-    encode_object(schema, opts)
+    if map_size(defs) == 0 do
+      result
+    else
+      Map.put(result, "$defs", defs)
+    end
   end
 
-  def encode(schema, opts), do: convert(schema, opts)
+  defp encode_with_defs(schema, opts) do
+    Process.put(:peri_json_schema_defs, %{})
+
+    try do
+      result =
+        if is_map(schema), do: encode_object(schema, opts), else: convert(schema, opts)
+
+      defs = Process.get(:peri_json_schema_defs, %{})
+      {result, defs}
+    after
+      Process.delete(:peri_json_schema_defs)
+    end
+  end
 
   defp encode_object(schema, opts) do
     properties =
@@ -167,6 +183,16 @@ defmodule Peri.JSONSchema.Encoder do
 
   defp convert({type, {:transform, _}}, opts), do: convert(type, opts)
 
+  defp convert({:ref, name}, opts) when is_atom(name) do
+    convert({:ref, {nil, name}}, opts)
+  end
+
+  defp convert({:ref, {mod, name}}, opts) when is_atom(mod) and is_atom(name) do
+    def_key = ref_def_name(mod, name)
+    register_def(def_key, mod, name, opts)
+    %{"$ref" => "#/$defs/#{def_key}"}
+  end
+
   defp convert({:custom, _} = node, opts), do: unsupported(node, "custom validator", opts)
   defp convert({:cond, _, _, _} = node, opts), do: unsupported(node, "conditional schema", opts)
   defp convert({:dependent, _} = node, opts), do: unsupported(node, "dependent schema", opts)
@@ -191,6 +217,36 @@ defmodule Peri.JSONSchema.Encoder do
 
   defp numeric_base(:integer), do: %{"type" => "integer"}
   defp numeric_base(:float), do: %{"type" => "number"}
+
+  defp ref_def_name(nil, name), do: Atom.to_string(name)
+
+  defp ref_def_name(mod, name) do
+    "#{inspect(mod)}.#{Atom.to_string(name)}" |> String.replace(".", "_")
+  end
+
+  defp register_def(def_key, mod, name, opts) do
+    defs = Process.get(:peri_json_schema_defs, %{})
+
+    cond do
+      Map.has_key?(defs, def_key) ->
+        :ok
+
+      is_nil(mod) ->
+        Process.put(:peri_json_schema_defs, Map.put(defs, def_key, %{}))
+
+      true ->
+        Process.put(:peri_json_schema_defs, Map.put(defs, def_key, %{}))
+
+        try do
+          schema = mod.get_schema(name)
+          body = if is_map(schema), do: encode_object(schema, opts), else: convert(schema, opts)
+          updated = Map.put(Process.get(:peri_json_schema_defs, %{}), def_key, body)
+          Process.put(:peri_json_schema_defs, updated)
+        rescue
+          _ -> :ok
+        end
+    end
+  end
 
   defp apply_meta(schema, meta_opts) do
     Enum.reduce(meta_opts, schema, fn
