@@ -57,7 +57,9 @@ defmodule Peri.MixProject do
         "pages/types.md",
         "pages/validation.md",
         "pages/ecto.md",
-        "pages/generation.md"
+        "pages/generation.md",
+        "pages/json_schema.md",
+        "pages/refs.md"
       ],
       groups_for_extras: [
         Guides: ~r/pages\/.*/
