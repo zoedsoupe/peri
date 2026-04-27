@@ -377,6 +377,30 @@ defmodule Peri do
     end
   end
 
+  @doc """
+  Converts a Peri schema into a JSON Schema (Draft 7) map.
+
+  Reads `{:meta, type, opts}` annotations and emits `title`, `description`,
+  `examples`, `deprecated`. Dynamic types degrade per `:on_unsupported`
+  (`:omit | :true_schema | :raise`, default `:omit`).
+
+  ## Examples
+
+      iex> Peri.to_json_schema(%{name: {:required, :string}})
+      %{"type" => "object", "properties" => %{"name" => %{"type" => "string"}}, "required" => ["name"]}
+  """
+  @spec to_json_schema(schema, Peri.JSONSchema.Encoder.opts()) :: map
+  defdelegate to_json_schema(schema, opts \\ []), to: Peri.JSONSchema.Encoder, as: :encode
+
+  @doc """
+  Decodes a JSON Schema (Draft 7) map into a Peri schema.
+
+  Returns `{:ok, schema}` if the resulting Peri schema is valid, otherwise
+  `{:error, errors}`.
+  """
+  @spec from_json_schema(map) :: {:ok, schema} | {:error, term}
+  defdelegate from_json_schema(json_schema), to: Peri.JSONSchema.Decoder, as: :decode
+
   if Code.ensure_loaded?(StreamData) do
     @doc """
     Generates sample data based on the given schema definition using `StreamData`.
