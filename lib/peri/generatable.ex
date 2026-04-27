@@ -86,6 +86,16 @@ if Code.ensure_loaded?(StreamData) do
 
     @ref_gen_depth 5
 
+    def gen({:multi, field, branches}) when is_atom(field) and is_map(branches) do
+      branches
+      |> Enum.map(fn {tag, branch} ->
+        StreamData.bind(gen(branch), fn val ->
+          StreamData.constant(merge_dispatch(val, field, tag))
+        end)
+      end)
+      |> StreamData.one_of()
+    end
+
     def gen({:ref, name}) when is_atom(name) do
       raise ArgumentError,
             "cannot generate data for unresolved local ref #{inspect(name)}; use {:ref, {Mod, #{inspect(name)}}}"
@@ -256,5 +266,9 @@ if Code.ensure_loaded?(StreamData) do
       end
       |> StreamData.fixed_map()
     end
+
+    defp merge_dispatch(val, field, tag) when is_map(val), do: Map.put(val, field, tag)
+    defp merge_dispatch(val, field, tag) when is_list(val), do: Keyword.put(val, field, tag)
+    defp merge_dispatch(val, _field, _tag), do: val
   end
 end

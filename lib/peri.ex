@@ -217,6 +217,7 @@ defmodule Peri do
           | {:meta, schema_def, keyword}
           | {:ref, atom}
           | {:ref, {module, atom}}
+          | {:multi, atom, %{optional(term) => schema_def}}
           | {:enum, list(term)}
           | {:list, schema_def}
           | {:map, schema_def}
@@ -732,6 +733,11 @@ defmodule Peri do
 
   defp validate_field(val, {:ref, name}, parser, opts) when is_atom(name) do
     resolve_ref({nil, name}, val, parser, opts)
+  end
+
+  defp validate_field(val, {:multi, field, branches}, parser, opts)
+       when is_atom(field) and is_map(branches) do
+    dispatch_multi(val, field, branches, parser, opts)
   end
 
   defp validate_field(nil, {:required, type}, _data, _opts) do
@@ -1265,6 +1271,43 @@ defmodule Peri do
     end
   end
 
+  defp dispatch_multi(val, field, branches, parser, opts) when is_map(val) or is_list(val) do
+    with {:ok, tag} <- fetch_dispatch_value(val, field),
+         {:ok, branch} <- fetch_branch(branches, tag, field) do
+      validate_field(val, branch, parser, opts)
+    end
+  end
+
+  defp dispatch_multi(val, _field, _branches, _parser, _opts) do
+    {:error, "expected a map or keyword list for :multi dispatch, got %{actual}",
+     actual: inspect(val)}
+  end
+
+  defp fetch_dispatch_value(val, field) when is_map(val) do
+    cond do
+      Map.has_key?(val, field) -> {:ok, Map.get(val, field)}
+      Map.has_key?(val, Atom.to_string(field)) -> {:ok, Map.get(val, Atom.to_string(field))}
+      true -> {:error, "missing :multi dispatch field %{field}", [field: field]}
+    end
+  end
+
+  defp fetch_dispatch_value(val, field) when is_list(val) do
+    if Keyword.has_key?(val, field),
+      do: {:ok, Keyword.get(val, field)},
+      else: {:error, "missing :multi dispatch field %{field}", [field: field]}
+  end
+
+  defp fetch_branch(branches, tag, field) do
+    case Map.fetch(branches, tag) do
+      {:ok, branch} ->
+        {:ok, branch}
+
+      :error ->
+        {:error, "no :multi branch matches dispatch %{field}=%{tag}; expected one of %{tags}",
+         field: field, tag: inspect(tag), tags: inspect(Map.keys(branches))}
+    end
+  end
+
   defp schema_has_defaults?(schema) when is_enumerable(schema) do
     Enum.any?(schema, fn {_key, type} -> type_has_default?(type) end)
   end
@@ -1474,6 +1517,25 @@ defmodule Peri do
   defp validate_type({:ref, name}, _p) when is_atom(name), do: :ok
 
   defp validate_type({:ref, {mod, name}}, _p) when is_atom(mod) and is_atom(name), do: :ok
+
+  defp validate_type({:multi, field, branches}, p)
+       when is_atom(field) and is_map(branches) do
+    Enum.reduce_while(branches, :ok, fn {_tag, branch}, :ok ->
+      case validate_type(branch, p) do
+        :ok -> {:cont, :ok}
+        err -> {:halt, err}
+      end
+    end)
+  end
+
+  defp validate_type({:multi, field, _branches}, _p) when not is_atom(field) do
+    {:error, "expected :multi dispatch field to be an atom, got %{actual}",
+     actual: inspect(field)}
+  end
+
+  defp validate_type({:multi, _field, branches}, _p) when not is_map(branches) do
+    {:error, "expected :multi branches to be a map, got %{actual}", actual: inspect(branches)}
+  end
 
   defp validate_type({:required, type}, p), do: validate_type(type, p)
   defp validate_type({:list, type}, p), do: validate_type(type, p)
