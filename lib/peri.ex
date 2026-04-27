@@ -249,12 +249,19 @@ defmodule Peri do
       MySchemas.flexible_user(flexible_data)
       # => {:ok, %{name: "John", email: "john@example.com", role: "admin"}}
   """
+  @validation_opts [:mode]
+
   defmacro defschema(name, schema, opts \\ []) do
     bang = :"#{name}!"
+    {validation_opts, meta_opts} = Keyword.split(opts, @validation_opts)
 
     quote do
       def get_schema(unquote(name)) do
         unquote(schema)
+      end
+
+      def __schema_meta__(unquote(name)) do
+        unquote(meta_opts)
       end
 
       if Code.ensure_loaded?(Ecto) do
@@ -265,13 +272,13 @@ defmodule Peri do
 
       def unquote(name)(data) do
         with {:ok, schema} <- Peri.validate_schema(unquote(schema)) do
-          Peri.validate(schema, data, unquote(opts))
+          Peri.validate(schema, data, unquote(validation_opts))
         end
       end
 
       def unquote(bang)(data) do
         with {:ok, valid_schema} <- Peri.validate_schema(unquote(schema)),
-             {:ok, valid_data} <- Peri.validate(valid_schema, data, unquote(opts)) do
+             {:ok, valid_data} <- Peri.validate(valid_schema, data, unquote(validation_opts)) do
           valid_data
         else
           {:error, errors} -> raise Peri.InvalidSchema, errors
@@ -480,6 +487,10 @@ defmodule Peri do
     end
   end
 
+  defp do_filter_data(data, {key, {:meta, type, _meta_opts}}, acc, opts) do
+    do_filter_data(data, {key, type}, acc, opts)
+  end
+
   defp do_filter_data(data, {key, type}, acc, opts) do
     string_key = to_string(key)
     value = get_enumerable_value(data, key)
@@ -641,6 +652,9 @@ defmodule Peri do
     {:error, "expected literal value %{expected} but got %{actual}",
      [expected: inspect(literal), actual: inspect(val)]}
   end
+
+  defp validate_field(val, {:meta, type, _meta_opts}, data, opts),
+    do: validate_field(val, type, data, opts)
 
   defp validate_field(nil, {:required, type}, _data, _opts) do
     {:error, "is required, expected type of %{expected}", expected: type}
@@ -1325,6 +1339,13 @@ defmodule Peri do
   defp validate_type({:required, {type, {:default, val}}}, _) do
     template = "cannot set default value of %{value} for required field of type %{type}"
     {:error, template, [value: val, type: type]}
+  end
+
+  defp validate_type({:meta, type, meta_opts}, p) when is_list(meta_opts),
+    do: validate_type(type, p)
+
+  defp validate_type({:meta, _type, meta_opts}, _p) do
+    {:error, "expected meta opts to be a keyword list, got %{actual}", actual: inspect(meta_opts)}
   end
 
   defp validate_type({:required, type}, p), do: validate_type(type, p)
