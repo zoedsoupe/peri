@@ -84,6 +84,30 @@ if Code.ensure_loaded?(StreamData) do
 
     def gen({:meta, type, _opts}), do: gen(type)
 
+    @ref_gen_depth 5
+
+    def gen({:ref, name}) when is_atom(name) do
+      raise ArgumentError,
+            "cannot generate data for unresolved local ref #{inspect(name)}; use {:ref, {Mod, #{inspect(name)}}}"
+    end
+
+    def gen({:ref, {mod, name}}) when is_atom(mod) and is_atom(name) do
+      key = {:peri_ref_depth, mod, name}
+      depth = Process.get(key, 0)
+
+      if depth >= @ref_gen_depth do
+        StreamData.constant(nil)
+      else
+        Process.put(key, depth + 1)
+
+        try do
+          gen(mod.get_schema(name))
+        after
+          if depth == 0, do: Process.delete(key), else: Process.put(key, depth)
+        end
+      end
+    end
+
     def gen({:enum, choices}) do
       choices
       |> Enum.map(&StreamData.constant/1)

@@ -91,6 +91,8 @@ Peri provides a comprehensive set of built-in types for schema validation.
 | `{type, {:transform, fun}}`    | Transform value                         | `{:string, {:transform, &String.upcase/1}}`                            |
 | `{type, {:transform, {m, f}}}` | Transform with MFA                      | `{:string, {:transform, {MyMod, :clean}}}`                             |
 | `{:meta, type, opts}`          | Attach metadata, passthrough validation | `{:meta, {:required, :string}, doc: "Login email", example: "a@b.io"}` |
+| `{:ref, atom}`                 | Reference a schema in the same module   | `{:list, {:ref, :tree}}`                                                |
+| `{:ref, {Mod, atom}}`          | Reference a schema in another module    | `{:ref, {OtherMod, :node}}`                                             |
 
 ## Schema Metadata
 

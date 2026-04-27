@@ -10,8 +10,14 @@ defmodule Peri.JSONSchema.Decoder do
 
   @spec decode(map) :: {:ok, Peri.schema()} | {:error, term}
   def decode(json_schema) when is_map(json_schema) do
-    schema = convert_schema(json_schema)
-    Peri.validate_schema(schema)
+    Process.put(:peri_json_schema_defs_in, Map.get(json_schema, "$defs", %{}))
+
+    try do
+      schema = convert_schema(json_schema)
+      Peri.validate_schema(schema)
+    after
+      Process.delete(:peri_json_schema_defs_in)
+    end
   end
 
   defp convert_schema(%{"type" => "object"} = schema), do: convert_object(schema)
@@ -29,6 +35,15 @@ defmodule Peri.JSONSchema.Decoder do
       [single] -> single
       [a, b] -> {:either, {a, b}}
       multiple -> {:oneof, multiple}
+    end
+  end
+
+  defp convert_schema(%{"$ref" => "#/$defs/" <> name}) do
+    defs = Process.get(:peri_json_schema_defs_in, %{})
+
+    case Map.fetch(defs, name) do
+      {:ok, def_schema} -> convert_schema(def_schema)
+      :error -> :any
     end
   end
 
