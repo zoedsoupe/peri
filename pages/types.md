@@ -243,7 +243,38 @@ The result of `walk/2` is a plain Peri schema, ready to feed to
 `Peri.validate/2`, `Peri.to_json_schema/1`, `Peri.generate/1`, or another
 walker pass.
 
-## Examples
+## Generator Overrides (`gen:` opt)
+
+Constrained types like `{:string, {:regex, …}}` or `{:integer, gt: 1_000_000}`
+can be slow to generate via `Peri.generate/1` because StreamData's default
+strategy is rejection sampling. Supply a `gen:` opt with a custom generator
+to skip rejection altogether:
+
+| Form                              | Description                          |
+| --------------------------------- | ------------------------------------ |
+| `gen: {Mod, :fun, args}`          | MFA returning a `%StreamData{}`      |
+| `gen: {Mod, :fun}`                | MF (zero args), same return contract |
+| `gen: fn -> StreamData.… end`     | 0-arity function, same contract      |
+
+Accepted positions:
+
+```elixir
+%{
+  # multi-options on a constrained primitive
+  age:    {:integer, gte: 18, lte: 120, gen: {MyApp.Gens, :age, []}},
+
+  # required wrapper
+  login:  {:required, :string, [gen: {MyApp.Gens, :login}]},
+
+  # meta wrapper (combines with docs/examples)
+  email:  {:meta, {:required, {:string, {:regex, ~r/@/}}},
+                  doc: "Login email",
+                  gen: {MyApp.Gens, :email, []}}
+}
+```
+
+Without an override, `Peri.generate/1` falls back to chaining
+`StreamData.filter/2` for each constraint.
 
 ### Simple User Schema
 
