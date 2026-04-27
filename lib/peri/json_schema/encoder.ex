@@ -183,6 +183,22 @@ defmodule Peri.JSONSchema.Encoder do
 
   defp convert({type, {:transform, _}}, opts), do: convert(type, opts)
 
+  defp convert({:multi, field, branches}, opts) when is_atom(field) and is_map(branches) do
+    branch_schemas =
+      Enum.map(branches, fn {tag, branch} ->
+        branch
+        |> convert(opts)
+        |> Map.update("properties", %{to_string(field) => %{"const" => tag}}, fn props ->
+          Map.put(props, to_string(field), %{"const" => tag})
+        end)
+      end)
+
+    %{
+      "oneOf" => branch_schemas,
+      "discriminator" => %{"propertyName" => to_string(field)}
+    }
+  end
+
   defp convert({:ref, name}, opts) when is_atom(name) do
     convert({:ref, {nil, name}}, opts)
   end

@@ -93,6 +93,7 @@ Peri provides a comprehensive set of built-in types for schema validation.
 | `{:meta, type, opts}`          | Attach metadata, passthrough validation | `{:meta, {:required, :string}, doc: "Login email", example: "a@b.io"}` |
 | `{:ref, atom}`                 | Reference a schema in the same module   | `{:list, {:ref, :tree}}`                                                |
 | `{:ref, {Mod, atom}}`          | Reference a schema in another module    | `{:ref, {OtherMod, :node}}`                                             |
+| `{:multi, field, branches}`    | Tagged union dispatched on `field`      | `{:multi, :type, %{"circle" => %{r: :float}, "rect" => %{w: :float}}}`  |
 
 ## Schema Metadata
 
@@ -116,6 +117,30 @@ end
 MySchemas.__schema_meta__(:user)
 # => [title: "User", description: "Account holder"]
 ```
+
+## Tagged Unions (`:multi`)
+
+`{:multi, dispatch_field, branches}` is sugar for a discriminated union: the
+value is dispatched on `dispatch_field`, then validated against the
+matching branch schema. Errors localize to the chosen branch, so failures
+read as `shape.radius: invalid` rather than "didn't match any of N
+schemas".
+
+```elixir
+%{
+  shape: {:multi, :type, %{
+    "circle" => %{type: {:required, :string}, radius: {:required, :float}},
+    "rect"   => %{type: {:required, :string}, w: {:required, :float}, h: {:required, :float}}
+  }}
+}
+```
+
+A missing dispatch field, or a value not present in `branches`, surfaces
+as a clear validation error listing the known tags. JSON Schema export
+emits `oneOf` plus a `discriminator` annotation; data generation samples
+a branch and merges the dispatch tag into the generated value.
+
+For untagged "any of these types" semantics, use `{:oneof, types}` instead.
 
 ## Custom Validation
 
