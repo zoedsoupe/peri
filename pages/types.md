@@ -193,6 +193,56 @@ The MFA / static override fires first; `traverse_errors/2` runs over whatever
 message remains (overridden or default). No hard dependency on Gettext —
 the callback is opaque.
 
+## Schema Transformation (`Peri.walk/2`)
+
+`Peri.walk/2` is a depth-first rewrite over a schema tree — a building block
+for derivations like "make every field optional" or "drop internal-only
+fields from a public DTO". The callback is invoked on every subtree, and its
+contract depends on context:
+
+| Position                            | Callback receives | Valid returns                                   |
+| ----------------------------------- | ----------------- | ----------------------------------------------- |
+| Map / keyword schema entry          | `{:field, k, v}`  | `{:cont, {:field, k', v'}}` or `:drop`          |
+| Any other subtree (type expression) | the node itself   | `{:cont, new_node}` (`:drop` raises here)       |
+
+Map keys, constraint option lists (e.g. `[gte: 18, error: "..."]`), `:enum`
+members, `:literal` values, `:ref` names, `:multi` tags, callbacks, and
+transforms are not visited — only sub-schemas and field entries are.
+
+### Make every field optional
+
+```elixir
+Peri.walk(schema, fn
+  {:required, t} -> {:cont, t}
+  {:required, t, _opts} -> {:cont, t}
+  other -> {:cont, other}
+end)
+```
+
+### Strip private fields from a DTO
+
+```elixir
+Peri.walk(internal_schema, fn
+  {:field, k, _v} when k in [:internal_id, :secret_token] -> :drop
+  other -> {:cont, other}
+end)
+```
+
+### Rename a field
+
+```elixir
+Peri.walk(schema, fn
+  {:field, :email, v} -> {:cont, {:field, :login, v}}
+  other -> {:cont, other}
+end)
+```
+
+### Compose with other tools
+
+The result of `walk/2` is a plain Peri schema, ready to feed to
+`Peri.validate/2`, `Peri.to_json_schema/1`, `Peri.generate/1`, or another
+walker pass.
+
 ## Examples
 
 ### Simple User Schema
