@@ -148,6 +148,20 @@ defmodule Peri do
   }
   ```
 
+  ## Custom Generators
+
+  When data generation matters (`Peri.generate/1`), constrained types like
+  `{:integer, gt: 1_000_000}` or `{:string, {:regex, …}}` fall back to
+  rejection sampling, which can be slow on tight domains. Provide a `gen:`
+  opt with an MFA, `{mod, fun}`, or 0-arity function returning
+  `%StreamData{}` to skip rejection entirely. Accepted in multi-options,
+  `{:required, type, opts}`, and `{:meta, type, opts}` positions.
+
+      %{
+        age:   {:integer, gte: 18, gen: {MyApp.Gens, :age, []}},
+        email: {:meta, :string, doc: "Login", gen: {MyApp.Gens, :email}}
+      }
+
   ## Schema Transformation
 
   `Peri.walk/2` runs a depth-first rewrite over a schema, useful for
@@ -821,6 +835,7 @@ defmodule Peri do
   defp validate_field(val, {type, options}, data, opts)
        when is_type_with_multiple_options(type) and is_list(options) do
     {override, options} = Keyword.pop(options, :error)
+    options = Keyword.delete(options, :gen)
 
     options
     |> Enum.map(fn option -> validate_field(val, {type, option}, data, opts) end)
@@ -1306,6 +1321,16 @@ defmodule Peri do
     end
   end
 
+  defp valid_gen_opt?(opts) do
+    case Keyword.fetch(opts, :gen) do
+      :error -> true
+      {:ok, {mod, fun, args}} when is_atom(mod) and is_atom(fun) and is_list(args) -> true
+      {:ok, {mod, fun}} when is_atom(mod) and is_atom(fun) -> true
+      {:ok, fun} when is_function(fun, 0) -> true
+      {:ok, _} -> false
+    end
+  end
+
   defp tag_error_override(:ok, _), do: :ok
   defp tag_error_override({:ok, _} = result, _), do: result
   defp tag_error_override(result, nil), do: result
@@ -1541,13 +1566,20 @@ defmodule Peri do
 
   defp validate_type({type, options}, p)
        when is_type_with_multiple_options(type) and is_list(options) do
-    if valid_error_opt?(options) do
-      options
-      |> Keyword.delete(:error)
-      |> reduce_type_options(type, p)
-    else
-      {:error, "expected error: opt to be a string or MFA tuple, got %{actual}",
-       actual: inspect(Keyword.get(options, :error))}
+    cond do
+      not valid_error_opt?(options) ->
+        {:error, "expected error: opt to be a string or MFA tuple, got %{actual}",
+         actual: inspect(Keyword.get(options, :error))}
+
+      not valid_gen_opt?(options) ->
+        {:error,
+         "expected gen: opt to be an MFA tuple, {mod, fun}, or 0-arity function, got %{actual}",
+         actual: inspect(Keyword.get(options, :gen))}
+
+      true ->
+        options
+        |> Keyword.drop([:error, :gen])
+        |> reduce_type_options(type, p)
     end
   end
 
@@ -1602,11 +1634,19 @@ defmodule Peri do
   end
 
   defp validate_type({:meta, type, meta_opts}, p) when is_list(meta_opts) do
-    if Keyword.keyword?(meta_opts),
-      do: validate_type(type, p),
-      else:
+    cond do
+      not Keyword.keyword?(meta_opts) ->
         {:error, "expected meta opts to be a keyword list, got %{actual}",
          actual: inspect(meta_opts)}
+
+      not valid_gen_opt?(meta_opts) ->
+        {:error,
+         "expected gen: opt to be an MFA tuple, {mod, fun}, or 0-arity function, got %{actual}",
+         actual: inspect(Keyword.get(meta_opts, :gen))}
+
+      true ->
+        validate_type(type, p)
+    end
   end
 
   defp validate_type({:meta, _type, meta_opts}, _p) do
@@ -1639,9 +1679,23 @@ defmodule Peri do
   defp validate_type({:required, type}, p), do: validate_type(type, p)
 
   defp validate_type({:required, type, opts}, p) when is_list(opts) do
-    if Keyword.keyword?(opts) and valid_error_opt?(opts),
-      do: validate_type(type, p),
-      else: {:error, "expected error: opts to be a keyword list", []}
+    cond do
+      not Keyword.keyword?(opts) ->
+        {:error, "expected required opts to be a keyword list, got %{actual}",
+         actual: inspect(opts)}
+
+      not valid_error_opt?(opts) ->
+        {:error, "expected error: opt to be a string or MFA tuple, got %{actual}",
+         actual: inspect(Keyword.get(opts, :error))}
+
+      not valid_gen_opt?(opts) ->
+        {:error,
+         "expected gen: opt to be an MFA tuple, {mod, fun}, or 0-arity function, got %{actual}",
+         actual: inspect(Keyword.get(opts, :gen))}
+
+      true ->
+        validate_type(type, p)
+    end
   end
 
   defp validate_type({:list, type}, p), do: validate_type(type, p)

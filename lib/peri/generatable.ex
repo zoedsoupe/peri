@@ -82,7 +82,19 @@ if Code.ensure_loaded?(StreamData) do
 
     def gen({:required, type}), do: gen(type)
 
-    def gen({:meta, type, _opts}), do: gen(type)
+    def gen({:required, type, opts}) when is_list(opts) do
+      case Keyword.fetch(opts, :gen) do
+        {:ok, override} -> apply_gen_override(override)
+        :error -> gen(type)
+      end
+    end
+
+    def gen({:meta, type, opts}) when is_list(opts) do
+      case Keyword.fetch(opts, :gen) do
+        {:ok, override} -> apply_gen_override(override)
+        :error -> gen(type)
+      end
+    end
 
     @ref_gen_depth 5
 
@@ -217,6 +229,18 @@ if Code.ensure_loaded?(StreamData) do
       StreamData.map(stream, mapper)
     end
 
+    def gen({type, opts}) when Peri.is_type_with_multiple_options(type) and is_list(opts) do
+      case Keyword.fetch(opts, :gen) do
+        {:ok, override} ->
+          apply_gen_override(override)
+
+        :error ->
+          opts
+          |> Keyword.delete(:error)
+          |> Enum.reduce(gen(type), &apply_constraint_filter(&2, type, &1))
+      end
+    end
+
     def gen({:either, {type_1, type_2}}) do
       stream_1 = gen(type_1)
       stream_2 = gen(type_2)
@@ -270,5 +294,52 @@ if Code.ensure_loaded?(StreamData) do
     defp merge_dispatch(val, field, tag) when is_map(val), do: Map.put(val, field, tag)
     defp merge_dispatch(val, field, tag) when is_list(val), do: Keyword.put(val, field, tag)
     defp merge_dispatch(val, _field, _tag), do: val
+
+    defp apply_gen_override({mod, fun, args})
+         when is_atom(mod) and is_atom(fun) and is_list(args),
+         do: apply(mod, fun, args)
+
+    defp apply_gen_override({mod, fun}) when is_atom(mod) and is_atom(fun),
+      do: apply(mod, fun, [])
+
+    defp apply_gen_override(fun) when is_function(fun, 0), do: fun.()
+
+    defp apply_gen_override(other) do
+      raise ArgumentError,
+            "invalid :gen override; expected MFA tuple, {mod, fun}, or 0-arity function, got: " <>
+              inspect(other)
+    end
+
+    defp apply_constraint_filter(stream, _type, {:eq, v}),
+      do: StreamData.filter(stream, &(&1 == v))
+
+    defp apply_constraint_filter(stream, _type, {:neq, v}),
+      do: StreamData.filter(stream, &(&1 != v))
+
+    defp apply_constraint_filter(stream, _type, {:gt, v}),
+      do: StreamData.filter(stream, &(&1 > v))
+
+    defp apply_constraint_filter(stream, _type, {:gte, v}),
+      do: StreamData.filter(stream, &(&1 >= v))
+
+    defp apply_constraint_filter(stream, _type, {:lt, v}),
+      do: StreamData.filter(stream, &(&1 < v))
+
+    defp apply_constraint_filter(stream, _type, {:lte, v}),
+      do: StreamData.filter(stream, &(&1 <= v))
+
+    defp apply_constraint_filter(stream, _type, {:range, {min, max}}),
+      do: StreamData.filter(stream, &(&1 in min..max))
+
+    defp apply_constraint_filter(stream, :string, {:regex, regex}),
+      do: StreamData.filter(stream, &Regex.match?(regex, &1))
+
+    defp apply_constraint_filter(stream, :string, {:min, min}),
+      do: StreamData.filter(stream, &(String.length(&1) >= min))
+
+    defp apply_constraint_filter(stream, :string, {:max, max}),
+      do: StreamData.filter(stream, &(String.length(&1) <= max))
+
+    defp apply_constraint_filter(stream, _type, _opt), do: stream
   end
 end

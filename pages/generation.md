@@ -202,6 +202,33 @@ defmodule MyAppWeb.UserControllerTest do
 end
 ```
 
+## Custom Generators (`gen:` opt)
+
+Constrained types fall back to rejection sampling, which can be slow when
+the accepting domain is narrow (e.g. `{:integer, gt: 1_000_000}` or a regex
+that few random strings satisfy). Provide a `gen:` opt that returns a
+`%StreamData{}` directly to skip rejection entirely.
+
+```elixir
+defmodule MyApp.Gens do
+  def adult_age, do: StreamData.integer(18..120)
+  def email_with_prefix(prefix), do: StreamData.constant(prefix <> "@example.com")
+end
+
+%{
+  age:   {:integer, gte: 18, lte: 120, gen: {MyApp.Gens, :adult_age, []}},
+  login: {:required, :string, [gen: {MyApp.Gens, :fixed_login}]},
+  email: {:meta, :string,
+                 doc: "Login email",
+                 gen: {MyApp.Gens, :email_with_prefix, ["root"]}}
+}
+```
+
+Accepted callable forms: `{mod, fun, args}` (MFA), `{mod, fun}` (zero args),
+or a 0-arity function. Without a `gen:` opt, the generator chains
+`StreamData.filter/2` for each constraint — correct, but slow on tight
+domains.
+
 ## Limitations
 
 - **Custom Types**: Custom validation types need manual generator implementation
