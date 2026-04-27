@@ -14,6 +14,7 @@ Peri is a schema validation library for Elixir, inspired by Clojure's Plumatic S
 - **JSON Schema**: Bidirectional conversion (Draft 7) via `Peri.to_json_schema/2` and `Peri.from_json_schema/1`
 - **Refs**: Recursive and cross-module schemas via `{:ref, atom}` and `{:ref, {Mod, atom}}`
 - **Custom Errors / i18n**: Per-field `error:` overrides (static or MFA) and `Peri.Error.traverse_errors/2` for Gettext-style translation
+- **Schema Transformation**: Depth-first rewrite via `Peri.walk/2` — make-all-optional, strip-fields, rename, etc.
 
 ## Installation
 

@@ -148,12 +148,27 @@ defmodule Peri do
   }
   ```
 
+  ## Schema Transformation
+
+  `Peri.walk/2` runs a depth-first rewrite over a schema, useful for
+  derivations like "make every field optional" or "strip private keys from a
+  public DTO". The callback receives `{:field, key, value}` for entries
+  inside a map/keyword schema and the type expression itself everywhere
+  else; return `{:cont, _}` to continue or `:drop` to remove a field. See
+  `Peri.Walker` for full semantics.
+
+      Peri.walk(schema, fn
+        {:required, t} -> {:cont, t}
+        other -> {:cont, other}
+      end)
+
   ## Functions
 
   - `validate/2` - Validates data against a schema.
   - `conforms?/2` - Checks if data conforms to a schema.
   - `validate_schema/1` - Validates the schema definition.
   - `generate/1` - Generates sample data based on schema (when StreamData is available).
+  - `walk/2` - Depth-first rewrite of a schema tree.
 
   ## Example
 
@@ -436,6 +451,28 @@ defmodule Peri do
   """
   @spec from_json_schema(map) :: {:ok, schema} | {:error, term}
   defdelegate from_json_schema(json_schema), to: Peri.JSONSchema.Decoder, as: :decode
+
+  @doc """
+  Depth-first rewrite of a schema tree.
+
+  The callback is invoked on every subtree (pre-order). It must return either
+  `{:cont, new_node}` to replace the node and continue, or `:drop` to remove it
+  (only valid for values inside a map or keyword schema).
+
+  Building block for transforms like "make every field optional" or "strip
+  internal-only fields from a public DTO". See `Peri.Walker` for details.
+
+  ## Examples
+
+      iex> schema = %{name: {:required, :string}, age: {:required, :integer}}
+      iex> Peri.walk(schema, fn
+      ...>   {:required, t} -> {:cont, t}
+      ...>   other -> {:cont, other}
+      ...> end)
+      %{name: :string, age: :integer}
+  """
+  @spec walk(schema, Peri.Walker.walker_fun()) :: schema
+  defdelegate walk(schema, fun), to: Peri.Walker
 
   if Code.ensure_loaded?(StreamData) do
     @doc """
@@ -1514,16 +1551,6 @@ defmodule Peri do
     end
   end
 
-  defp reduce_type_options(options, type, p) do
-    Enum.reduce_while(options, :ok, fn option, :ok ->
-      case validate_type({type, option}, p) do
-        :ok -> {:cont, :ok}
-        {:error, errors} -> {:halt, {:error, errors}}
-        {:error, template, info} -> {:halt, {:error, template, info}}
-      end
-    end)
-  end
-
   defp validate_type({:string, {:regex, %Regex{}}}, _p), do: :ok
   defp validate_type({:string, {:eq, eq}}, _p) when is_binary(eq), do: :ok
   defp validate_type({:string, {:min, min}}, _p) when is_integer(min), do: :ok
@@ -1701,6 +1728,16 @@ defmodule Peri do
   defp validate_type(invalid, _p) do
     invalid = inspect(invalid, pretty: true)
     {:error, "invalid schema definition: %{invalid}", invalid: invalid}
+  end
+
+  defp reduce_type_options(options, type, p) do
+    Enum.reduce_while(options, :ok, fn option, :ok ->
+      case validate_type({type, option}, p) do
+        :ok -> {:cont, :ok}
+        {:error, errors} -> {:halt, {:error, errors}}
+        {:error, template, info} -> {:halt, {:error, template, info}}
+      end
+    end)
   end
 
   if Code.ensure_loaded?(Ecto) do
