@@ -200,6 +200,23 @@ defmodule Peri.JSONSchemaTest do
       json = %{"type" => "string", "pattern" => "^foo"}
       assert {:ok, {:string, {:regex, %Regex{}}}} = Peri.from_json_schema(json)
     end
+
+    test "invalid regex pattern is dropped, not raised" do
+      json = %{"type" => "string", "pattern" => "["}
+      assert {:ok, :string} = Peri.from_json_schema(json)
+    end
+
+    test "non-existing atom keys fall back to string keys" do
+      key = "this_atom_does_not_exist_#{System.unique_integer([:positive])}"
+
+      json = %{
+        "type" => "object",
+        "properties" => %{key => %{"type" => "string"}}
+      }
+
+      assert {:ok, schema} = Peri.from_json_schema(json)
+      assert schema[key] == :string
+    end
   end
 
   describe "round-trip" do

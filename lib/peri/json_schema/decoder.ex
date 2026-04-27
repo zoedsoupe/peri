@@ -45,6 +45,10 @@ defmodule Peri.JSONSchema.Decoder do
     end
   end
 
+  # Peri's `:oneof` succeeds on the first matching branch, which mirrors
+  # JSON Schema's `anyOf` semantics. JSON Schema's `oneOf` requires *exactly
+  # one* match; Peri cannot express that constraint, so `oneOf` is decoded
+  # to `:oneof` lossily (treated as `anyOf`).
   defp convert_schema(%{"anyOf" => schemas}) when is_list(schemas) do
     convert_schema(%{"oneOf" => schemas})
   end
@@ -70,7 +74,7 @@ defmodule Peri.JSONSchema.Decoder do
     Map.new(properties, fn {key, prop_schema} ->
       peri_type = convert_schema(prop_schema)
       final = if key in required, do: {:required, peri_type}, else: peri_type
-      {String.to_atom(key), final}
+      {safe_key(key), final}
     end)
   end
 
@@ -79,6 +83,14 @@ defmodule Peri.JSONSchema.Decoder do
   end
 
   defp convert_object(_), do: %{}
+
+  defp safe_key(key) when is_atom(key), do: key
+
+  defp safe_key(key) when is_binary(key) do
+    String.to_existing_atom(key)
+  rescue
+    ArgumentError -> key
+  end
 
   defp convert_array(%{"items" => items}) do
     {:list, convert_schema(items)}
@@ -91,7 +103,10 @@ defmodule Peri.JSONSchema.Decoder do
     |> apply_constraint(schema, "minLength", :min)
     |> apply_constraint(schema, "maxLength", :max)
     |> apply_constraint(schema, "pattern", fn pattern ->
-      {:regex, Regex.compile!(pattern)}
+      case Regex.compile(pattern) do
+        {:ok, regex} -> {:regex, regex}
+        {:error, _reason} -> nil
+      end
     end)
     |> apply_constraint(schema, "format", fn format ->
       case format do
@@ -121,11 +136,13 @@ defmodule Peri.JSONSchema.Decoder do
     |> apply_constraint(schema, "exclusiveMaximum", :lt)
   end
 
-  defp apply_constraint({base, constraint}, schema, json_key, handler)
-       when is_tuple(constraint) do
+  defp apply_constraint({base, constraints}, schema, json_key, handler)
+       when is_tuple(constraints) or is_list(constraints) do
+    existing = List.wrap(constraints)
+
     case apply_constraint(base, schema, json_key, handler) do
-      {_base, new_constraint} -> {base, [constraint, new_constraint]}
-      _base -> {base, constraint}
+      {_base, new_constraint} -> {base, existing ++ [new_constraint]}
+      _base -> {base, constraints}
     end
   end
 

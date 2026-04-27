@@ -16,6 +16,7 @@ Peri is a schema validation library for Elixir, inspired by Clojure's Plumatic S
 ## Installation
 
 Add this line to your `mix.exs`:
+
 ```elixir
 defp deps do
   [
@@ -54,7 +55,7 @@ Peri.validate(MyApp.Schemas.get_schema(:user), data_with_extra, mode: :permissiv
 For detailed documentation on types, validation patterns, and integrations, see:
 
 - **[Types Reference](pages/types.md)** - All available types and constraints
-- **[Validation Patterns](pages/validation.md)** - Conditional, dependent, and custom validation  
+- **[Validation Patterns](pages/validation.md)** - Conditional, dependent, and custom validation
 - **[Ecto Integration](pages/ecto.md)** - Converting schemas to Ecto changesets
 - **[Data Generation](pages/generation.md)** - Generate sample data with StreamData
 - **[JSON Schema](pages/json_schema.md)** - Convert to and from JSON Schema (Draft 7)
