@@ -1,4 +1,6 @@
 defmodule Peri do
+  import Peri.Error, only: [summarize: 1]
+
   @moduledoc """
   Peri is a schema validation library for Elixir, inspired by Clojure's Plumatic Schema.
   It provides a flexible and powerful way to define and validate data structures using schemas.
@@ -810,14 +812,14 @@ defmodule Peri do
   end
 
   defp validate_field(nil, {:required, type}, _data, _opts) do
-    {:error, "is required, expected type of %{expected}", expected: type}
+    {:error, "is required, expected type of %{expected}", expected: summarize(type)}
   end
 
   defp validate_field(_val, {:required, {type, {:default, default}}}, _data, _opts) do
     template =
       "cannot set default value of #{inspect(default)} for required field of type %{type}"
 
-    {:ok, template, [type: type]}
+    {:ok, template, [type: summarize(type)]}
   end
 
   # Empty maps and lists are valid for required fields - only nil is invalid
@@ -1111,7 +1113,12 @@ defmodule Peri do
   defp validate_field(val, {:either, {type_1, type_2}}, data, opts) do
     with {:error, _} <- normalize_validation_result(validate_field(val, type_1, data, opts)),
          {:error, _} <- normalize_validation_result(validate_field(val, type_2, data, opts)) do
-      info = [first_type: type_1, second_type: type_2, actual: inspect(val)]
+      info = [
+        first_type: summarize(type_1),
+        second_type: summarize(type_2),
+        actual: inspect(val)
+      ]
+
       template = "expected either %{first_type} or %{second_type}, got: %{actual}"
       {:error, template, info}
     end
@@ -1135,7 +1142,7 @@ defmodule Peri do
         {:ok, val}
 
       :error ->
-        expected = Enum.map_join(types, " or ", &inspect/1)
+        expected = Enum.map_join(types, " or ", &summarize/1)
         info = [oneof: expected, actual: inspect(val)]
         template = "expected one of %{oneof}, got: %{actual}"
 
@@ -1236,6 +1243,11 @@ defmodule Peri do
     validate_field(data, schema, source, opts)
   end
 
+  defp validate_field(data, {:schema, schema, schema_opts}, source, opts)
+       when is_list(schema_opts) do
+    validate_field(data, schema, source, opts)
+  end
+
   defp validate_field(
          data,
          {:schema, schema, {:additional_keys, value_schema}},
@@ -1264,7 +1276,7 @@ defmodule Peri do
 
   defp validate_field(data, schema, _data, _opts)
        when is_enumerable(data) and not is_enumerable(schema) do
-    {:error, "expected a nested schema but received schema: %{type}", [type: schema]}
+    {:error, "expected a nested schema but received schema: %{type}", [type: summarize(schema)]}
   end
 
   defp validate_field(data, schema, p, opts) when is_enumerable(data) do
@@ -1285,7 +1297,7 @@ defmodule Peri do
   end
 
   defp validate_field(val, type, _data, _opts) do
-    info = [expected: type, actual: inspect(val, pretty: true)]
+    info = [expected: summarize(type), actual: inspect(val, pretty: true)]
     {:error, "expected type of %{expected} received %{actual} value", info}
   end
 
@@ -1712,7 +1724,7 @@ defmodule Peri do
 
   defp validate_type({:required, {type, {:default, val}}}, _) do
     template = "cannot set default value of %{value} for required field of type %{type}"
-    {:error, template, [value: val, type: type]}
+    {:error, template, [value: val, type: summarize(type)]}
   end
 
   defp validate_type({:meta, type, meta_opts}, p) when is_list(meta_opts) do
@@ -1810,6 +1822,22 @@ defmodule Peri do
   defp validate_type({:schema, type, {:additional_keys, value_type}}, p) when is_map(type) do
     with :ok <- validate_type(type, p) do
       validate_type(value_type, p)
+    end
+  end
+
+  defp validate_type({:schema, type, schema_opts}, p) when is_list(schema_opts) do
+    cond do
+      not Keyword.keyword?(schema_opts) ->
+        {:error, "expected :schema opts to be a keyword list, got %{actual}",
+         actual: inspect(schema_opts)}
+
+      not is_binary(Keyword.get(schema_opts, :name, "")) and
+          not is_atom(Keyword.get(schema_opts, :name)) ->
+        {:error, "expected :schema name to be a binary or atom, got %{actual}",
+         actual: inspect(Keyword.get(schema_opts, :name))}
+
+      true ->
+        validate_type(type, p)
     end
   end
 

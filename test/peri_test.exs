@@ -69,7 +69,7 @@ defmodule PeriTest do
                  %Peri.Error{
                    path: [:age],
                    key: :age,
-                   content: %{actual: "\"thirty\"", expected: :integer},
+                   content: %{actual: "\"thirty\"", expected: ":integer"},
                    message: "expected type of :integer received \"thirty\" value",
                    errors: nil
                  }
@@ -133,7 +133,7 @@ defmodule PeriTest do
                          %Peri.Error{
                            path: [:user, :profile, :age],
                            key: :age,
-                           content: %{expected: :integer, actual: "\"twenty-five\""},
+                           content: %{expected: ":integer", actual: "\"twenty-five\""},
                            message: "expected type of :integer received \"twenty-five\" value",
                            errors: nil
                          }
@@ -166,7 +166,7 @@ defmodule PeriTest do
                          %Peri.Error{
                            path: [:user, :profile, :email],
                            key: :email,
-                           content: %{expected: :string},
+                           content: %{expected: ":string"},
                            message: "is required, expected type of :string",
                            errors: nil
                          }
@@ -269,7 +269,7 @@ defmodule PeriTest do
                         %Peri.Error{
                           path: [:definitions, :main, :foobar],
                           key: :foobar,
-                          content: %{actual: "\"fifty-five\"", expected: :integer},
+                          content: %{actual: "\"fifty-five\"", expected: ":integer"},
                           message: "expected type of :integer received \"fifty-five\" value",
                           errors: nil
                         }
@@ -299,7 +299,7 @@ defmodule PeriTest do
                  %Peri.Error{
                    path: [:phone],
                    key: :phone,
-                   content: %{actual: "123456", expected: :string},
+                   content: %{actual: "123456", expected: ":string"},
                    message: "expected type of :string received 123456 value",
                    errors: nil
                  }
@@ -334,7 +334,7 @@ defmodule PeriTest do
                  %Peri.Error{
                    path: [:tags],
                    key: :tags,
-                   content: %{actual: "42", expected: :string},
+                   content: %{actual: "42", expected: ":string"},
                    message: "expected type of :string received 42 value",
                    errors: nil
                  }
@@ -357,7 +357,7 @@ defmodule PeriTest do
                  %Peri.Error{
                    path: [:scores],
                    key: :scores,
-                   content: %{actual: "\"twenty\"", expected: :integer},
+                   content: %{actual: "\"twenty\"", expected: ":integer"},
                    message: "expected type of :integer received \"twenty\" value",
                    errors: nil
                  }
@@ -716,7 +716,7 @@ defmodule PeriTest do
                      %Peri.Error{
                        path: [:users, :name],
                        key: :name,
-                       content: %{expected: :string},
+                       content: %{expected: ":string"},
                        message: "is required, expected type of :string",
                        errors: nil
                      }
@@ -742,7 +742,7 @@ defmodule PeriTest do
                      %Peri.Error{
                        path: [:users, :age],
                        key: :age,
-                       content: %{expected: :integer, actual: "\"thirty\""},
+                       content: %{expected: ":integer", actual: "\"thirty\""},
                        message: "expected type of :integer received \"thirty\" value",
                        errors: nil
                      }
@@ -839,7 +839,7 @@ defmodule PeriTest do
                  %Peri.Error{
                    message: "tuple element 1: expected type of :float received \"20.5\" value",
                    path: [:coordinates],
-                   content: %{index: 1, expected: :float, actual: "\"20.5\""},
+                   content: %{index: 1, expected: ":float", actual: "\"20.5\""},
                    errors: nil,
                    key: :coordinates
                  }
@@ -910,7 +910,7 @@ defmodule PeriTest do
                %Peri.Error{
                  path: nil,
                  key: nil,
-                 content: %{expected: :string, actual: "123"},
+                 content: %{expected: ":string", actual: "123"},
                  message: "expected type of :string received 123 value",
                  errors: nil
                }
@@ -937,7 +937,7 @@ defmodule PeriTest do
                      %Peri.Error{
                        path: [:scores, :score],
                        key: :score,
-                       content: %{expected: :float, actual: "\"high\""},
+                       content: %{expected: ":float", actual: "\"high\""},
                        message: "expected type of :float received \"high\" value",
                        errors: nil
                      }
@@ -978,7 +978,7 @@ defmodule PeriTest do
                          %Peri.Error{
                            path: [:children, :children, :id],
                            key: :id,
-                           content: %{expected: :integer, actual: "\"invalid\""},
+                           content: %{expected: ":integer", actual: "\"invalid\""},
                            message: "expected type of :integer received \"invalid\" value",
                            errors: nil
                          }
@@ -999,7 +999,7 @@ defmodule PeriTest do
                  :error,
                  [
                    %Peri.Error{
-                     content: %{expected: :integer},
+                     content: %{expected: ":integer"},
                      errors: nil,
                      key: :id,
                      message: "is required, expected type of :integer",
@@ -1042,7 +1042,7 @@ defmodule PeriTest do
                :error,
                [
                  %Peri.Error{
-                   content: %{expected: :string},
+                   content: %{expected: ":string"},
                    errors: nil,
                    key: :email,
                    message: "is required, expected type of :string",
@@ -1096,7 +1096,7 @@ defmodule PeriTest do
                       %Peri.Error{
                         path: [:user, :email],
                         key: :email,
-                        content: %{expected: :string},
+                        content: %{expected: ":string"},
                         message: "is required, expected type of :string",
                         errors: nil
                       }
@@ -1157,7 +1157,7 @@ defmodule PeriTest do
                  %Peri.Error{
                    path: [:age],
                    key: :age,
-                   content: %{actual: "\"thirty\"", expected: :integer},
+                   content: %{actual: "\"thirty\"", expected: ":integer"},
                    message: "expected type of :integer received \"thirty\" value",
                    errors: nil
                  }
@@ -1193,7 +1193,7 @@ defmodule PeriTest do
                          %Peri.Error{
                            path: [:user, :profile, :age],
                            key: :age,
-                           content: %{expected: :integer, actual: "\"twenty-five\""},
+                           content: %{expected: ":integer", actual: "\"twenty-five\""},
                            message: "expected type of :integer received \"twenty-five\" value",
                            errors: nil
                          }
@@ -1226,7 +1226,7 @@ defmodule PeriTest do
                          %Peri.Error{
                            path: [:user, :profile, :email],
                            key: :email,
-                           content: %{expected: :string},
+                           content: %{expected: ":string"},
                            message: "is required, expected type of :string",
                            errors: nil
                          }
@@ -1259,7 +1259,7 @@ defmodule PeriTest do
                  %Peri.Error{
                    path: [:phone],
                    key: :phone,
-                   content: %{actual: "123456", expected: :string},
+                   content: %{actual: "123456", expected: ":string"},
                    message: "expected type of :string received 123456 value",
                    errors: nil
                  }
@@ -1306,7 +1306,7 @@ defmodule PeriTest do
                      %Peri.Error{
                        path: [:user_info, :username],
                        key: :username,
-                       content: %{expected: :string},
+                       content: %{expected: ":string"},
                        message: "is required, expected type of :string",
                        errors: nil
                      }
@@ -1369,7 +1369,7 @@ defmodule PeriTest do
                          %Peri.Error{
                            path: [:user_info, :avatar, :url],
                            key: :url,
-                           content: %{expected: :string, actual: "12345"},
+                           content: %{expected: ":string", actual: "12345"},
                            message: "expected type of :string received 12345 value",
                            errors: nil
                          }
@@ -1692,7 +1692,7 @@ defmodule PeriTest do
                            path: [:user, :profile, :email],
                            key: :email,
                            content: %{
-                             type: :string,
+                             type: ":string",
                              value: "default@example.com",
                              schema: %{
                                address: %{
@@ -1858,7 +1858,7 @@ defmodule PeriTest do
                  %Peri.Error{
                    path: [:id],
                    key: :id,
-                   content: %{actual: "123", expected: :string},
+                   content: %{actual: "123", expected: ":string"},
                    message: "expected type of :string received 123 value",
                    errors: nil
                  }
@@ -1873,7 +1873,7 @@ defmodule PeriTest do
                 %Peri.Error{
                   path: [:id],
                   key: :id,
-                  content: %{actual: "123", expected: :string},
+                  content: %{actual: "123", expected: ":string"},
                   message: "expected type of :string received 123 value",
                   errors: nil
                 }
@@ -2410,8 +2410,8 @@ defmodule PeriTest do
                  %Peri.Error{
                    path: [:details],
                    key: :details,
-                   content: %{expected: %{email: {:required, :string}}},
-                   message: "is required, expected type of %{email: {:required, :string}}",
+                   content: %{expected: "%{email}"},
+                   message: "is required, expected type of %{email}",
                    errors: nil
                  }
                ]
@@ -2428,8 +2428,8 @@ defmodule PeriTest do
                  %Peri.Error{
                    path: [:details],
                    key: :details,
-                   content: %{expected: %{country: {:required, :string}}},
-                   message: "is required, expected type of %{country: {:required, :string}}",
+                   content: %{expected: "%{country}"},
+                   message: "is required, expected type of %{country}",
                    errors: nil
                  }
                ]
@@ -2517,11 +2517,8 @@ defmodule PeriTest do
                %Peri.Error{
                  path: [:details],
                  key: :details,
-                 content: %{
-                   expected: %{email: {:required, :string}, country: {:required, :string}}
-                 },
-                 message:
-                   "is required, expected type of %{email: {:required, :string}, country: {:required, :string}}",
+                 content: %{expected: "%{email, country}"},
+                 message: "is required, expected type of %{email, country}",
                  errors: nil
                }
              ] = errors
@@ -2546,7 +2543,7 @@ defmodule PeriTest do
                    %Peri.Error{
                      path: [:details, :country],
                      key: :country,
-                     content: %{expected: :string},
+                     content: %{expected: ":string"},
                      message: "is required, expected type of :string",
                      errors: nil
                    }
@@ -2776,9 +2773,8 @@ defmodule PeriTest do
                 %Peri.Error{
                   path: [:profile],
                   key: :profile,
-                  content: %{expected: %{name: {:required, :string}, email: :string}},
-                  message:
-                    "is required, expected type of %{name: {:required, :string}, email: :string}",
+                  content: %{expected: "%{name, email}"},
+                  message: "is required, expected type of %{name, email}",
                   errors: nil
                 }
               ]} = Peri.validate(required, %{id: "123"})
@@ -2805,7 +2801,7 @@ defmodule PeriTest do
                     %Peri.Error{
                       path: [:profile, :name],
                       key: :name,
-                      content: %{expected: :string},
+                      content: %{expected: ":string"},
                       message: "is required, expected type of :string",
                       errors: nil
                     }

@@ -231,6 +231,102 @@ defmodule Peri.Error do
     %{error | path: new_path ++ path, errors: updated_errors}
   end
 
+  @doc """
+  Produces a compact, human-friendly string for a schema or type definition.
+
+  Used in error messages to avoid dumping the entire schema (which can be huge
+  for deeply nested or polymorphic schemas). Named schemas
+  (`{:schema, _, name: "..."}`) render as their name; raw maps render as a
+  truncated key list (`%{a, b, c, +N more}`).
+  """
+  @spec summarize(term) :: String.t()
+  def summarize(type), do: summarize(type, 3)
+
+  defp summarize(type, _max_keys) when is_atom(type), do: inspect(type)
+
+  defp summarize({:schema, _schema, opts}, _max_keys)
+       when is_list(opts) do
+    case Keyword.fetch(opts, :name) do
+      {:ok, name} when is_binary(name) -> name
+      {:ok, name} -> to_string(name)
+      :error -> summarize_schema_opts({:schema, _schema, opts})
+    end
+  end
+
+  defp summarize({:schema, schema, {:additional_keys, _}}, max_keys) do
+    summarize(schema, max_keys) <> " (+ additional keys)"
+  end
+
+  defp summarize({:schema, schema}, max_keys), do: summarize(schema, max_keys)
+
+  defp summarize({:ref, {mod, name}}, _max_keys) when is_atom(mod) and is_atom(name),
+    do: "#{inspect(mod)}.#{name}"
+
+  defp summarize({:ref, name}, _max_keys), do: "ref(#{inspect(name)})"
+
+  defp summarize({:list, type}, max_keys), do: "{:list, #{summarize(type, max_keys)}}"
+  defp summarize({:map, type}, max_keys), do: "{:map, #{summarize(type, max_keys)}}"
+
+  defp summarize({:map, kt, vt}, max_keys),
+    do: "{:map, #{summarize(kt, max_keys)}, #{summarize(vt, max_keys)}}"
+
+  defp summarize({:tuple, types}, max_keys) when is_list(types),
+    do: "{:tuple, [#{Enum.map_join(types, ", ", &summarize(&1, max_keys))}]}"
+
+  defp summarize({:enum, choices}, _max_keys) when is_list(choices),
+    do: "{:enum, #{inspect(choices)}}"
+
+  defp summarize({:literal, val}, _max_keys), do: "{:literal, #{inspect(val)}}"
+
+  defp summarize({:either, {a, b}}, max_keys),
+    do: "{:either, #{summarize(a, max_keys)} | #{summarize(b, max_keys)}}"
+
+  defp summarize({:oneof, types}, max_keys) when is_list(types),
+    do: "{:oneof, [#{Enum.map_join(types, ", ", &summarize(&1, max_keys))}]}"
+
+  defp summarize({:multi, field, branches}, _max_keys) when is_map(branches) do
+    tags = branches |> Map.keys() |> Enum.map_join(", ", &inspect/1)
+    "{:multi, #{inspect(field)}, [#{tags}]}"
+  end
+
+  defp summarize({:required, type}, max_keys),
+    do: "{:required, #{summarize(type, max_keys)}}"
+
+  defp summarize({:required, type, _opts}, max_keys),
+    do: "{:required, #{summarize(type, max_keys)}}"
+
+  defp summarize({:meta, type, _}, max_keys), do: summarize(type, max_keys)
+
+  defp summarize({type, {:default, _}}, max_keys), do: summarize(type, max_keys)
+
+  defp summarize({type, opts}, max_keys) when is_atom(type) and is_list(opts),
+    do: inspect(type)
+
+  defp summarize(schema, max_keys) when is_map(schema) and not is_struct(schema) do
+    keys = Map.keys(schema)
+    total = length(keys)
+
+    shown =
+      keys
+      |> Enum.take(max_keys)
+      |> Enum.map_join(", ", &format_key/1)
+
+    cond do
+      total == 0 -> "%{}"
+      total <= max_keys -> "%{#{shown}}"
+      true -> "%{#{shown}, +#{total - max_keys} more}"
+    end
+  end
+
+  defp summarize(other, _max_keys),
+    do: inspect(other, limit: 3, printable_limit: 50)
+
+  defp summarize_schema_opts({:schema, schema, _opts}), do: summarize(schema, 3)
+
+  defp format_key(key) when is_atom(key), do: Atom.to_string(key)
+  defp format_key(key) when is_binary(key), do: inspect(key)
+  defp format_key(key), do: inspect(key)
+
   def format_error_message(reason, context) when is_list(context) and is_binary(reason) do
     Enum.reduce(context, reason, fn {key, val}, acc ->
       String.replace(
