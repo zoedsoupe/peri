@@ -30,6 +30,7 @@ Peri provides a comprehensive set of built-in types for schema validation.
 | Type                                              | Description                                                               | Example                                                     |
 | ------------------------------------------------- | ------------------------------------------------------------------------- | ----------------------------------------------------------- |
 | `{:list, type}`                                   | List of elements of specified type                                        | `{:list, :string}`                                          |
+| `{:list, type, opts}`                             | List with constraints (`:min`, `:max`, `:unique`)                         | `{:list, :string, [min: 1, max: 10, unique: true]}`         |
 | `{:map, type}`                                    | Map with values of specified type                                         | `{:map, :integer}`                                          |
 | `{:map, key_type, value_type}`                    | Map with typed keys and values                                            | `{:map, :atom, :string}`                                    |
 | `{:tuple, types}`                                 | Tuple with elements of specified types                                    | `{:tuple, [:float, :float]}`                                |
@@ -56,6 +57,7 @@ Peri provides a comprehensive set of built-in types for schema validation.
 | `{:integer, {:lt, value}}`         | Integer less than value          | `{:integer, {:lt, 100}}`         |
 | `{:integer, {:lte, value}}`        | Integer less than or equal       | `{:integer, {:lte, 99}}`         |
 | `{:integer, {:range, {min, max}}}` | Integer within range (inclusive) | `{:integer, {:range, {18, 65}}}` |
+| `{:integer, {:multiple_of, n}}`    | Integer divisible by `n`         | `{:integer, {:multiple_of, 5}}`  |
 | `{:integer, [...options]}`         | Integer with multiple options    | `{:integer, [gt: 12, lte: 96]}`  |
 
 ## Float Constraints
@@ -69,6 +71,7 @@ Peri provides a comprehensive set of built-in types for schema validation.
 | `{:float, {:lt, value}}`         | Float less than value          | `{:float, {:lt, 10.0}}`             |
 | `{:float, {:lte, value}}`        | Float less than or equal       | `{:float, {:lte, 99.999}}`          |
 | `{:float, {:range, {min, max}}}` | Float within range (inclusive) | `{:float, {:range, {8.3, 15.3}}}`   |
+| `{:float, {:multiple_of, n}}`    | Float divisible by `n`         | `{:float, {:multiple_of, 0.25}}`    |
 | `{:float, [...options]}`         | Float with multiple options    | `{:float, [gt: 1.52, lte: 29.123]}` |
 
 ## Choice Types
