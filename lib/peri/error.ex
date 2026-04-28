@@ -244,12 +244,12 @@ defmodule Peri.Error do
 
   defp summarize(type, _max_keys) when is_atom(type), do: inspect(type)
 
-  defp summarize({:schema, _schema, opts}, _max_keys)
+  defp summarize({:schema, schema, opts}, _max_keys)
        when is_list(opts) do
     case Keyword.fetch(opts, :name) do
       {:ok, name} when is_binary(name) -> name
       {:ok, name} -> to_string(name)
-      :error -> summarize_schema_opts({:schema, _schema, opts})
+      :error -> summarize_schema_opts({:schema, schema, opts})
     end
   end
 
@@ -299,8 +299,9 @@ defmodule Peri.Error do
 
   defp summarize({type, {:default, _}}, max_keys), do: summarize(type, max_keys)
 
-  defp summarize({type, opts}, max_keys) when is_atom(type) and is_list(opts),
-    do: inspect(type)
+  defp summarize({type, opts}, _max_keys)
+       when is_atom(type) and is_list(opts),
+       do: inspect(type)
 
   defp summarize(schema, max_keys) when is_map(schema) and not is_struct(schema) do
     keys = Map.keys(schema)
