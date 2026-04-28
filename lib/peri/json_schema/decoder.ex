@@ -107,11 +107,38 @@ defmodule Peri.JSONSchema.Decoder do
     ArgumentError -> key
   end
 
-  defp convert_array(%{"items" => items}) do
-    {:list, convert_schema(items)}
+  defp convert_array(%{"items" => items} = schema) do
+    base = {:list, convert_schema(items)}
+    apply_list_constraints(base, schema)
   end
 
-  defp convert_array(_), do: {:list, :any}
+  defp convert_array(schema) do
+    apply_list_constraints({:list, :any}, schema)
+  end
+
+  defp apply_list_constraints({:list, item}, schema) do
+    list_opts =
+      []
+      |> maybe_put(schema, "minItems", :min)
+      |> maybe_put(schema, "maxItems", :max)
+      |> maybe_put_unique(schema)
+
+    if list_opts == [], do: {:list, item}, else: {:list, item, list_opts}
+  end
+
+  defp maybe_put(opts, schema, json_key, peri_key) do
+    case Map.get(schema, json_key) do
+      nil -> opts
+      value -> opts ++ [{peri_key, value}]
+    end
+  end
+
+  defp maybe_put_unique(opts, schema) do
+    case Map.get(schema, "uniqueItems") do
+      true -> opts ++ [unique: true]
+      _ -> opts
+    end
+  end
 
   defp convert_string(schema) do
     :string
@@ -141,6 +168,7 @@ defmodule Peri.JSONSchema.Decoder do
     |> apply_constraint(schema, "maximum", :lte)
     |> apply_constraint(schema, "exclusiveMinimum", :gt)
     |> apply_constraint(schema, "exclusiveMaximum", :lt)
+    |> apply_constraint(schema, "multipleOf", :multiple_of)
   end
 
   defp convert_integer(schema) do
@@ -149,6 +177,7 @@ defmodule Peri.JSONSchema.Decoder do
     |> apply_constraint(schema, "maximum", :lte)
     |> apply_constraint(schema, "exclusiveMinimum", :gt)
     |> apply_constraint(schema, "exclusiveMaximum", :lt)
+    |> apply_constraint(schema, "multipleOf", :multiple_of)
   end
 
   defp apply_constraint({base, constraints}, schema, json_key, handler)

@@ -945,6 +945,15 @@ defmodule Peri do
     end
   end
 
+  defp validate_field(val, {type, {:multiple_of, n}}, _data, _opts)
+       when is_numeric_type(type) and is_numeric(val) and is_numeric(n) do
+    if multiple_of?(val, n) do
+      :ok
+    else
+      {:error, "should be a multiple of %{value}", [value: n]}
+    end
+  end
+
   defp validate_field(val, {type, {:default, {mod, fun}}}, data, opts)
        when is_atom(mod) and is_atom(fun) do
     validate_field(val, {type, {:default, apply(mod, fun, [])}}, data, opts)
@@ -1178,6 +1187,15 @@ defmodule Peri do
     end)
   end
 
+  defp validate_field(data, {:list, type, list_opts}, source, opts)
+       when is_list(data) and is_list(list_opts) do
+    constraint_opts = Keyword.drop(list_opts, [:error, :gen])
+
+    with :ok <- check_list_constraints(data, constraint_opts) do
+      validate_field(data, {:list, type}, source, opts)
+    end
+  end
+
   defp validate_field(data, {:map, type}, source, opts) when is_map(data) do
     Enum.reduce_while(data, {:ok, %{}}, fn {key, val}, {:ok, map_acc} ->
       case validate_field(val, type, source, opts) do
@@ -1329,6 +1347,61 @@ defmodule Peri do
       {:ok, fun} when is_function(fun, 0) -> true
       {:ok, _} -> false
     end
+  end
+
+  defp valid_list_opts?(opts) do
+    Enum.all?(opts, fn
+      {:min, n} when is_integer(n) and n >= 0 -> true
+      {:max, n} when is_integer(n) and n >= 0 -> true
+      {:unique, b} when is_boolean(b) -> true
+      {:error, _} -> true
+      {:gen, _} -> true
+      _ -> false
+    end)
+  end
+
+  defp check_list_constraints(data, list_opts) do
+    Enum.reduce_while(list_opts, :ok, fn opt, :ok ->
+      case check_list_constraint(data, opt) do
+        :ok -> {:cont, :ok}
+        err -> {:halt, err}
+      end
+    end)
+  end
+
+  defp check_list_constraint(data, {:min, min}) when is_integer(min) do
+    if length(data) >= min do
+      :ok
+    else
+      {:error, "should have at least %{min} items", [min: min]}
+    end
+  end
+
+  defp check_list_constraint(data, {:max, max}) when is_integer(max) do
+    if length(data) <= max do
+      :ok
+    else
+      {:error, "should have at most %{max} items", [max: max]}
+    end
+  end
+
+  defp check_list_constraint(data, {:unique, true}) do
+    if length(Enum.uniq(data)) == length(data) do
+      :ok
+    else
+      {:error, "should have unique items", []}
+    end
+  end
+
+  defp check_list_constraint(_data, {:unique, false}), do: :ok
+  defp check_list_constraint(_data, _opt), do: :ok
+
+  defp multiple_of?(_val, 0), do: false
+  defp multiple_of?(val, n) when is_integer(val) and is_integer(n), do: rem(val, n) == 0
+
+  defp multiple_of?(val, n) when is_number(val) and is_number(n) do
+    quotient = val / n
+    abs(quotient - Float.round(quotient)) < 1.0e-9
   end
 
   defp tag_error_override(:ok, _), do: :ok
@@ -1616,6 +1689,15 @@ defmodule Peri do
        when is_numeric_type(type) and is_numeric(min) and is_numeric(max),
        do: :ok
 
+  defp validate_type({type, {:multiple_of, n}}, _parer)
+       when is_numeric_type(type) and is_numeric(n) and n != 0,
+       do: :ok
+
+  defp validate_type({type, {:multiple_of, n}}, _parer) when is_numeric_type(type) do
+    {:error, "expected :multiple_of value to be a non-zero number, got %{actual}",
+     actual: inspect(n)}
+  end
+
   defp validate_type({type, {:transform, mapper}}, p) when is_function(mapper, 1),
     do: validate_type(type, p)
 
@@ -1699,6 +1781,22 @@ defmodule Peri do
   end
 
   defp validate_type({:list, type}, p), do: validate_type(type, p)
+
+  defp validate_type({:list, type, list_opts}, p) when is_list(list_opts) do
+    cond do
+      not Keyword.keyword?(list_opts) ->
+        {:error, "expected list opts to be a keyword list, got %{actual}",
+         actual: inspect(list_opts)}
+
+      not valid_list_opts?(list_opts) ->
+        {:error, "invalid list constraint, allowed: :min, :max, :unique; got %{actual}",
+         actual: inspect(list_opts)}
+
+      true ->
+        validate_type(type, p)
+    end
+  end
+
   defp validate_type({:map, type}, p), do: validate_type(type, p)
 
   defp validate_type({:map, key_type, value_type}, p) do

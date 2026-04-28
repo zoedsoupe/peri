@@ -142,6 +142,23 @@ if Code.ensure_loaded?(StreamData) do
       |> StreamData.list_of()
     end
 
+    def gen({:list, type, list_opts}) when is_list(list_opts) do
+      sd_opts =
+        Enum.flat_map(list_opts, fn
+          {:min, n} -> [min_length: n]
+          {:max, n} -> [max_length: n]
+          _ -> []
+        end)
+
+      stream = StreamData.list_of(gen(type), sd_opts)
+
+      if Keyword.get(list_opts, :unique) == true do
+        StreamData.map(stream, &Enum.uniq/1)
+      else
+        stream
+      end
+    end
+
     def gen({:map, type}) do
       key_generator =
         StreamData.one_of([
@@ -200,6 +217,10 @@ if Code.ensure_loaded?(StreamData) do
     def gen({type, {:range, {min, max}}}) when Peri.is_numeric_type(type) do
       stream = gen(type)
       StreamData.filter(stream, &(&1 in min..max))
+    end
+
+    def gen({type, {:multiple_of, n}}) when Peri.is_numeric_type(type) do
+      gen(type) |> apply_multiple_of(n)
     end
 
     def gen({:string, {:regex, regex}}) do
@@ -328,6 +349,11 @@ if Code.ensure_loaded?(StreamData) do
     defp apply_constraint_filter(stream, _type, {:lte, v}),
       do: StreamData.filter(stream, &(&1 <= v))
 
+    defp apply_constraint_filter(stream, type, {:multiple_of, n})
+         when type in [:integer, :float] do
+      apply_multiple_of(stream, n)
+    end
+
     defp apply_constraint_filter(stream, _type, {:range, {min, max}}),
       do: StreamData.filter(stream, &(&1 in min..max))
 
@@ -341,5 +367,19 @@ if Code.ensure_loaded?(StreamData) do
       do: StreamData.filter(stream, &(String.length(&1) <= max))
 
     defp apply_constraint_filter(stream, _type, _opt), do: stream
+
+    defp apply_multiple_of(stream, 0),
+      do: StreamData.filter(stream, fn _ -> false end)
+
+    defp apply_multiple_of(stream, n) when is_integer(n) do
+      StreamData.map(stream, fn
+        val when is_integer(val) -> val - rem(val, n)
+        val when is_float(val) -> Float.round(val / n) * n
+      end)
+    end
+
+    defp apply_multiple_of(stream, n) when is_float(n) do
+      StreamData.map(stream, fn val -> Float.round(val / n) * n end)
+    end
   end
 end
