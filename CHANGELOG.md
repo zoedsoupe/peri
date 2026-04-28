@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.1](https://github.com/zoedsoupe/peri/compare/v0.8.0...v0.8.1) (2026-04-28)
+
+
+### Miscellaneous Chores
+
+* fix compilation warning ([d2eeaa7](https://github.com/zoedsoupe/peri/commit/d2eeaa7c48d91ea1153cc49b9d76bab289ca525f))
+
 ## [0.8.0](https://github.com/zoedsoupe/peri/compare/v0.7.0...v0.8.0) (2026-04-28)
 
 
