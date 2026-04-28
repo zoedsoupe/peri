@@ -138,6 +138,9 @@ defmodule Peri.JSONSchema.Encoder do
     |> Map.put("maximum", max)
   end
 
+  defp convert({type, {:multiple_of, n}}, _) when type in [:integer, :float],
+    do: Map.put(numeric_base(type), "multipleOf", n)
+
   defp convert({type, opts}, encoder_opts) when type in [:integer, :float] and is_list(opts) do
     Enum.reduce(opts, numeric_base(type), fn opt, acc ->
       Map.merge(acc, convert({type, opt}, encoder_opts))
@@ -146,6 +149,17 @@ defmodule Peri.JSONSchema.Encoder do
 
   defp convert({:list, item_type}, opts) do
     %{"type" => "array", "items" => convert(item_type, opts)}
+  end
+
+  defp convert({:list, item_type, list_opts}, opts) when is_list(list_opts) do
+    base = %{"type" => "array", "items" => convert(item_type, opts)}
+
+    Enum.reduce(list_opts, base, fn
+      {:min, n}, acc -> Map.put(acc, "minItems", n)
+      {:max, n}, acc -> Map.put(acc, "maxItems", n)
+      {:unique, true}, acc -> Map.put(acc, "uniqueItems", true)
+      _, acc -> acc
+    end)
   end
 
   defp convert({:map, value_type}, opts) do
