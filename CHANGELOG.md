@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.0](https://github.com/zoedsoupe/peri/compare/v0.7.0...v0.8.0) (2026-04-28)
+
+
+### Features
+
+* compact schema summaries in error messages ([#57](https://github.com/zoedsoupe/peri/issues/57)) ([e2b6c0b](https://github.com/zoedsoupe/peri/commit/e2b6c0b5842a6e4e3a4418d79d4010f7bea78aaf))
+* list constraints (:min/:max/:unique) and :multiple_of ([#56](https://github.com/zoedsoupe/peri/issues/56)) ([859255d](https://github.com/zoedsoupe/peri/commit/859255d911c14af795a2d69f9a6d1bded7c30ea2))
+
 ## [0.7.0](https://github.com/zoedsoupe/peri/compare/v0.6.2...v0.7.0) (2026-04-27)
 
 
