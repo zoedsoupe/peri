@@ -102,7 +102,10 @@ Peri provides a comprehensive set of built-in types for schema validation.
 
 The `{:meta, type, opts}` wrapper attaches documentation/tooling info to a field
 without affecting validation. Blessed keys: `:doc`, `:title`, `:description`,
-`:example`, `:deprecated`. User keys are preserved opaquely.
+`:example`/`:examples`, `:deprecated`. The JSON Schema encoder also recognises
+`:default`, `:format`, `:pattern`, `:read_only`, `:write_only`,
+`:content_encoding`, and `:content_media_type` (see `pages/json_schema.md`).
+User keys are preserved opaquely for non-encoder tooling.
 
 `defschema` accepts schema-level meta opts (any non-validation key), exposed via
 the generated `__schema_meta__/1`:

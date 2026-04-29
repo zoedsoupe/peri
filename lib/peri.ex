@@ -110,9 +110,12 @@ defmodule Peri do
   ## Schema Metadata
 
   Fields can carry metadata via the `{:meta, type, opts}` wrapper. Metadata is
-  ignored at validation time but available for documentation, JSON Schema export
-  (planned), and tooling. Blessed keys: `:doc`, `:title`, `:description`,
-  `:example`, `:deprecated`. User keys are preserved opaquely.
+  ignored at validation time but available for documentation, JSON Schema
+  export, and tooling. The JSON Schema encoder recognises the standard
+  Draft-7 annotation/format vocabulary (`:title`, `:description`, `:example`,
+  `:examples`, `:deprecated`, `:default`, `:format`, `:pattern`, `:read_only`,
+  `:write_only`, `:content_encoding`, `:content_media_type`); other keys
+  (e.g. `:doc`) are preserved opaquely for non-encoder tooling.
 
   ```elixir
   defschema :user, %{
