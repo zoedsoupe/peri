@@ -79,6 +79,19 @@ Peri provides a comprehensive set of built-in types for schema validation.
 | Type                        | Description                  | Example                                |
 | --------------------------- | ---------------------------- | -------------------------------------- |
 | `{:enum, choices}`          | Value must be one of choices | `{:enum, [:admin, :user, :guest]}`     |
+| `{:enum, choices, opts}`    | Enum with `:type`/`:error`/`:gen` opts | `{:enum, [1, 2, 3], type: :integer}` |
+
+The 3-arity form accepts a keyword list with three opts:
+
+- `:type` — base Peri type that all `choices` must satisfy. The validator
+  checks the value against the base type before the membership check, and
+  the JSON Schema encoder surfaces it as the `"type"` keyword alongside
+  `"enum"` (e.g. `{:enum, [1, 2, 3], type: :integer}` →
+  `%{"type" => "integer", "enum" => [1, 2, 3]}`). Without `:type`, validation
+  is membership-only and JSON Schema output is a bare `{"enum": [...]}`.
+- `:error` — custom error message; same form as the constraint-list `error:`
+  opt (static string or MFA returning a string).
+- `:gen` — generator override; same form as the constraint-list `gen:` opt.
 | `{:literal, value}`         | Value must exactly match     | `{:literal, :active}`                  |
 | `{:either, {type1, type2}}` | Value matches either type    | `{:either, {:string, :integer}}`       |
 | `{:oneof, types}`           | Value matches one of types   | `{:oneof, [:string, :integer, :atom]}` |

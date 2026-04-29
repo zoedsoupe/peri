@@ -418,6 +418,51 @@ defmodule PeriTest do
     end
   end
 
+  describe "enum validation with opts (3-arity)" do
+    test "validates value membership when no opts" do
+      assert Peri.validate({:enum, [1, 2, 3], []}, 2) == {:ok, 2}
+
+      assert {:error, %Peri.Error{message: "expected one of [1, 2, 3] received 4"}} =
+               Peri.validate({:enum, [1, 2, 3], []}, 4)
+    end
+
+    test "checks base type with :type opt" do
+      schema = {:enum, [1, 2, 3], type: :integer}
+      assert Peri.validate(schema, 2) == {:ok, 2}
+
+      assert {:error, %Peri.Error{message: "expected type of :integer received \"2\" value"}} =
+               Peri.validate(schema, "2")
+    end
+
+    test ":type passes but value not in choices fails on enum" do
+      schema = {:enum, [1, 2, 3], type: :integer}
+
+      assert {:error, %Peri.Error{message: "expected one of [1, 2, 3] received 99"}} =
+               Peri.validate(schema, 99)
+    end
+
+    test ":error opt overrides message" do
+      schema = {:enum, [1, 2], type: :integer, error: "must be 1 or 2"}
+      assert {:error, %Peri.Error{message: "must be 1 or 2"}} = Peri.validate(schema, 3)
+    end
+
+    test "validates inside a map schema" do
+      schema = %{role: {:enum, [:admin, :user], type: :atom}}
+      assert Peri.validate(schema, %{role: :admin}) == {:ok, %{role: :admin}}
+
+      assert {:error, [%Peri.Error{path: [:role]}]} =
+               Peri.validate(schema, %{role: :superuser})
+    end
+
+    test "rejects non-keyword opts at validate_schema/1" do
+      assert {:error, _} = Peri.validate_schema({:enum, [1, 2], [1, 2]})
+    end
+
+    test "rejects invalid :gen opt at validate_schema/1" do
+      assert {:error, _} = Peri.validate_schema({:enum, [1, 2], gen: :not_a_callable})
+    end
+  end
+
   defschema(:list_of_maps_example, %{
     users: {:list, %{name: {:required, :string}, age: {:required, :integer}}}
   })
