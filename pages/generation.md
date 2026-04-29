@@ -10,7 +10,7 @@ Add StreamData to your dependencies:
 # mix.exs
 defp deps do
   [
-    {:peri, "~> 0.8.2"}, # x-release-please-version
+    {:peri, "~> 0.8.3"}, # x-release-please-version
     {:stream_data, "~> 1.0", only: [:test, :dev]}
   ]
 end

@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.3](https://github.com/zoedsoupe/peri/compare/v0.8.2...v0.8.3) (2026-04-29)
+
+
+### Features
+
+* typed enum and exclude_meta_keys JSON Schema opt ([#62](https://github.com/zoedsoupe/peri/issues/62)) ([82d3edd](https://github.com/zoedsoupe/peri/commit/82d3eddf58bd98d8e0271f3a418dc80599f2c315))
+
 ## [0.8.2](https://github.com/zoedsoupe/peri/compare/v0.8.1...v0.8.2) (2026-04-29)
 
 

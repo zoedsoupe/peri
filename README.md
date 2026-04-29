@@ -24,7 +24,7 @@ Add this line to your `mix.exs`:
 ```elixir
 defp deps do
   [
-    {:peri, "~> 0.8.2"} # x-release-please-version
+    {:peri, "~> 0.8.3"} # x-release-please-version
   ]
 end
 ```
