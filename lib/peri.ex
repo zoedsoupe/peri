@@ -81,6 +81,7 @@ defmodule Peri do
   - `{:schema, map_schema, {:additional_keys, type}}` - Nested schema map, with extra entries validated using another type
   - `{:tuple, [type1, type2, ...]}` - Tuple with elements of specified types
   - `{:enum, [value1, value2, ...]}` - One of the specified values
+  - `{:enum, [value1, value2, ...], opts}` - Enum with opts (`:type`, `:error`, `:gen`); `:type` constrains members to a base type and surfaces it in JSON Schema output
   - `{:literal, value}` - Exactly matches the specified value
   - `{:either, {type1, type2}}` - Either type1 or type2
   - `{:oneof, [type1, type2, ...]}` - One of the specified types
@@ -271,6 +272,7 @@ defmodule Peri do
           | {:ref, {module, atom}}
           | {:multi, atom, %{optional(term) => schema_def}}
           | {:enum, list(term)}
+          | {:enum, list(term), keyword}
           | {:list, schema_def}
           | {:map, schema_def}
           | {:map, key_type :: schema_def, value_type :: schema_def}
@@ -454,10 +456,17 @@ defmodule Peri do
   `examples`, `deprecated`. Dynamic types degrade per `:on_unsupported`
   (`:omit | :true_schema | :raise`, default `:omit`).
 
+  Pass `:exclude_meta_keys` to drop annotation keywords from the output —
+  commonly `[:default]` when the consumer-facing schema should not surface
+  validation defaults.
+
   ## Examples
 
       iex> Peri.to_json_schema(%{name: {:required, :string}})
       %{"type" => "object", "properties" => %{"name" => %{"type" => "string"}}, "required" => ["name"]}
+
+      iex> Peri.to_json_schema({:integer, {:default, 0}}, exclude_meta_keys: [:default])
+      %{"type" => "integer"}
   """
   @spec to_json_schema(schema, Peri.JSONSchema.Encoder.opts()) :: map
   defdelegate to_json_schema(schema, opts \\ []), to: Peri.JSONSchema.Encoder, as: :encode
@@ -1173,6 +1182,16 @@ defmodule Peri do
     end
   end
 
+  defp validate_field(val, {:enum, choices, enum_opts}, data, opts)
+       when is_list(choices) and is_list(enum_opts) do
+    {override, rest} = Keyword.pop(enum_opts, :error)
+    rest = Keyword.delete(rest, :gen)
+
+    val
+    |> run_enum_with_opts(choices, rest, data, opts)
+    |> tag_error_override(override)
+  end
+
   defp validate_field(data, {:list, type}, source, opts) when is_list(data) do
     data
     |> Enum.with_index()
@@ -1419,6 +1438,24 @@ defmodule Peri do
     abs(quotient - Float.round(quotient)) < 1.0e-9
   end
 
+  defp validate_enum_type_opt(enum_opts, p) do
+    case Keyword.fetch(enum_opts, :type) do
+      :error -> :ok
+      {:ok, type} -> validate_type(type, p)
+    end
+  end
+
+  defp run_enum_with_opts(val, choices, enum_opts, data, opts) do
+    case Keyword.fetch(enum_opts, :type) do
+      :error ->
+        validate_field(val, {:enum, choices}, data, opts)
+
+      {:ok, type} ->
+        with :ok <- validate_field(val, type, data, opts),
+             do: validate_field(val, {:enum, choices}, data, opts)
+    end
+  end
+
   defp tag_error_override(:ok, _), do: :ok
   defp tag_error_override({:ok, _} = result, _), do: result
   defp tag_error_override(result, nil), do: result
@@ -1651,6 +1688,27 @@ defmodule Peri do
   defp validate_type(:pid, _parser), do: :ok
   defp validate_type({type, {:default, _val}}, p), do: validate_type(type, p)
   defp validate_type({:enum, choices}, _) when is_list(choices), do: :ok
+
+  defp validate_type({:enum, choices, enum_opts}, p)
+       when is_list(choices) and is_list(enum_opts) do
+    cond do
+      not Keyword.keyword?(enum_opts) ->
+        {:error, "expected enum opts to be a keyword list, got %{actual}",
+         actual: inspect(enum_opts)}
+
+      not valid_error_opt?(enum_opts) ->
+        {:error, "expected error: opt to be a string or MFA tuple, got %{actual}",
+         actual: inspect(Keyword.get(enum_opts, :error))}
+
+      not valid_gen_opt?(enum_opts) ->
+        {:error,
+         "expected gen: opt to be an MFA tuple, {mod, fun}, or 0-arity function, got %{actual}",
+         actual: inspect(Keyword.get(enum_opts, :gen))}
+
+      true ->
+        validate_enum_type_opt(enum_opts, p)
+    end
+  end
 
   defp validate_type({type, options}, p)
        when is_type_with_multiple_options(type) and is_list(options) do

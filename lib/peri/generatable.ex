@@ -136,6 +136,13 @@ if Code.ensure_loaded?(StreamData) do
       |> StreamData.one_of()
     end
 
+    def gen({:enum, choices, opts}) when is_list(opts) do
+      case Keyword.fetch(opts, :gen) do
+        {:ok, override} -> apply_gen_override(override)
+        :error -> gen({:enum, choices})
+      end
+    end
+
     def gen({:list, type}) do
       type
       |> gen()

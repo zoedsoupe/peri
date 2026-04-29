@@ -13,10 +13,20 @@ defmodule Peri.JSONSchema.Encoder do
     - `:true_schema` — same as `:omit`
     - `:raise` — raise `Peri.JSONSchema.Encoder.UnsupportedTypeError`
 
+  The `:exclude_meta_keys` option drops listed annotation keywords from the
+  output. Accepts any subset of the meta vocabulary plus `:default`. Useful
+  when emitting consumer-facing JSON Schema where `default` values are
+  validation-only and should not be exposed.
+
+      Peri.to_json_schema(schema, exclude_meta_keys: [:default])
+
   Prefer `Peri.to_json_schema/2` as the public entry point.
   """
 
-  @type opts :: [on_unsupported: :omit | :true_schema | :raise]
+  @type opts :: [
+          on_unsupported: :omit | :true_schema | :raise,
+          exclude_meta_keys: [atom]
+        ]
 
   defmodule UnsupportedTypeError do
     @moduledoc false
@@ -93,13 +103,18 @@ defmodule Peri.JSONSchema.Encoder do
   defp convert({:meta, type, meta_opts}, opts) when is_list(meta_opts) do
     type
     |> convert(opts)
-    |> apply_meta(meta_opts)
+    |> apply_meta(meta_opts, opts)
   end
 
   defp convert({:required, type}, opts), do: convert(type, opts)
 
-  defp convert({type, {:default, default}}, opts),
-    do: Map.put(convert(type, opts), "default", default)
+  defp convert({type, {:default, default}}, opts) do
+    base = convert(type, opts)
+
+    if :default in Keyword.get(opts, :exclude_meta_keys, []),
+      do: base,
+      else: Map.put(base, "default", default)
+  end
 
   defp convert(:string, _), do: %{"type" => "string"}
   defp convert(:integer, _), do: %{"type" => "integer"}
@@ -118,6 +133,17 @@ defmodule Peri.JSONSchema.Encoder do
 
   defp convert({:literal, value}, _), do: %{"const" => value}
   defp convert({:enum, values}, _) when is_list(values), do: %{"enum" => values}
+
+  defp convert({:enum, values, enum_opts}, encoder_opts)
+       when is_list(values) and is_list(enum_opts) do
+    base =
+      case Keyword.fetch(enum_opts, :type) do
+        :error -> %{}
+        {:ok, type} -> convert(type, encoder_opts)
+      end
+
+    Map.put(base, "enum", values)
+  end
 
   defp convert({:string, {:regex, %Regex{source: pattern}}}, _),
     do: %{"type" => "string", "pattern" => pattern}
@@ -298,10 +324,12 @@ defmodule Peri.JSONSchema.Encoder do
     end
   end
 
-  defp apply_meta(schema, meta_opts) do
+  defp apply_meta(schema, meta_opts, encoder_opts) do
+    excluded = Keyword.get(encoder_opts, :exclude_meta_keys, [])
+
     Enum.reduce(meta_opts, schema, fn
       {key, value}, acc when key in @meta_keys ->
-        put_meta(acc, key, value)
+        if key in excluded, do: acc, else: put_meta(acc, key, value)
 
       _, acc ->
         acc

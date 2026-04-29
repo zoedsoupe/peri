@@ -20,6 +20,14 @@ defmodule Peri.JSONSchema.Decoder do
     end
   end
 
+  defp convert_schema(%{"enum" => values, "type" => type})
+       when is_list(values) and is_binary(type) do
+    case decode_primitive(type) do
+      nil -> {:enum, values}
+      base -> {:enum, values, type: base}
+    end
+  end
+
   defp convert_schema(%{"type" => "object"} = schema), do: convert_object(schema)
   defp convert_schema(%{"type" => "array"} = schema), do: convert_array(schema)
   defp convert_schema(%{"type" => "string"} = schema), do: convert_string(schema)
@@ -82,6 +90,12 @@ defmodule Peri.JSONSchema.Decoder do
   end
 
   defp convert_schema(_), do: :any
+
+  defp decode_primitive("string"), do: :string
+  defp decode_primitive("integer"), do: :integer
+  defp decode_primitive("number"), do: :float
+  defp decode_primitive("boolean"), do: :boolean
+  defp decode_primitive(_), do: nil
 
   defp convert_object(%{"properties" => properties} = schema) do
     required = Map.get(schema, "required", [])

@@ -278,4 +278,90 @@ defmodule Peri.JSONSchemaTest do
                {:integer, gte: 0} |> Peri.to_json_schema() |> Peri.from_json_schema()
     end
   end
+
+  describe "to_json_schema/2 — typed enum" do
+    test "without :type opt emits bare enum" do
+      assert Peri.to_json_schema({:enum, [:a, :b], []}) == %{"enum" => [:a, :b]}
+    end
+
+    test "with :type opt emits type + enum" do
+      assert Peri.to_json_schema({:enum, [1, 2, 3], type: :integer}) ==
+               %{"type" => "integer", "enum" => [1, 2, 3]}
+
+      assert Peri.to_json_schema({:enum, ["a", "b"], type: :string}) ==
+               %{"type" => "string", "enum" => ["a", "b"]}
+    end
+
+    test ":type carries through nested constraint encoding" do
+      assert Peri.to_json_schema({:enum, [1, 2], type: :integer}) ==
+               %{"type" => "integer", "enum" => [1, 2]}
+    end
+
+    test ":error and :gen opts do not leak into JSON Schema" do
+      schema = {:enum, [1, 2], type: :integer, error: "bad", gen: {Mod, :fun}}
+      assert Peri.to_json_schema(schema) == %{"type" => "integer", "enum" => [1, 2]}
+    end
+  end
+
+  describe "to_json_schema/2 — exclude_meta_keys" do
+    test "drops :default from {type, {:default, _}}" do
+      assert Peri.to_json_schema({:integer, {:default, 0}}, exclude_meta_keys: [:default]) ==
+               %{"type" => "integer"}
+    end
+
+    test "drops :default from {:meta, type, default: _}" do
+      schema = {:meta, :integer, default: 0, description: "count"}
+
+      assert Peri.to_json_schema(schema, exclude_meta_keys: [:default]) ==
+               %{"type" => "integer", "description" => "count"}
+    end
+
+    test "preserves other meta keys when only :default excluded" do
+      schema = {:meta, {:integer, {:default, 0}}, description: "count", deprecated: true}
+
+      assert Peri.to_json_schema(schema, exclude_meta_keys: [:default]) ==
+               %{"type" => "integer", "description" => "count", "deprecated" => true}
+    end
+
+    test "drops multiple keys" do
+      schema = {:meta, :string, description: "x", deprecated: true, default: "y"}
+
+      assert Peri.to_json_schema(schema, exclude_meta_keys: [:default, :deprecated]) ==
+               %{"type" => "string", "description" => "x"}
+    end
+
+    test "without opt, default is included as before" do
+      assert Peri.to_json_schema({:integer, {:default, 0}}) ==
+               %{"type" => "integer", "default" => 0}
+    end
+  end
+
+  describe "from_json_schema/1 — typed enum" do
+    test "type + enum → typed enum tuple" do
+      assert {:ok, {:enum, [1, 2, 3], type: :integer}} =
+               Peri.from_json_schema(%{"type" => "integer", "enum" => [1, 2, 3]})
+    end
+
+    test "string type + enum" do
+      assert {:ok, {:enum, ["a", "b"], type: :string}} =
+               Peri.from_json_schema(%{"type" => "string", "enum" => ["a", "b"]})
+    end
+
+    test "number type + enum decodes to :float" do
+      assert {:ok, {:enum, [1.0, 2.5], type: :float}} =
+               Peri.from_json_schema(%{"type" => "number", "enum" => [1.0, 2.5]})
+    end
+
+    test "unknown primitive type falls back to bare enum" do
+      assert {:ok, {:enum, [1, 2]}} =
+               Peri.from_json_schema(%{"type" => "object", "enum" => [1, 2]})
+    end
+  end
+
+  describe "round-trip — typed enum" do
+    test "preserves :type opt" do
+      schema = {:enum, [1, 2, 3], type: :integer}
+      assert {:ok, ^schema} = schema |> Peri.to_json_schema() |> Peri.from_json_schema()
+    end
+  end
 end

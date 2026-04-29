@@ -60,6 +60,7 @@ other tooling that reads `:meta` directly).
 | `{:map, t}`, `{:map, k, v}`                 | `"object"` + `"additionalProperties"` |
 | `{:tuple, ts}`                              | fixed-length `"array"`                |
 | `{:enum, vs}`                               | `"enum"`                              |
+| `{:enum, vs, type: t}`                      | `"type"` of `t` + `"enum"`            |
 | `{:literal, v}`                             | `"const"`                             |
 | `{:either, {a, b}}`, `{:oneof, ts}`         | `"oneOf"`                             |
 | `{:required, t}`                            | adds key to parent `"required"`       |
@@ -79,6 +80,38 @@ Peri.to_json_schema(schema, on_unsupported: :raise)
 - `:omit` (default) — emit `%{}` (true schema)
 - `:true_schema` — same as `:omit`
 - `:raise` — raise `Peri.JSONSchema.Encoder.UnsupportedTypeError`
+
+### Excluding annotation keys
+
+Pass `:exclude_meta_keys` with a list of meta keywords to drop from the output.
+Useful when the consumer-facing schema should not surface validation defaults:
+
+```elixir
+Peri.to_json_schema(
+  %{count: {:integer, {:default, 0}}},
+  exclude_meta_keys: [:default]
+)
+# => %{
+#   "type" => "object",
+#   "properties" => %{"count" => %{"type" => "integer"}}
+# }
+```
+
+Both the direct `{type, {:default, v}}` form and the `{:meta, type, default: v}`
+form honour the exclusion. Any subset of the meta vocabulary above is accepted.
+
+### Typed enums
+
+`{:enum, choices, type: t}` surfaces the base type alongside the `"enum"`
+keyword, producing schemas consumers can validate against:
+
+```elixir
+Peri.to_json_schema({:enum, [1, 2, 3], type: :integer})
+# => %{"type" => "integer", "enum" => [1, 2, 3]}
+```
+
+Decoding is symmetric: a JSON Schema with both `"type"` and `"enum"` round-trips
+to `{:enum, values, type: base}`.
 
 ## Decoding
 
