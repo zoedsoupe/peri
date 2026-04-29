@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.1](https://github.com/zoedsoupe/peri/compare/v0.8.1...v0.8.1) (2026-04-29)
+
+
+### Features
+
+* extend JSON Schema meta vocab to Draft-7 keywords ([#59](https://github.com/zoedsoupe/peri/issues/59)) ([dfb0915](https://github.com/zoedsoupe/peri/commit/dfb091557b514201ac70ef8fbdf16d513025fb45))
+
 ## [0.8.1](https://github.com/zoedsoupe/peri/compare/v0.8.0...v0.8.1) (2026-04-28)
 
 
