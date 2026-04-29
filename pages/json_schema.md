@@ -29,18 +29,26 @@ Peri.to_json_schema(schema)
 
 ### Metadata
 
-`{:meta, type, opts}` annotations are read during encoding. Blessed keys map to
-JSON Schema annotation keywords:
+`{:meta, type, opts}` annotations are read during encoding. Recognised keys map
+to JSON Schema annotation/format keywords:
 
-| Peri meta key  | JSON Schema key               |
-| -------------- | ----------------------------- |
-| `:title`       | `title`                       |
-| `:description` | `description`                 |
-| `:example`     | `examples` (wrapped in array) |
-| `:deprecated`  | `deprecated`                  |
+| Peri meta key         | JSON Schema key               |
+| --------------------- | ----------------------------- |
+| `:title`              | `title`                       |
+| `:description`        | `description`                 |
+| `:example`            | `examples` (wrapped in array) |
+| `:examples`           | `examples`                    |
+| `:deprecated`         | `deprecated`                  |
+| `:default`            | `default`                     |
+| `:format`             | `format`                      |
+| `:pattern`            | `pattern`                     |
+| `:read_only`          | `readOnly`                    |
+| `:write_only`         | `writeOnly`                   |
+| `:content_encoding`   | `contentEncoding`             |
+| `:content_media_type` | `contentMediaType`            |
 
-Non-blessed user keys are preserved as Peri-side metadata only and are not
-written to the JSON Schema.
+Unknown keys are dropped from the encoded schema (they remain available to
+other tooling that reads `:meta` directly).
 
 ### Type mapping
 

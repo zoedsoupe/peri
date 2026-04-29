@@ -133,6 +133,40 @@ defmodule Peri.JSONSchemaTest do
       assert prop["deprecated"] == false
       assert json["required"] == ["email"]
     end
+
+    test "meta :examples (plural) accepts a pre-built list" do
+      schema = %{f: {:meta, :string, examples: ["a", "b"]}}
+      assert Peri.to_json_schema(schema)["properties"]["f"]["examples"] == ["a", "b"]
+    end
+
+    test "meta surfaces JSON Schema vocab keys" do
+      schema = %{
+        token:
+          {:meta, :string,
+           format: "uuid",
+           pattern: "^[0-9a-f-]+$",
+           default: "00000000-0000-0000-0000-000000000000",
+           read_only: true,
+           write_only: false,
+           content_encoding: "base64",
+           content_media_type: "application/jwt"}
+      }
+
+      prop = Peri.to_json_schema(schema)["properties"]["token"]
+      assert prop["format"] == "uuid"
+      assert prop["pattern"] == "^[0-9a-f-]+$"
+      assert prop["default"] == "00000000-0000-0000-0000-000000000000"
+      assert prop["readOnly"] == true
+      assert prop["writeOnly"] == false
+      assert prop["contentEncoding"] == "base64"
+      assert prop["contentMediaType"] == "application/jwt"
+    end
+
+    test "meta drops unknown keys" do
+      schema = %{f: {:meta, :string, fromat: "uuid", custom_internal: 1}}
+      prop = Peri.to_json_schema(schema)["properties"]["f"]
+      assert prop == %{"type" => "string"}
+    end
   end
 
   describe "to_json_schema/2 — :on_unsupported" do

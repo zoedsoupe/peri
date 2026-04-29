@@ -3,8 +3,8 @@ defmodule Peri.JSONSchema.Encoder do
   Encodes a Peri schema definition into a JSON Schema (Draft 7) map.
 
   Field-level metadata attached via `{:meta, type, opts}` is read during
-  encoding and surfaced as JSON Schema annotation keywords (`title`,
-  `description`, `examples`, `deprecated`).
+  encoding and surfaced as JSON Schema annotation/format keywords. See
+  `@meta_keys` for the recognised vocabulary; unknown keys are dropped.
 
   Dynamic Peri types (`:dependent`, `:cond`, `:custom`) cannot be expressed
   statically. The `:on_unsupported` option controls the fallback:
@@ -28,7 +28,27 @@ defmodule Peri.JSONSchema.Encoder do
     end
   end
 
-  @meta_keys [:title, :description, :example, :deprecated]
+  @meta_keys [
+    :title,
+    :description,
+    :example,
+    :examples,
+    :deprecated,
+    :default,
+    :format,
+    :pattern,
+    :read_only,
+    :write_only,
+    :content_encoding,
+    :content_media_type
+  ]
+
+  @meta_key_renames %{
+    read_only: "readOnly",
+    write_only: "writeOnly",
+    content_encoding: "contentEncoding",
+    content_media_type: "contentMediaType"
+  }
 
   @spec encode(Peri.schema(), opts) :: map
   def encode(schema, opts \\ []) do
@@ -289,7 +309,11 @@ defmodule Peri.JSONSchema.Encoder do
   end
 
   defp put_meta(schema, :example, value), do: Map.put(schema, "examples", List.wrap(value))
-  defp put_meta(schema, key, value), do: Map.put(schema, Atom.to_string(key), value)
+  defp put_meta(schema, :examples, value), do: Map.put(schema, "examples", List.wrap(value))
+
+  defp put_meta(schema, key, value) do
+    Map.put(schema, Map.get(@meta_key_renames, key, Atom.to_string(key)), value)
+  end
 
   defp required?({:required, _}), do: true
   defp required?({:meta, type, _}), do: required?(type)
