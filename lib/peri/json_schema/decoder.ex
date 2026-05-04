@@ -123,7 +123,8 @@ defmodule Peri.JSONSchema.Decoder do
   defp safe_key(key, :strings) when is_binary(key), do: key
 
   defp safe_key(key, opt)
-       when opt in [:atoms, :atoms!] and is_atom(key), do: key
+       when opt in [:atoms, :atoms!] and is_atom(key),
+       do: key
 
   defp safe_key(key, :atoms!) when is_binary(key) do
     String.to_atom(key)
