@@ -197,14 +197,21 @@ defmodule Peri.JSONSchemaTest do
 
       assert {:ok, schema} = Peri.from_json_schema(json)
       assert schema["name"] == {:required, :string}
-      assert schema["age"] == :integer
+      assert schema["age"] == {:either, {:integer, :float}}
     end
 
     test "primitives" do
       assert {:ok, :string} = Peri.from_json_schema(%{"type" => "string"})
-      assert {:ok, :integer} = Peri.from_json_schema(%{"type" => "integer"})
       assert {:ok, :boolean} = Peri.from_json_schema(%{"type" => "boolean"})
       assert {:ok, {:literal, nil}} = Peri.from_json_schema(%{"type" => "null"})
+    end
+
+    test "numeric primitives map to either int|float per JSON Schema spec" do
+      assert {:ok, {:either, {:integer, :float}}} =
+               Peri.from_json_schema(%{"type" => "integer"})
+
+      assert {:ok, {:either, {:integer, :float}}} =
+               Peri.from_json_schema(%{"type" => "number"})
     end
 
     test "const → literal" do
@@ -221,13 +228,43 @@ defmodule Peri.JSONSchemaTest do
     end
 
     test "oneOf with two → either" do
-      json = %{"oneOf" => [%{"type" => "string"}, %{"type" => "integer"}]}
-      assert {:ok, {:either, {:string, :integer}}} = Peri.from_json_schema(json)
+      json = %{"oneOf" => [%{"type" => "string"}, %{"type" => "boolean"}]}
+      assert {:ok, {:either, {:string, :boolean}}} = Peri.from_json_schema(json)
     end
 
-    test "integer minimum → gte" do
+    test "integer minimum → gte applied to both branches" do
       json = %{"type" => "integer", "minimum" => 0}
-      assert {:ok, {:integer, {:gte, 0}}} = Peri.from_json_schema(json)
+
+      assert {:ok, {:either, {{:integer, {:gte, 0}}, {:float, {:gte, 0}}}}} =
+               Peri.from_json_schema(json)
+    end
+
+    test "number minimum → gte applied to both branches" do
+      json = %{"type" => "number", "minimum" => 0}
+
+      assert {:ok, {:either, {{:integer, {:gte, 0}}, {:float, {:gte, 0}}}}} =
+               Peri.from_json_schema(json)
+    end
+
+    test "decoded number schema validates both ints and floats (issue #65)" do
+      {:ok, schema} = Peri.from_json_schema(%{"type" => "number"})
+      assert {:ok, 5} = Peri.validate(schema, 5)
+      assert {:ok, 5.5} = Peri.validate(schema, 5.5)
+      assert {:error, _} = Peri.validate(schema, "x")
+    end
+
+    test "decoded integer schema also accepts zero-fractional floats per spec" do
+      {:ok, schema} = Peri.from_json_schema(%{"type" => "integer"})
+      assert {:ok, 5} = Peri.validate(schema, 5)
+      assert {:ok, 5.0} = Peri.validate(schema, 5.0)
+    end
+
+    test "decoded constrained number applies bounds to both ints and floats" do
+      {:ok, schema} = Peri.from_json_schema(%{"type" => "number", "minimum" => 0})
+      assert {:ok, 0} = Peri.validate(schema, 0)
+      assert {:ok, 0.5} = Peri.validate(schema, 0.5)
+      assert {:error, _} = Peri.validate(schema, -1)
+      assert {:error, _} = Peri.validate(schema, -0.5)
     end
 
     test "string pattern → regex" do
@@ -253,7 +290,7 @@ defmodule Peri.JSONSchemaTest do
 
       assert {:ok, schema} = Peri.from_json_schema(json)
       assert schema["name"] == :string
-      assert schema[missing] == :integer
+      assert schema[missing] == {:either, {:integer, :float}}
       assert Enum.all?(Map.keys(schema), &is_binary/1)
     end
   end
@@ -268,7 +305,7 @@ defmodule Peri.JSONSchemaTest do
 
       assert {:ok, schema} = Peri.from_json_schema(json, keys: :strings)
       assert schema["name"] == {:required, :string}
-      assert schema["age"] == :integer
+      assert schema["age"] == {:either, {:integer, :float}}
     end
 
     test ":atoms uses existing atoms" do
@@ -283,7 +320,7 @@ defmodule Peri.JSONSchemaTest do
 
       assert {:ok, schema} = Peri.from_json_schema(json, keys: :atoms)
       assert schema[:name] == {:required, :string}
-      assert schema[:age] == :integer
+      assert schema[:age] == {:either, {:integer, :float}}
     end
 
     test ":atoms falls back to string when atom does not exist" do
@@ -313,7 +350,7 @@ defmodule Peri.JSONSchemaTest do
 
       assert {:ok, schema} = Peri.from_json_schema(json, keys: :atoms!)
       assert schema[String.to_atom(missing_1)] == {:required, :string}
-      assert schema[String.to_atom(missing_2)] == :integer
+      assert schema[String.to_atom(missing_2)] == {:either, {:integer, :float}}
       assert Enum.all?(Map.keys(schema), &is_atom/1)
     end
 
@@ -335,11 +372,11 @@ defmodule Peri.JSONSchemaTest do
       json = %{
         "oneOf" => [
           %{"type" => "object", "properties" => %{"name" => %{"type" => "string"}}},
-          %{"type" => "integer"}
+          %{"type" => "boolean"}
         ]
       }
 
-      assert {:ok, {:either, {%{name: :string}, :integer}}} =
+      assert {:ok, {:either, {%{name: :string}, :boolean}}} =
                Peri.from_json_schema(json, keys: :atoms)
     end
 
@@ -372,7 +409,8 @@ defmodule Peri.JSONSchemaTest do
         ]
       }
 
-      assert {:ok, %{a: :string, b: :integer}} = Peri.from_json_schema(json, keys: :atoms)
+      assert {:ok, %{a: :string, b: {:either, {:integer, :float}}}} =
+               Peri.from_json_schema(json, keys: :atoms)
     end
 
     test "unknown :keys value raises FunctionClauseError" do
@@ -385,9 +423,16 @@ defmodule Peri.JSONSchemaTest do
   end
 
   describe "round-trip" do
-    test "primitives" do
-      for type <- [:string, :integer, :float, :boolean] do
+    test "primitives (string, boolean) round-trip exactly" do
+      for type <- [:string, :boolean] do
         assert {:ok, ^type} = type |> Peri.to_json_schema() |> Peri.from_json_schema()
+      end
+    end
+
+    test "numeric primitives widen to either int|float on decode (lossy by spec)" do
+      for type <- [:integer, :float] do
+        assert {:ok, {:either, {:integer, :float}}} =
+                 type |> Peri.to_json_schema() |> Peri.from_json_schema()
       end
     end
 
@@ -396,7 +441,7 @@ defmodule Peri.JSONSchemaTest do
       json = Peri.to_json_schema(schema)
       assert {:ok, decoded} = Peri.from_json_schema(json)
       assert decoded["name"] == {:required, :string}
-      assert decoded["age"] == :integer
+      assert decoded["age"] == {:either, {:integer, :float}}
     end
 
     test "list of strings" do
@@ -404,8 +449,8 @@ defmodule Peri.JSONSchemaTest do
                {:list, :string} |> Peri.to_json_schema() |> Peri.from_json_schema()
     end
 
-    test "integer with gte" do
-      assert {:ok, {:integer, {:gte, 0}}} =
+    test "integer with gte widens to either with constraint on both branches" do
+      assert {:ok, {:either, {{:integer, {:gte, 0}}, {:float, {:gte, 0}}}}} =
                {:integer, gte: 0} |> Peri.to_json_schema() |> Peri.from_json_schema()
     end
 
@@ -413,7 +458,9 @@ defmodule Peri.JSONSchemaTest do
       schema = %{name: {:required, :string}, age: :integer}
       json = Peri.to_json_schema(schema)
 
-      assert {:ok, ^schema} = Peri.from_json_schema(json, keys: :atoms)
+      assert {:ok, decoded} = Peri.from_json_schema(json, keys: :atoms)
+      assert decoded[:name] == {:required, :string}
+      assert decoded[:age] == {:either, {:integer, :float}}
     end
 
     test "object with unknown atom keys recovered via keys: :atoms!" do
