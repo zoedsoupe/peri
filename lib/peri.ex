@@ -477,8 +477,9 @@ defmodule Peri do
   Returns `{:ok, schema}` if the resulting Peri schema is valid, otherwise
   `{:error, errors}`.
   """
-  @spec from_json_schema(map) :: {:ok, schema} | {:error, term}
-  defdelegate from_json_schema(json_schema), to: Peri.JSONSchema.Decoder, as: :decode
+  @spec from_json_schema(map, list(opt)) :: {:ok, schema} | {:error, term}
+        when opt: {:keys, :strings | :atoms | :atoms!}
+  defdelegate from_json_schema(json_schema, opts \\ []), to: Peri.JSONSchema.Decoder, as: :decode
 
   @doc """
   Depth-first rewrite of a schema tree.

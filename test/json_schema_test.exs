@@ -196,8 +196,8 @@ defmodule Peri.JSONSchemaTest do
       }
 
       assert {:ok, schema} = Peri.from_json_schema(json)
-      assert schema[:name] == {:required, :string}
-      assert schema[:age] == :integer
+      assert schema["name"] == {:required, :string}
+      assert schema["age"] == :integer
     end
 
     test "primitives" do
@@ -240,16 +240,147 @@ defmodule Peri.JSONSchemaTest do
       assert {:ok, :string} = Peri.from_json_schema(json)
     end
 
-    test "non-existing atom keys fall back to string keys" do
-      key = "this_atom_does_not_exist_#{System.unique_integer([:positive])}"
+    test "default :keys opt yields string keys regardless of atom-table state" do
+      missing = "missing_atom_#{System.unique_integer([:positive])}"
 
       json = %{
         "type" => "object",
-        "properties" => %{key => %{"type" => "string"}}
+        "properties" => %{
+          "name" => %{"type" => "string"},
+          missing => %{"type" => "integer"}
+        }
       }
 
       assert {:ok, schema} = Peri.from_json_schema(json)
-      assert schema[key] == :string
+      assert schema["name"] == :string
+      assert schema[missing] == :integer
+      assert Enum.all?(Map.keys(schema), &is_binary/1)
+    end
+  end
+
+  describe "from_json_schema/2 — :keys option" do
+    test ":strings (explicit) keeps all keys as binaries" do
+      json = %{
+        "type" => "object",
+        "properties" => %{"name" => %{"type" => "string"}, "age" => %{"type" => "integer"}},
+        "required" => ["name"]
+      }
+
+      assert {:ok, schema} = Peri.from_json_schema(json, keys: :strings)
+      assert schema["name"] == {:required, :string}
+      assert schema["age"] == :integer
+    end
+
+    test ":atoms uses existing atoms" do
+      json = %{
+        "type" => "object",
+        "properties" => %{
+          "name" => %{"type" => "string"},
+          "age" => %{"type" => "integer"}
+        },
+        "required" => ["name"]
+      }
+
+      assert {:ok, schema} = Peri.from_json_schema(json, keys: :atoms)
+      assert schema[:name] == {:required, :string}
+      assert schema[:age] == :integer
+    end
+
+    test ":atoms falls back to string when atom does not exist" do
+      missing = "peri_test_missing_atom_#{System.unique_integer([:positive])}"
+
+      json = %{
+        "type" => "object",
+        "properties" => %{missing => %{"type" => "string"}}
+      }
+
+      assert {:ok, schema} = Peri.from_json_schema(json, keys: :atoms)
+      assert schema[missing] == :string
+    end
+
+    test ":atoms! force-creates atoms for every key" do
+      missing_1 = "peri_test_atoms_bang_1_#{System.unique_integer([:positive])}"
+      missing_2 = "peri_test_atoms_bang_2_#{System.unique_integer([:positive])}"
+
+      json = %{
+        "type" => "object",
+        "properties" => %{
+          missing_1 => %{"type" => "string"},
+          missing_2 => %{"type" => "integer"}
+        },
+        "required" => [missing_1]
+      }
+
+      assert {:ok, schema} = Peri.from_json_schema(json, keys: :atoms!)
+      assert schema[String.to_atom(missing_1)] == {:required, :string}
+      assert schema[String.to_atom(missing_2)] == :integer
+      assert Enum.all?(Map.keys(schema), &is_atom/1)
+    end
+
+    test "opt propagates into nested objects" do
+      json = %{
+        "type" => "object",
+        "properties" => %{
+          "outer" => %{
+            "type" => "object",
+            "properties" => %{"inner" => %{"type" => "string"}}
+          }
+        }
+      }
+
+      assert {:ok, %{outer: %{inner: :string}}} = Peri.from_json_schema(json, keys: :atoms)
+    end
+
+    test "opt propagates into oneOf branches that are objects" do
+      json = %{
+        "oneOf" => [
+          %{"type" => "object", "properties" => %{"name" => %{"type" => "string"}}},
+          %{"type" => "integer"}
+        ]
+      }
+
+      assert {:ok, {:either, {%{name: :string}, :integer}}} =
+               Peri.from_json_schema(json, keys: :atoms)
+    end
+
+    test "opt propagates into array items that are objects" do
+      json = %{
+        "type" => "array",
+        "items" => %{"type" => "object", "properties" => %{"name" => %{"type" => "string"}}}
+      }
+
+      assert {:ok, {:list, %{name: :string}}} = Peri.from_json_schema(json, keys: :atoms)
+    end
+
+    test "opt propagates into $ref resolution" do
+      json = %{
+        "$defs" => %{
+          "Item" => %{"type" => "object", "properties" => %{"name" => %{"type" => "string"}}}
+        },
+        "type" => "object",
+        "properties" => %{"item" => %{"$ref" => "#/$defs/Item"}}
+      }
+
+      assert {:ok, %{item: %{name: :string}}} = Peri.from_json_schema(json, keys: :atoms)
+    end
+
+    test "opt propagates into allOf merged objects" do
+      json = %{
+        "allOf" => [
+          %{"type" => "object", "properties" => %{"a" => %{"type" => "string"}}},
+          %{"type" => "object", "properties" => %{"b" => %{"type" => "integer"}}}
+        ]
+      }
+
+      assert {:ok, %{a: :string, b: :integer}} = Peri.from_json_schema(json, keys: :atoms)
+    end
+
+    test "unknown :keys value raises FunctionClauseError" do
+      json = %{"type" => "object", "properties" => %{"x" => %{"type" => "string"}}}
+
+      assert_raise FunctionClauseError, fn ->
+        Peri.from_json_schema(json, keys: :bogus)
+      end
     end
   end
 
@@ -264,8 +395,8 @@ defmodule Peri.JSONSchemaTest do
       schema = %{name: {:required, :string}, age: :integer}
       json = Peri.to_json_schema(schema)
       assert {:ok, decoded} = Peri.from_json_schema(json)
-      assert decoded[:name] == {:required, :string}
-      assert decoded[:age] == :integer
+      assert decoded["name"] == {:required, :string}
+      assert decoded["age"] == :integer
     end
 
     test "list of strings" do
@@ -276,6 +407,21 @@ defmodule Peri.JSONSchemaTest do
     test "integer with gte" do
       assert {:ok, {:integer, {:gte, 0}}} =
                {:integer, gte: 0} |> Peri.to_json_schema() |> Peri.from_json_schema()
+    end
+
+    test "object with atom keys recovered via keys: :atoms" do
+      schema = %{name: {:required, :string}, age: :integer}
+      json = Peri.to_json_schema(schema)
+
+      assert {:ok, ^schema} = Peri.from_json_schema(json, keys: :atoms)
+    end
+
+    test "object with unknown atom keys recovered via keys: :atoms!" do
+      key = String.to_atom("peri_rt_atoms_bang_#{System.unique_integer([:positive])}")
+      schema = %{key => {:required, :string}}
+      json = Peri.to_json_schema(schema)
+
+      assert {:ok, ^schema} = Peri.from_json_schema(json, keys: :atoms!)
     end
   end
 
