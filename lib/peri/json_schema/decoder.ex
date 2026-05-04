@@ -191,17 +191,14 @@ defmodule Peri.JSONSchema.Decoder do
     end)
   end
 
-  defp convert_number(schema) do
-    :float
-    |> apply_constraint(schema, "minimum", :gte)
-    |> apply_constraint(schema, "maximum", :lte)
-    |> apply_constraint(schema, "exclusiveMinimum", :gt)
-    |> apply_constraint(schema, "exclusiveMaximum", :lt)
-    |> apply_constraint(schema, "multipleOf", :multiple_of)
-  end
+  defp convert_number(schema),
+    do: {:either, {apply_numeric(:integer, schema), apply_numeric(:float, schema)}}
 
-  defp convert_integer(schema) do
-    :integer
+  defp convert_integer(schema),
+    do: {:either, {apply_numeric(:integer, schema), apply_numeric(:float, schema)}}
+
+  defp apply_numeric(base, schema) do
+    base
     |> apply_constraint(schema, "minimum", :gte)
     |> apply_constraint(schema, "maximum", :lte)
     |> apply_constraint(schema, "exclusiveMinimum", :gt)

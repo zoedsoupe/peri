@@ -114,29 +114,34 @@ defmodule Peri.ListConstraintsTest do
       assert opts[:unique] == true
     end
 
-    test "decodes multipleOf for integer" do
+    test "decodes multipleOf for integer (widens to either int|float per spec)" do
       json = %{"type" => "integer", "multipleOf" => 5}
-      assert {:ok, {:integer, {:multiple_of, 5}}} = Peri.from_json_schema(json)
+
+      assert {:ok, {:either, {{:integer, {:multiple_of, 5}}, {:float, {:multiple_of, 5}}}}} =
+               Peri.from_json_schema(json)
     end
 
-    test "plain array still decodes to {:list, t}" do
+    test "plain array decodes integer items as either int|float" do
       json = %{"type" => "array", "items" => %{"type" => "integer"}}
-      assert {:ok, {:list, :integer}} = Peri.from_json_schema(json)
+      assert {:ok, {:list, {:either, {:integer, :float}}}} = Peri.from_json_schema(json)
     end
   end
 
   describe "roundtrip" do
-    test "list constraints roundtrip" do
+    test "list constraints roundtrip (numeric items widen to either)" do
       peri = {:list, :integer, [min: 1, max: 3, unique: true]}
       json = Peri.to_json_schema(peri)
-      assert {:ok, decoded} = Peri.from_json_schema(json)
-      assert decoded == peri
+
+      assert {:ok, {:list, {:either, {:integer, :float}}, [min: 1, max: 3, unique: true]}} =
+               Peri.from_json_schema(json)
     end
 
-    test "multiple_of roundtrip" do
+    test "multiple_of roundtrip widens to either int|float" do
       peri = {:integer, {:multiple_of, 5}}
       json = Peri.to_json_schema(peri)
-      assert {:ok, ^peri} = Peri.from_json_schema(json)
+
+      assert {:ok, {:either, {{:integer, {:multiple_of, 5}}, {:float, {:multiple_of, 5}}}}} =
+               Peri.from_json_schema(json)
     end
   end
 
