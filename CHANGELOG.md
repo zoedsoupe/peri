@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.4](https://github.com/zoedsoupe/peri/compare/v0.8.3...v0.8.4) (2026-05-04)
+
+
+### Bug Fixes
+
+* decode JSON Schema number/integer to either int|float per spec ([#68](https://github.com/zoedsoupe/peri/issues/68)) ([dc88c0f](https://github.com/zoedsoupe/peri/commit/dc88c0f17c9114444c72cce148dc2cbb88204274))
+* predictable JSON Schema decoder keys via :keys opt ([#66](https://github.com/zoedsoupe/peri/issues/66)) ([ce9caeb](https://github.com/zoedsoupe/peri/commit/ce9caeba35ab706e00fc2b4cfdc8b383b5dc39a9))
+
 ## [0.8.3](https://github.com/zoedsoupe/peri/compare/v0.8.2...v0.8.3) (2026-04-29)
 
 
