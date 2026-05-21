@@ -163,5 +163,11 @@ defmodule Peri.CustomErrorsTest do
 
       assert %{content: %{schema: [:list, :string]}} = Peri.Error.error_to_map(keyword_error)
     end
+
+    test "keeps non-keyword list content unchanged" do
+      error = %Peri.Error{content: [1, 2, 3]}
+
+      assert %{content: [1, 2, 3]} = Peri.Error.error_to_map(error)
+    end
   end
 end
