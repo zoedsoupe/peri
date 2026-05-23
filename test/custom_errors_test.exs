@@ -103,4 +103,71 @@ defmodule Peri.CustomErrorsTest do
       assert Enum.all?(translated, fn err -> err.message == "ok" end)
     end
   end
+
+  describe "Peri.Error.error_to_map/1" do
+    test "keeps nil content without raising" do
+      error = %Peri.Error{
+        message: "Expected type string, got integer",
+        content: nil,
+        path: [:user, :age],
+        key: :age,
+        errors: nil
+      }
+
+      assert %{
+               message: "Expected type string, got integer",
+               content: nil,
+               path: [:user, :age],
+               key: :age,
+               errors: nil
+             } = Peri.Error.error_to_map(error)
+    end
+
+    test "keeps nil content in nested errors without raising" do
+      error = %Peri.Error{
+        message: "Validation failed",
+        content: %{expected: :string, actual: :integer},
+        path: [:user, :age],
+        key: :age,
+        errors: [
+          %Peri.Error{
+            message: "Expected type string, got integer",
+            content: nil,
+            path: [:user, :age],
+            key: :age,
+            errors: nil
+          }
+        ]
+      }
+
+      assert %{
+               content: %{expected: :string, actual: :integer},
+               errors: [
+                 %{
+                   message: "Expected type string, got integer",
+                   content: nil,
+                   path: [:user, :age],
+                   key: :age,
+                   errors: nil
+                 }
+               ]
+             } = Peri.Error.error_to_map(error)
+    end
+
+    test "still transforms tuple content inside map and keyword content" do
+      map_error = %Peri.Error{content: %{schema: {:list, {:tuple, [:string, :integer]}}}}
+      keyword_error = %Peri.Error{content: [schema: {:list, :string}]}
+
+      assert %{content: %{schema: [:list, [:tuple, [:string, :integer]]]}} =
+               Peri.Error.error_to_map(map_error)
+
+      assert %{content: %{schema: [:list, :string]}} = Peri.Error.error_to_map(keyword_error)
+    end
+
+    test "keeps non-keyword list content unchanged" do
+      error = %Peri.Error{content: [1, 2, 3]}
+
+      assert %{content: [1, 2, 3]} = Peri.Error.error_to_map(error)
+    end
+  end
 end

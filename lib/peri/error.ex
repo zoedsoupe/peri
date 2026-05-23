@@ -390,15 +390,32 @@ defmodule Peri.Error do
     }
   end
 
-  defp transform_content(content) do
-    for {k, v} <- content do
-      if is_tuple(v) do
-        {k, transform_tuple(v)}
-      else
-        {k, v}
-      end
-    end
+  defp transform_content(nil), do: nil
+
+  defp transform_content(content) when is_map(content) do
+    content
+    |> Enum.map(&transform_content_entry/1)
     |> Map.new()
+  end
+
+  defp transform_content(content) when is_list(content) do
+    if Enum.all?(content, &match?({_, _}, &1)) do
+      content
+      |> Enum.map(&transform_content_entry/1)
+      |> Map.new()
+    else
+      content
+    end
+  end
+
+  defp transform_content(content), do: content
+
+  defp transform_content_entry({k, v}) do
+    if is_tuple(v) do
+      {k, transform_tuple(v)}
+    else
+      {k, v}
+    end
   end
 
   defp transform_tuple(tuple) when is_tuple(tuple) do
