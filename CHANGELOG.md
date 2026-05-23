@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.5](https://github.com/zoedsoupe/peri/compare/v0.8.4...v0.8.5) (2026-05-23)
+
+
+### Bug Fixes
+
+* error_to_map nil content handling ([#69](https://github.com/zoedsoupe/peri/issues/69)) ([a140299](https://github.com/zoedsoupe/peri/commit/a140299ad355d5df07e2a85add96b11ea52c59b3))
+
 ## [0.8.4](https://github.com/zoedsoupe/peri/compare/v0.8.3...v0.8.4) (2026-05-04)
 
 
