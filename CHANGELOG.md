@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.9.0](https://github.com/zoedsoupe/peri/compare/v0.8.5...v0.9.0) (2026-06-10)
+
+
+### Features
+
+* elixir 1.20.0 compiler fixes ([5b93739](https://github.com/zoedsoupe/peri/commit/5b93739fc6dbf9c80cdbac4105289dcb92b623d5))
+
 ## [0.8.5](https://github.com/zoedsoupe/peri/compare/v0.8.4...v0.8.5) (2026-05-23)
 
 
