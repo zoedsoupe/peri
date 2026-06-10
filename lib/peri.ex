@@ -663,11 +663,6 @@ defmodule Peri do
     end
   end
 
-  # we need to build structs after validating schema
-  defp make_filter_data_accumulator(_schema, data) when is_struct(data) do
-    %{__struct__: data.__struct__}
-  end
-
   defp make_filter_data_accumulator(schema, _data) when is_map(schema), do: %{}
   defp make_filter_data_accumulator(schema, _data) when is_list(schema), do: []
 
@@ -1581,11 +1576,6 @@ defmodule Peri do
     callback.(current, root)
   end
 
-  defp call_callback(callback, parser) do
-    root = maybe_get_root_data(parser)
-    callback.(root)
-  end
-
   @doc """
   Validates a schema definition to ensure it adheres to the expected structure and types.
 
@@ -1926,11 +1916,6 @@ defmodule Peri do
        do: :ok
 
   defp validate_type({:dependent, _, cb, type}, p) when is_function(cb, 2) do
-    validate_type(type, p)
-  end
-
-  defp validate_type({:dependent, field, cb, type}, p)
-       when is_atom(field) and is_function(cb, 2) do
     validate_type(type, p)
   end
 

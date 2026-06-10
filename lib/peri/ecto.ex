@@ -7,8 +7,6 @@ if Code.ensure_loaded?(Ecto) do
     alias Ecto.Embedded, as: Embed
     alias Peri.Ecto.Type
 
-    require Peri
-
     @type validation ::
             {:eq, integer | float | String.t()}
             | {:neq, integer | float}
