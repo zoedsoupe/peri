@@ -2357,6 +2357,34 @@ defmodule PeriTest do
     end
   end
 
+  describe "numeric constraints type strictness" do
+    test "integer constraint rejects floats" do
+      assert {:ok, 5} = Peri.validate({:integer, {:gt, 4}}, 5)
+      assert {:error, _} = Peri.validate({:integer, {:gt, 4}}, 5.1)
+      assert {:error, _} = Peri.validate({:integer, {:gte, 4}}, 5.1)
+      assert {:error, _} = Peri.validate({:integer, {:lt, 10}}, 5.1)
+      assert {:error, _} = Peri.validate({:integer, {:lte, 10}}, 5.1)
+      assert {:error, _} = Peri.validate({:integer, {:eq, 5}}, 5.0)
+      assert {:error, _} = Peri.validate({:integer, {:neq, 4}}, 5.1)
+      assert {:error, _} = Peri.validate({:integer, {:range, {1, 10}}}, 5.1)
+      assert {:error, _} = Peri.validate({:integer, {:multiple_of, 1}}, 5.1)
+    end
+
+    test "float constraint rejects integers" do
+      assert {:ok, 5.1} = Peri.validate({:float, {:gt, 4}}, 5.1)
+      assert {:error, _} = Peri.validate({:float, {:gt, 4}}, 5)
+    end
+
+    test "integer constraint in a map schema rejects floats" do
+      assert {:error, [%Peri.Error{}]} = numeric_gt_validation(%{greater_than: 10.5})
+    end
+
+    test "keyword options form rejects floats for integer type" do
+      assert {:ok, 5} = Peri.validate({:integer, [gt: 4]}, 5)
+      assert {:error, _} = Peri.validate({:integer, [gt: 4]}, 5.1)
+    end
+  end
+
   defmodule TypeDependentSchema do
     import Peri
 

@@ -776,6 +776,9 @@ defmodule Peri do
   """
   defguard is_numeric_type(t) when t in [:integer, :float]
 
+  defguard is_of_numeric_type(val, t)
+           when (t == :integer and is_integer(val)) or (t == :float and is_float(val))
+
   defguard is_type_with_multiple_options(t) when is_numeric_type(t) or t === :string
 
   @doc false
@@ -890,7 +893,7 @@ defmodule Peri do
   end
 
   defp validate_field(val, {type, {:eq, value}}, _data, _opts)
-       when is_numeric_type(type) and is_numeric(val) do
+       when is_of_numeric_type(val, type) do
     if val == value do
       :ok
     else
@@ -899,7 +902,7 @@ defmodule Peri do
   end
 
   defp validate_field(val, {type, {:neq, value}}, _data, _opts)
-       when is_numeric_type(type) and is_numeric(val) do
+       when is_of_numeric_type(val, type) do
     if val != value do
       :ok
     else
@@ -908,7 +911,7 @@ defmodule Peri do
   end
 
   defp validate_field(val, {type, {:gt, value}}, _data, _opts)
-       when is_numeric_type(type) and is_numeric(val) do
+       when is_of_numeric_type(val, type) do
     if val > value do
       :ok
     else
@@ -917,7 +920,7 @@ defmodule Peri do
   end
 
   defp validate_field(val, {type, {:gte, value}}, _data, _opts)
-       when is_numeric_type(type) and is_numeric(val) do
+       when is_of_numeric_type(val, type) do
     if val >= value do
       :ok
     else
@@ -926,7 +929,7 @@ defmodule Peri do
   end
 
   defp validate_field(val, {type, {:lte, value}}, _data, _opts)
-       when is_numeric_type(type) and is_numeric(val) do
+       when is_of_numeric_type(val, type) do
     if val <= value do
       :ok
     else
@@ -935,7 +938,7 @@ defmodule Peri do
   end
 
   defp validate_field(val, {type, {:lt, value}}, _data, _opts)
-       when is_numeric_type(type) and is_numeric(val) do
+       when is_of_numeric_type(val, type) do
     if val < value do
       :ok
     else
@@ -944,7 +947,7 @@ defmodule Peri do
   end
 
   defp validate_field(val, {type, {:range, {min, max}}}, _data, _opts)
-       when is_numeric_type(type) and is_numeric(val) do
+       when is_of_numeric_type(val, type) do
     info = [min: min, max: max]
     template = "should be in the range of %{min}..%{max} (inclusive)"
 
@@ -956,7 +959,7 @@ defmodule Peri do
   end
 
   defp validate_field(val, {type, {:multiple_of, n}}, _data, _opts)
-       when is_numeric_type(type) and is_numeric(val) and is_numeric(n) do
+       when is_of_numeric_type(val, type) and is_numeric(n) do
     if multiple_of?(val, n) do
       :ok
     else
