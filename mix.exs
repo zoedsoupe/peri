@@ -30,6 +30,7 @@ defmodule Peri.MixProject do
       {:jason, "~> 1.0", optional: true},
       {:stream_data, "~> 1.1", optional: true},
       {:ecto, "~> 3.12", optional: true},
+      {:phoenix_html, "~> 4.1", optional: true},
       {:benchee, "~> 1.0", only: :dev},
       {:ex_doc, ">= 0.0.0", only: [:dev, :test], runtime: false},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
@@ -57,6 +58,7 @@ defmodule Peri.MixProject do
         "pages/types.md",
         "pages/validation.md",
         "pages/ecto.md",
+        "pages/phoenix.md",
         "pages/generation.md",
         "pages/json_schema.md",
         "pages/refs.md"
