@@ -262,6 +262,34 @@ The result of `walk/2` is a plain Peri schema, ready to feed to
 `Peri.validate/2`, `Peri.to_json_schema/1`, `Peri.generate/1`, or another
 walker pass.
 
+## Composing schemas
+
+Schemas are plain maps, so `Peri.merge/2`, `Peri.select/2`, and
+`Peri.except/2` build new schemas from existing ones without redeclaring
+fields. All three return `{:ok, schema}` after checking the result with
+`Peri.validate_schema/1`.
+
+```elixir
+user = %{
+  name: {:required, :string},
+  email: {:required, :string},
+  password_hash: :string
+}
+
+# merge: deep merge, right side wins on conflicts
+{:ok, admin} = Peri.merge(user, %{role: {:enum, [:admin, :member]}})
+
+# select: keep a subset for a public DTO
+{:ok, public_user} = Peri.select(user, [:name, :email])
+
+# except: drop sensitive fields
+{:ok, safe_user} = Peri.except(user, [:password_hash])
+```
+
+`merge/2` merges nested map schemas recursively; type tuples and directives
+are never merged structurally, the right side wins. `select/2` and
+`except/2` ignore keys that are not present in the schema.
+
 ## Generator Overrides (`gen:` opt)
 
 Constrained types like `{:string, {:regex, …}}` or `{:integer, gt: 1_000_000}`
