@@ -111,6 +111,53 @@ The 3-arity form accepts a keyword list with three opts:
 | `{:ref, {Mod, atom}}`          | Reference a schema in another module    | `{:ref, {OtherMod, :node}}`                                            |
 | `{:multi, field, branches}`    | Tagged union dispatched on `field`      | `{:multi, :type, %{"circle" => %{r: :float}, "rect" => %{w: :float}}}` |
 
+## Coercion
+
+`{:coerce, source, target}` converts boundary data from its `source`
+representation into the `target` type during validation. The motivating case
+is Phoenix params (or any form/query-string input), where everything arrives
+as a string but the domain expects typed data:
+
+```elixir
+defschema :search_params, %{
+  page: {:coerce, :string, :integer},
+  per_page: {:coerce, :string, {:integer, {:lte, 100}}},
+  active: {:coerce, :string, :boolean},
+  since: {:coerce, :string, :date}
+}
+
+MySchemas.search_params(%{"page" => "2", "active" => "true", "since" => "2024-03-15"})
+# => {:ok, %{page: 2, active: true, since: ~D[2024-03-15]}}
+```
+
+The coerced value is written back into the result, and constraints on the
+target are enforced after coercion (`"101"` above fails the `{:lte, 100}`
+check). Values that already match the target type pass through untouched, so
+already-typed data (e.g. from a JSON decoder) is a no-op.
+
+Built-in sources support `:string` into `:integer` (full parse, `"12ab"` is
+rejected), `:float` (`"1"` becomes `1.0`), `:boolean` (`"true"`/`"false"`
+only), `:atom` (existing atoms only), `:date`, `:time`, `:naive_datetime`,
+and `:datetime` (ISO 8601). Custom sources are 1-arity functions or MFA
+tuples returning `{:ok, value}` or `:error`:
+
+```elixir
+%{
+  amount: {:coerce, &MyApp.Money.parse_cents/1, :integer},
+  cents: {:coerce, {MyApp.Parsers, :parse_cents}, :integer}
+}
+```
+
+`{:coerce, source, target, opts}` also accepts an `encode:` opt (function or
+MFA) that customizes the reverse direction used by `Peri.encode/3` — see
+"Decode and encode" in `pages/validation.md`.
+
+| Type                              | Description                        | Example                                             |
+| --------------------------------- | ---------------------------------- | --------------------------------------------------- |
+| `{:coerce, source, target}`       | Coerce from source to target       | `{:coerce, :string, :integer}`                      |
+| `{:coerce, source, target, opts}` | Coerce with a custom `encode:` fun | `{:coerce, :string, :integer, encode: &to_string/1}` |
+| `{type, {:encode, fun}}`          | Apply `fun` only when encoding     | `{:string, {:encode, &String.downcase/1}}`          |
+
 ## Schema Metadata
 
 The `{:meta, type, opts}` wrapper attaches documentation/tooling info to a field

@@ -87,8 +87,38 @@ defmodule Peri do
   - `{:oneof, [type1, type2, ...]}` - One of the specified types
   - `{:cond, condition, true_type, false_type}` - Conditional validation based on callback
   - `{:dependent, callback}` - Dynamic type based on callback result
+  - `{:coerce, source, target}` - Coerce a value from `source` representation to `target` type during validation
+  - `{type, {:encode, fun}}` - Apply `fun` to the value when encoding with `Peri.encode/3` (inert under validation)
   - `{:meta, type, opts}` - Attach documentation/example/description to a field; passthrough at validation
   - Nested maps for complex structures
+
+  ## Coercion and Encoding
+
+  `{:coerce, source, target}` validates boundary data (e.g. Phoenix params,
+  where everything arrives as a string) by coercing from the `source`
+  representation into the `target` type. Values that already match the target
+  type pass through untouched, so JSON-decoded data is a no-op.
+
+  ```elixir
+  defschema :params, %{
+    page: {:coerce, :string, :integer},
+    active: {:coerce, :string, :boolean}
+  }
+
+  MySchemas.params(%{"page" => "2", "active" => "true"})
+  # => {:ok, %{page: 2, active: true}}
+  ```
+
+  Built-in sources support `:string` into `:integer`, `:float`, `:boolean`,
+  `:atom`, `:date`, `:time`, `:naive_datetime`, and `:datetime`. Custom
+  sources are 1-arity functions (or MFA tuples) returning `{:ok, value}` or
+  `:error`.
+
+  `Peri.encode/3` runs the same schema in the opposite direction: it validates
+  data against the target types and produces the wire representation (strings
+  for built-ins, or the `encode:` opt when given). `Peri.decode/3` is an alias
+  of `validate/3` for API symmetry. `{:transform, fun}` is skipped during
+  encoding, and `{type, {:encode, fun}}` applies only during encoding.
 
   ## Custom Error Messages
 
@@ -185,6 +215,8 @@ defmodule Peri do
   ## Functions
 
   - `validate/2` - Validates data against a schema.
+  - `decode/3` - Alias of `validate/3`; decodes wire data, applying `{:coerce, ...}` directives.
+  - `encode/3` - Validates data and produces its wire representation.
   - `conforms?/2` - Checks if data conforms to a schema.
   - `validate_schema/1` - Validates the schema definition.
   - `generate/1` - Generates sample data based on schema (when StreamData is available).
@@ -239,6 +271,18 @@ defmodule Peri do
           {:custom, validation}
           | {:custom, {module, atom}}
           | {:custom, {module, atom, list(term)}}
+  @type coerce_source ::
+          :string
+          | (term -> {:ok, term} | :error)
+          | {module, atom}
+          | {module, atom, list(term)}
+  @type coerce_def ::
+          {:coerce, coerce_source, schema_def}
+          | {:coerce, coerce_source, schema_def, keyword}
+  @type encode_def ::
+          {schema_def, {:encode, (term -> term)}}
+          | {schema_def, {:encode, {module, atom}}}
+          | {schema_def, {:encode, {module, atom, list(term)}}}
   @type cond_def ::
           {:cond, condition :: (term -> boolean), true_branch :: schema_def,
            else_branch :: schema_def}
@@ -285,6 +329,8 @@ defmodule Peri do
           | default_def
           | transform_def
           | custom_def
+          | coerce_def
+          | encode_def
   @type map_schema :: %{(String.t() | atom) => schema_def}
   @type schema ::
           schema_def
@@ -578,10 +624,11 @@ defmodule Peri do
       raise ArgumentError, "Invalid mode: #{inspect(mode)}. Must be :strict or :permissive"
     end
 
-    data = filter_data(schema, data, mode: mode)
+    field_opts = [mode: mode] ++ Keyword.take(opts, [:direction])
+    data = filter_data(schema, data, field_opts)
     state = Peri.Parser.new(data, root_data: data)
 
-    case traverse_schema(schema, state, mode: mode) do
+    case traverse_schema(schema, state, field_opts) do
       %Peri.Parser{errors: [], data: result} -> {:ok, result}
       %Peri.Parser{errors: errors} -> {:error, errors}
     end
@@ -601,6 +648,61 @@ defmodule Peri do
       {:error, reason, info} ->
         {:error, Peri.Error.new_single(reason, info)}
     end
+  end
+
+  @doc """
+  Decodes wire data against a schema.
+
+  Coercion is a schema directive, so decoding is exactly `validate/3`:
+  `{:coerce, source, target}` fields convert their `source` representation
+  into the `target` type, and values already matching the target pass through
+  unchanged.
+
+  Accepts the same options as `validate/3` and returns the same shape.
+
+  ## Examples
+
+      iex> schema = %{page: {:coerce, :string, :integer}}
+      iex> Peri.decode(schema, %{"page" => "2"})
+      {:ok, %{page: 2}}
+
+      iex> schema = %{page: {:coerce, :string, :integer}}
+      iex> Peri.decode(schema, %{page: 2})
+      {:ok, %{page: 2}}
+  """
+  @spec decode(schema, data :: term, keyword) :: {:ok, term} | {:error, term}
+  def decode(schema, data, opts \\ []), do: validate(schema, data, opts)
+
+  @doc """
+  Encodes data against a schema, producing its wire representation.
+
+  Validates `data` against the schema (target types), then applies the
+  reverse of each codec directive:
+
+    * `{:coerce, source, target}` - built-in `:string` sources render with
+      `to_string/1` (`to_iso8601/1` for date/time structs); when the
+      `encode:` opt is given, that function/MFA is applied instead. Custom
+      function/MFA sources without an `encode:` opt pass the validated value
+      through unchanged.
+    * `{type, {:encode, fun}}` - applies `fun` (or MFA) to the validated
+      value. This directive is inert under `validate/3` and `decode/3`.
+    * `{:transform, fun}` - skipped; transforms are decode-only.
+
+  Accepts the same options as `validate/3` and returns the same shape.
+
+  ## Examples
+
+      iex> schema = %{page: {:coerce, :string, :integer}}
+      iex> Peri.encode(schema, %{page: 2})
+      {:ok, %{page: "2"}}
+
+      iex> schema = %{upcased: {:string, {:encode, &String.downcase/1}}}
+      iex> Peri.encode(schema, %{upcased: "HELLO"})
+      {:ok, %{upcased: "hello"}}
+  """
+  @spec encode(schema, data :: term, keyword) :: {:ok, term} | {:error, term}
+  def encode(schema, data, opts \\ []) do
+    validate(schema, data, Keyword.put(opts, :direction, :encode))
   end
 
   @doc """
@@ -1057,53 +1159,69 @@ defmodule Peri do
 
   defp validate_field(val, {type, {:transform, mapper}}, data, opts)
        when is_function(mapper, 1) do
-    case validate_field(val, type, data, opts) do
-      :ok -> {:ok, mapper.(val)}
-      {:ok, val} -> {:ok, mapper.(val)}
-      err -> err
+    if encoding?(opts) do
+      validate_field(val, type, data, opts)
+    else
+      case validate_field(val, type, data, opts) do
+        :ok -> {:ok, mapper.(val)}
+        {:ok, val} -> {:ok, mapper.(val)}
+        err -> err
+      end
     end
   end
 
   defp validate_field(val, {type, {:transform, mapper}}, data, opts)
        when is_function(mapper, 2) do
-    case validate_field(val, type, data, opts) do
-      :ok -> {:ok, mapper.(val, maybe_get_root_data(data))}
-      {:ok, val} -> {:ok, mapper.(val, maybe_get_root_data(data))}
-      err -> err
+    if encoding?(opts) do
+      validate_field(val, type, data, opts)
+    else
+      case validate_field(val, type, data, opts) do
+        :ok -> {:ok, mapper.(val, maybe_get_root_data(data))}
+        {:ok, val} -> {:ok, mapper.(val, maybe_get_root_data(data))}
+        err -> err
+      end
     end
   end
 
   defp validate_field(val, {type, {:transform, {mod, fun}}}, data, opts)
        when is_atom(mod) and is_atom(fun) do
-    with {:ok, val} <- validate_and_extract(val, type, data, opts) do
-      cond do
-        function_exported?(mod, fun, 1) ->
-          {:ok, apply(mod, fun, [val])}
-
-        function_exported?(mod, fun, 2) ->
-          {:ok, apply(mod, fun, [val, maybe_get_root_data(data)])}
-
-        true ->
-          template = "expected %{mod} to export %{fun}/1 or %{fun}/2"
-          {:error, template, mod: mod, fun: fun}
-      end
+    if encoding?(opts) do
+      validate_field(val, type, data, opts)
+    else
+      apply_mod_transform(val, type, mod, fun, data, opts)
     end
   end
 
   defp validate_field(val, {type, {:transform, {mod, fun, args}}}, data, opts)
        when is_atom(mod) and is_atom(fun) and is_list(args) do
-    with {:ok, val} <- validate_and_extract(val, type, data, opts) do
-      cond do
-        function_exported?(mod, fun, length(args) + 2) ->
-          {:ok, apply(mod, fun, [val, maybe_get_root_data(data) | args])}
+    if encoding?(opts) do
+      validate_field(val, type, data, opts)
+    else
+      apply_mod_transform(val, type, mod, fun, args, data, opts)
+    end
+  end
 
-        function_exported?(mod, fun, length(args) + 1) ->
-          {:ok, apply(mod, fun, [val | args])}
+  defp validate_field(val, {type, {:encode, encoder}}, data, opts)
+       when is_function(encoder, 1),
+       do: validate_with_encode(val, type, encoder, data, opts)
 
-        true ->
-          template = "expected %{mod} to export %{fun} with arity from %{base} to %{arity}"
-          {:error, template, mod: mod, fun: fun, arity: length(args), base: length(args) + 1}
-      end
+  defp validate_field(val, {type, {:encode, {mod, fun}}}, data, opts)
+       when is_atom(mod) and is_atom(fun),
+       do: validate_with_encode(val, type, {mod, fun}, data, opts)
+
+  defp validate_field(val, {type, {:encode, {mod, fun, args}}}, data, opts)
+       when is_atom(mod) and is_atom(fun) and is_list(args),
+       do: validate_with_encode(val, type, {mod, fun, args}, data, opts)
+
+  defp validate_field(val, {:coerce, source, target}, data, opts),
+    do: validate_field(val, {:coerce, source, target, []}, data, opts)
+
+  defp validate_field(val, {:coerce, source, target, coerce_opts}, data, opts)
+       when is_list(coerce_opts) do
+    if encoding?(opts) do
+      encode_coercion(val, source, target, coerce_opts, data, opts)
+    else
+      decode_coercion(val, source, target, data, opts)
     end
   end
 
@@ -1355,6 +1473,208 @@ defmodule Peri do
       err -> err
     end
   end
+
+  defp apply_mod_transform(val, type, mod, fun, data, opts) do
+    with {:ok, val} <- validate_and_extract(val, type, data, opts) do
+      cond do
+        function_exported?(mod, fun, 1) ->
+          {:ok, apply(mod, fun, [val])}
+
+        function_exported?(mod, fun, 2) ->
+          {:ok, apply(mod, fun, [val, maybe_get_root_data(data)])}
+
+        true ->
+          template = "expected %{mod} to export %{fun}/1 or %{fun}/2"
+          {:error, template, mod: mod, fun: fun}
+      end
+    end
+  end
+
+  defp apply_mod_transform(val, type, mod, fun, args, data, opts) do
+    with {:ok, val} <- validate_and_extract(val, type, data, opts) do
+      cond do
+        function_exported?(mod, fun, length(args) + 2) ->
+          {:ok, apply(mod, fun, [val, maybe_get_root_data(data) | args])}
+
+        function_exported?(mod, fun, length(args) + 1) ->
+          {:ok, apply(mod, fun, [val | args])}
+
+        true ->
+          template = "expected %{mod} to export %{fun} with arity from %{base} to %{arity}"
+          {:error, template, mod: mod, fun: fun, arity: length(args), base: length(args) + 1}
+      end
+    end
+  end
+
+  defp encoding?(opts), do: Keyword.get(opts, :direction) == :encode
+
+  defp validate_with_encode(val, type, encoder, data, opts) do
+    if encoding?(opts) do
+      case validate_field(val, type, data, opts) do
+        :ok -> {:ok, apply_encoder(encoder, val)}
+        {:ok, val} -> {:ok, apply_encoder(encoder, val)}
+        err -> err
+      end
+    else
+      validate_field(val, type, data, opts)
+    end
+  end
+
+  defp apply_encoder(encoder, val) when is_function(encoder, 1), do: encoder.(val)
+
+  defp apply_encoder({mod, fun}, val) when is_atom(mod) and is_atom(fun),
+    do: apply(mod, fun, [val])
+
+  defp apply_encoder({mod, fun, args}, val) when is_atom(mod) and is_atom(fun) and is_list(args),
+    do: apply(mod, fun, [val | args])
+
+  defp decode_coercion(val, source, target, data, opts) do
+    if matches_type?(val, target) do
+      validate_field(val, target, data, opts)
+    else
+      val
+      |> validate_field(target, data, opts)
+      |> handle_coercion_fallback(val, source, target, data, opts)
+    end
+  end
+
+  defp handle_coercion_fallback(:ok, _val, _source, _target, _data, _opts), do: :ok
+  defp handle_coercion_fallback({:ok, _} = ok, _val, _source, _target, _data, _opts), do: ok
+
+  defp handle_coercion_fallback(target_error, val, source, target, data, opts) do
+    if matches_source?(val, source) do
+      val
+      |> do_coerce(source, target)
+      |> finish_coercion(val, source, target, data, opts)
+    else
+      target_error
+    end
+  end
+
+  defp finish_coercion({:ok, coerced}, _val, _source, target, data, opts) do
+    case validate_field(coerced, target, data, opts) do
+      :ok -> {:ok, coerced}
+      {:ok, val} -> {:ok, val}
+      err -> err
+    end
+  end
+
+  defp finish_coercion(:error, val, source, target, _data, _opts) do
+    info = [value: inspect(val), source: inspect(source), target: summarize(target)]
+    {:error, "cannot coerce %{value} from %{source} to %{target}", info}
+  end
+
+  defp encode_coercion(val, source, target, coerce_opts, data, opts) do
+    case validate_field(val, target, data, opts) do
+      :ok -> {:ok, encode_coerced_value(val, source, target, coerce_opts)}
+      {:ok, val} -> {:ok, encode_coerced_value(val, source, target, coerce_opts)}
+      err -> err
+    end
+  end
+
+  defp encode_coerced_value(val, source, target, coerce_opts) do
+    case Keyword.fetch(coerce_opts, :encode) do
+      {:ok, encoder} -> apply_encoder(encoder, val)
+      :error -> default_wire_encode(val, source, target)
+    end
+  end
+
+  defp default_wire_encode(val, :string, target) do
+    case coerce_target_atom(target) do
+      :date -> Date.to_iso8601(val)
+      :time -> Time.to_iso8601(val)
+      :naive_datetime -> NaiveDateTime.to_iso8601(val)
+      :datetime -> DateTime.to_iso8601(val)
+      _other -> to_string(val)
+    end
+  end
+
+  defp default_wire_encode(val, _source, _target), do: val
+
+  defp matches_type?(val, :string), do: is_binary(val)
+  defp matches_type?(val, :integer), do: is_integer(val)
+  defp matches_type?(val, :float), do: is_float(val)
+  defp matches_type?(val, :boolean), do: is_boolean(val)
+  defp matches_type?(val, :atom), do: is_atom(val)
+  defp matches_type?(%Date{}, :date), do: true
+  defp matches_type?(%Time{}, :time), do: true
+  defp matches_type?(%DateTime{}, :datetime), do: true
+  defp matches_type?(%NaiveDateTime{}, :naive_datetime), do: true
+  defp matches_type?(_val, _target), do: false
+
+  defp matches_source?(val, :string), do: is_binary(val)
+  defp matches_source?(_val, source) when is_function(source, 1), do: true
+  defp matches_source?(_val, {mod, fun}) when is_atom(mod) and is_atom(fun), do: true
+
+  defp matches_source?(_val, {mod, fun, args})
+       when is_atom(mod) and is_atom(fun) and is_list(args),
+       do: true
+
+  defp matches_source?(_val, _source), do: false
+
+  defp do_coerce(val, source, _target) when is_function(source, 1),
+    do: normalize_coercion_result(source.(val))
+
+  defp do_coerce(val, {mod, fun}, _target) when is_atom(mod) and is_atom(fun),
+    do: normalize_coercion_result(apply(mod, fun, [val]))
+
+  defp do_coerce(val, {mod, fun, args}, _target)
+       when is_atom(mod) and is_atom(fun) and is_list(args),
+       do: normalize_coercion_result(apply(mod, fun, [val | args]))
+
+  defp do_coerce(val, :string, target) when is_binary(val),
+    do: coerce_from_string(val, coerce_target_atom(target))
+
+  defp do_coerce(_val, _source, _target), do: :error
+
+  defp normalize_coercion_result({:ok, val}), do: {:ok, val}
+  defp normalize_coercion_result(_other), do: :error
+
+  defp coerce_target_atom(target) when is_atom(target), do: target
+  defp coerce_target_atom({target, _opts}) when is_atom(target), do: target
+  defp coerce_target_atom(_target), do: nil
+
+  defp coerce_from_string(val, :integer) do
+    case Integer.parse(val) do
+      {int, ""} -> {:ok, int}
+      _other -> :error
+    end
+  end
+
+  defp coerce_from_string(val, :float) do
+    case Float.parse(val) do
+      {float, ""} -> {:ok, float}
+      _other -> :error
+    end
+  end
+
+  defp coerce_from_string("true", :boolean), do: {:ok, true}
+  defp coerce_from_string("false", :boolean), do: {:ok, false}
+  defp coerce_from_string(_val, :boolean), do: :error
+
+  defp coerce_from_string(val, :atom) do
+    {:ok, String.to_existing_atom(val)}
+  rescue
+    ArgumentError -> :error
+  end
+
+  defp coerce_from_string(val, :date), do: wrap_iso8601(Date.from_iso8601(val))
+  defp coerce_from_string(val, :time), do: wrap_iso8601(Time.from_iso8601(val))
+
+  defp coerce_from_string(val, :naive_datetime),
+    do: wrap_iso8601(NaiveDateTime.from_iso8601(val))
+
+  defp coerce_from_string(val, :datetime) do
+    case DateTime.from_iso8601(val) do
+      {:ok, datetime, _offset} -> {:ok, datetime}
+      {:error, _reason} -> :error
+    end
+  end
+
+  defp coerce_from_string(_val, _target), do: :error
+
+  defp wrap_iso8601({:ok, value}), do: {:ok, value}
+  defp wrap_iso8601({:error, _reason}), do: :error
 
   # if schema is matches a raw data structure, it will not use the Peri.Parser
   defp maybe_get_root_data(%Peri.Parser{} = p), do: p.root_data
@@ -1777,6 +2097,27 @@ defmodule Peri do
   defp validate_type({type, {:transform, {_mod, _fun, args}}}, p) when is_list(args),
     do: validate_type(type, p)
 
+  defp validate_type({type, {:encode, encoder}}, p) when is_function(encoder, 1),
+    do: validate_type(type, p)
+
+  defp validate_type({type, {:encode, {mod, fun}}}, p) when is_atom(mod) and is_atom(fun),
+    do: validate_type(type, p)
+
+  defp validate_type({type, {:encode, {mod, fun, args}}}, p)
+       when is_atom(mod) and is_atom(fun) and is_list(args),
+       do: validate_type(type, p)
+
+  defp validate_type({:coerce, source, target}, p),
+    do: validate_coerce_type(source, target, [], p)
+
+  defp validate_type({:coerce, source, target, coerce_opts}, p) when is_list(coerce_opts),
+    do: validate_coerce_type(source, target, coerce_opts, p)
+
+  defp validate_type({:coerce, _source, _target, coerce_opts}, _p) do
+    {:error, "expected coerce opts to be a keyword list, got %{actual}",
+     actual: inspect(coerce_opts)}
+  end
+
   defp validate_type({:required, {type, {:default, val}}}, _) do
     template = "cannot set default value of %{value} for required field of type %{type}"
     {:error, template, [value: val, type: summarize(type)]}
@@ -1968,6 +2309,85 @@ defmodule Peri do
         {:error, template, info} -> {:halt, {:error, template, info}}
       end
     end)
+  end
+
+  @coerce_string_targets [
+    :integer,
+    :float,
+    :boolean,
+    :atom,
+    :date,
+    :time,
+    :naive_datetime,
+    :datetime
+  ]
+
+  defp validate_coerce_type(source, target, coerce_opts, p) do
+    with :ok <- validate_coerce_source(source),
+         :ok <- validate_coerce_target(source, target),
+         :ok <- validate_coerce_opts(coerce_opts),
+         do: validate_type(target, p)
+  end
+
+  defp validate_coerce_source(:string), do: :ok
+  defp validate_coerce_source(fun) when is_function(fun, 1), do: :ok
+
+  defp validate_coerce_source({mod, fun}) when is_atom(mod) and is_atom(fun), do: :ok
+
+  defp validate_coerce_source({mod, fun, args})
+       when is_atom(mod) and is_atom(fun) and is_list(args),
+       do: :ok
+
+  defp validate_coerce_source(other) do
+    {:error,
+     "expected coerce source to be :string, a 1-arity function, or an MFA tuple, got %{actual}",
+     actual: inspect(other)}
+  end
+
+  defp validate_coerce_target(:string, target) do
+    if coerce_string_target?(target) do
+      :ok
+    else
+      {:error, "expected coerce target for :string source to be one of %{targets}, got %{actual}",
+       targets: inspect(@coerce_string_targets), actual: summarize(target)}
+    end
+  end
+
+  defp validate_coerce_target(_source, _target), do: :ok
+
+  defp coerce_string_target?(target) when target in @coerce_string_targets, do: true
+
+  defp coerce_string_target?({target, _opts}) when target in @coerce_string_targets, do: true
+
+  defp coerce_string_target?(_target), do: false
+
+  defp validate_coerce_opts(opts) do
+    cond do
+      not Keyword.keyword?(opts) ->
+        {:error, "expected coerce opts to be a keyword list, got %{actual}",
+         actual: inspect(opts)}
+
+      not valid_coerce_encode_opt?(opts) ->
+        {:error, "expected encode: opt to be a 1-arity function or an MFA tuple, got %{actual}",
+         actual: inspect(Keyword.get(opts, :encode))}
+
+      Keyword.keys(opts) -- [:encode] != [] ->
+        {:error, "unknown coerce opts %{actual}, only :encode is allowed",
+         actual: inspect(Keyword.keys(opts) -- [:encode])}
+
+      true ->
+        :ok
+    end
+  end
+
+  defp valid_coerce_encode_opt?(opts) do
+    case Keyword.fetch(opts, :encode) do
+      :error -> true
+      {:ok, fun} when is_function(fun, 1) -> true
+      {:ok, {mod, fun}} when is_atom(mod) and is_atom(fun) -> true
+      {:ok, {mod, fun, args}} when is_atom(mod) and is_atom(fun) and is_list(args) -> true
+      {:ok, _} -> false
+    end
   end
 
   if Code.ensure_loaded?(Ecto) do

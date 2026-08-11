@@ -134,6 +134,12 @@ defmodule Peri.Walker do
   defp walk_type_children({:meta, t, opts}, fun) when is_list(opts),
     do: {:meta, visit_type(t, fun), opts}
 
+  defp walk_type_children({:coerce, source, target}, fun),
+    do: {:coerce, source, visit_type(target, fun)}
+
+  defp walk_type_children({:coerce, source, target, opts}, fun) when is_list(opts),
+    do: {:coerce, source, visit_type(target, fun), opts}
+
   defp walk_type_children({:cond, cb, t, el}, fun),
     do: {:cond, cb, visit_type(t, fun), visit_type(el, fun)}
 
