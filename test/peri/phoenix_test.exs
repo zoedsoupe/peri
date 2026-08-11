@@ -121,6 +121,19 @@ defmodule Peri.PhoenixTest do
       assert Phoenix.HTML.Form.input_value(second, :label) == "b"
     end
 
+    test "list params with non-numeric keys do not raise (Phoenix new-entry convention)" do
+      params = %{
+        "name" => "Jane",
+        "tags" => %{"0" => %{"label" => "a"}, "new" => %{"label" => "b"}}
+      }
+
+      form = Peri.Phoenix.to_form(@nested_schema, params)
+
+      assert [first, second] = FormData.to_form(form.source, form, :tags, [])
+      assert Phoenix.HTML.Form.input_value(first, :label) == "a"
+      assert Phoenix.HTML.Form.input_value(second, :label) == "b"
+    end
+
     test "list of maps renders from validated data when no params are present" do
       form =
         Peri.Phoenix.to_form(@nested_schema, %{"name" => "Jane", "tags" => [%{"label" => "a"}]})

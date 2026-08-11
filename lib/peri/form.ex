@@ -191,7 +191,12 @@ if Code.ensure_loaded?(Phoenix.HTML) do
     # present, otherwise prepend ++ data ++ append with empty params.
     defp list_entries(params, _data, _prepend, _append) when is_map(params) and params != %{} do
       params
-      |> Enum.sort_by(fn {index, _} -> String.to_integer(index) end)
+      |> Enum.sort_by(fn {index, _} ->
+        case Integer.parse(to_string(index)) do
+          {numeric_index, ""} -> {0, numeric_index}
+          _ -> {1, to_string(index)}
+        end
+      end)
       |> Enum.map(fn {_index, entry_params} -> {nil, entry_params} end)
     end
 
