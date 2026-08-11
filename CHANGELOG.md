@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.10.0](https://github.com/zoedsoupe/peri/compare/v0.9.1...v0.10.0) (2026-08-11)
+
+
+### Features
+
+* {:coerce, source, target} directive with decode/encode ([40ef5f4](https://github.com/zoedsoupe/peri/commit/40ef5f439d74584de1e7063e5f8c8cd83f16ff4a))
+* error humanize, missing-key spellcheck, legible oneof summaries ([94f1a75](https://github.com/zoedsoupe/peri/commit/94f1a757fb6e1fef75747bc923ae613ee6594f37))
+* Phoenix form bridge via Peri.Form and FormData protocol ([b791bb0](https://github.com/zoedsoupe/peri/commit/b791bb0e11171abd465329d2b38a961a075d5762))
+* schema composition with merge/select/except ([898eeda](https://github.com/zoedsoupe/peri/commit/898eeda279b79970e57529ffb0cacf2770ece675))
+
+
+### Bug Fixes
+
+* form list_entries crash on non-numeric param keys ([a8de6a2](https://github.com/zoedsoupe/peri/commit/a8de6a2688ff3f3dbb718a6edbfaff3420438a18))
+* humanize deep_merge crash on prefix-colliding error paths ([6b7f686](https://github.com/zoedsoupe/peri/commit/6b7f6867e4832c7edb590db59695c79b344c04bc))
+
 ## [0.9.1](https://github.com/zoedsoupe/peri/compare/v0.9.0...v0.9.1) (2026-08-07)
 
 
