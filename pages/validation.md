@@ -289,3 +289,39 @@ defp validate_complex_rule(value) do
   end
 end
 ```
+
+## Decode and Encode
+
+Coercion is a schema directive, so decoding wire data is just validation:
+`Peri.decode/3` is an alias of `Peri.validate/3` that reads naturally at the
+boundary. `Peri.encode/3` runs the same schema in the opposite direction — it
+validates the data against the target types, then produces the wire
+representation:
+
+```elixir
+schema = %{
+  "page" => {:coerce, :string, :integer},
+  "since" => {:coerce, :string, :date}
+}
+
+{:ok, decoded} = Peri.decode(schema, %{"page" => "2", "since" => "2024-03-15"})
+# => {:ok, %{"page" => 2, "since" => ~D[2024-03-15]}}
+
+{:ok, wire} = Peri.encode(schema, decoded)
+# => {:ok, %{"page" => "2", "since" => "2024-03-15"}}
+```
+
+On encode, built-in `:string` sources render with `to_string/1`
+(`to_iso8601/1` for date/time structs). A coerce directive may carry an
+`encode:` opt to customize the reverse, and custom function/MFA sources
+without an `encode:` opt pass the validated value through unchanged.
+
+Two related directives round out the codec story:
+
+- `{type, {:encode, fun}}` applies `fun` (or an MFA) to the value during
+  `Peri.encode/3` only; it is inert under `validate/3` and `decode/3`.
+- `{type, {:transform, fun}}` is skipped during `Peri.encode/3` — transforms
+  are decode-only.
+
+Note that `Peri.encode/3` still validates: encoding data that does not match
+the target types returns the usual `{:error, errors}` tuple.

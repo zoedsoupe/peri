@@ -243,6 +243,12 @@ defmodule Peri.JSONSchema.Encoder do
 
   defp convert({type, {:transform, _}}, opts), do: convert(type, opts)
 
+  defp convert({type, {:encode, _}}, opts), do: convert(type, opts)
+
+  defp convert({:coerce, _source, target}, opts), do: convert(target, opts)
+
+  defp convert({:coerce, _source, target, _coerce_opts}, opts), do: convert(target, opts)
+
   defp convert({:multi, field, branches}, opts) when is_atom(field) and is_map(branches) do
     branch_schemas =
       Enum.map(branches, fn {tag, branch} ->

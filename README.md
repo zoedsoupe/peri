@@ -17,6 +17,7 @@ Peri is a schema validation library for Elixir, inspired by Clojure's Plumatic S
 - **Schema Transformation**: Depth-first rewrite via `Peri.walk/2` — make-all-optional, strip-fields, rename, etc.
 - **Schema Composition**: Build schemas from schemas with `Peri.merge/2`, `Peri.select/2`, and `Peri.except/2`
 - **Custom Generators**: Per-field `gen:` opt to override StreamData generation on tight constraint domains
+- **Coercion / Codecs**: `{:coerce, source, target}` turns string params into typed data, with `Peri.encode/3` for the reverse direction
 
 ## Installation
 

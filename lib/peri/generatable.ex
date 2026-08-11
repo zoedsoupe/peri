@@ -257,6 +257,10 @@ if Code.ensure_loaded?(StreamData) do
       StreamData.map(stream, mapper)
     end
 
+    def gen({:coerce, _source, target}), do: gen(target)
+    def gen({:coerce, _source, target, _opts}), do: gen(target)
+    def gen({type, {:encode, _}}), do: gen(type)
+
     def gen({type, opts}) when Peri.is_type_with_multiple_options(type) and is_list(opts) do
       case Keyword.fetch(opts, :gen) do
         {:ok, override} ->
