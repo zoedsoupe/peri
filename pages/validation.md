@@ -325,3 +325,46 @@ Two related directives round out the codec story:
 
 Note that `Peri.encode/3` still validates: encoding data that does not match
 the target types returns the usual `{:error, errors}` tuple.
+
+## Rendering Errors
+
+`Peri.Error.humanize/1` converts an error (or list of errors) into a
+nested, data-shaped map of messages, mirroring
+`Ecto.Changeset.traverse_errors/2` output. Integer path segments become
+integer keys (list indices), and multiple errors at the same path append
+to the message list:
+
+```elixir
+{:error, errors} = MySchemas.user(%{addresses: [%{street: "x"}]})
+
+Peri.Error.humanize(errors)
+# => %{addresses: %{0 => %{street: ["is too short"]}}}
+```
+
+This shape drops straight into API error payloads and form rendering.
+Because `humanize/1` reads each leaf's final message verbatim, it composes
+with `traverse_errors/2`: translate first, then humanize.
+
+Errors without a path come from top-level scalar validations
+(`Peri.validate(:string, 5)`); with no field to nest under, they humanize
+to a bare list of messages.
+
+## Missing Key Suggestions
+
+When a required field is missing but the data contains a key that looks
+like a typo of it (Jaro distance above 0.8, compared across atom and
+string key forms), the error message gains a suggestion and the error
+content carries it under `:did_you_mean`:
+
+```elixir
+{:error, [error]} = Peri.validate(%{email: {:required, :string}}, %{emial: "a@b.c"})
+
+error.message
+# => "is required, expected type of :string did you mean :emial?"
+error.content[:did_you_mean]
+# => :emial
+```
+
+This works in both strict and permissive modes, including inside nested
+schemas and list elements. A static or MFA `error:` override still
+replaces the message; the `:did_you_mean` content remains available.

@@ -93,6 +93,32 @@ defmodule Peri.RefTest do
     end
   end
 
+  describe "refs in oneof/either errors" do
+    test "oneof of cross-module refs renders schema names" do
+      schema = %{body: {:oneof, [{:ref, {Trees, :tree}}, {:ref, {Other, :node}}]}}
+
+      assert {:error, [%Peri.Error{message: msg} = err]} = Peri.validate(schema, %{body: 1})
+
+      assert msg ==
+               "expected one of Peri.RefTest.Trees.tree or Peri.RefTest.Other.node, got: 1"
+
+      assert err.content[:oneof] == "Peri.RefTest.Trees.tree or Peri.RefTest.Other.node"
+    end
+
+    test "either of refs renders schema names" do
+      schema = %{body: {:either, {{:ref, {Trees, :tree}}, {:ref, {Other, :node}}}}}
+
+      assert {:error, [%Peri.Error{message: msg}]} = Peri.validate(schema, %{body: 1})
+
+      assert msg ==
+               "expected either Peri.RefTest.Trees.tree or Peri.RefTest.Other.node, got: 1"
+    end
+
+    test "local ref renders as ref(name)" do
+      assert Peri.Error.summarize({:ref, :tree}) == "ref(:tree)"
+    end
+  end
+
   describe "JSON Schema export" do
     test "ref emits $ref and $defs" do
       schema = %{root: {:ref, {Other, :node}}}

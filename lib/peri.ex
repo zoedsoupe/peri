@@ -624,7 +624,15 @@ defmodule Peri do
       raise ArgumentError, "Invalid mode: #{inspect(mode)}. Must be :strict or :permissive"
     end
 
-    field_opts = [mode: mode] ++ Keyword.take(opts, [:direction])
+    spellcheck = collect_spellcheck(schema, data)
+
+    field_opts =
+      [
+        mode: mode,
+        spellcheck: spellcheck,
+        spellcheck_candidates: Map.get(spellcheck, [], [])
+      ] ++ Keyword.take(opts, [:direction])
+
     data = filter_data(schema, data, field_opts)
     state = Peri.Parser.new(data, root_data: data)
 
@@ -802,11 +810,145 @@ defmodule Peri do
           reduce_errors(path, key, nested_errs, parser)
 
         {:error, reason, info} ->
+          {reason, info} = maybe_suggest_key(reason, info, key, type, exists?, opts)
           err = Peri.Error.new_child(path, key, reason, info)
           Peri.Parser.add_error(parser, err)
       end
     end)
   end
+
+  # When a required field is missing, suggest a typo'd sibling key present in
+  # the data but absent from the schema (e.g. `:emial` for `:email`).
+  # Candidates are computed from the unfiltered data and threaded through
+  # opts under `:spellcheck_candidates`, so this works in both strict and
+  # permissive modes.
+  defp maybe_suggest_key(reason, info, key, {:required, _}, false, opts),
+    do: suggest_key(reason, info, key, opts)
+
+  defp maybe_suggest_key(reason, info, key, {:required, _, _}, false, opts),
+    do: suggest_key(reason, info, key, opts)
+
+  defp maybe_suggest_key(reason, info, _key, _type, _exists?, _opts), do: {reason, info}
+
+  defp suggest_key(reason, info, key, opts) do
+    candidates = Keyword.get(opts, :spellcheck_candidates, [])
+    key_string = to_string(key)
+    distance = &String.jaro_distance(to_string(&1), key_string)
+
+    candidate =
+      candidates
+      |> Enum.filter(&(distance.(&1) > 0.8))
+      |> Enum.max_by(distance, fn -> nil end)
+
+    if candidate do
+      {reason <> " did you mean %{did_you_mean}?", info ++ [did_you_mean: candidate]}
+    else
+      {reason, info}
+    end
+  end
+
+  # Keys present in the data but absent from the schema, in their original
+  # (atom or string) form. Compared as strings so string-keyed data matches
+  # against atom-keyed schemas.
+  defp spellcheck_candidates(schema, data) do
+    schema_keys = MapSet.new(enum_keys(schema))
+
+    data
+    |> enum_keys()
+    |> Enum.reject(fn key ->
+      key == :__struct__ or MapSet.member?(schema_keys, to_string(key))
+    end)
+  end
+
+  defp enum_keys(enum) do
+    Enum.flat_map(enum, fn
+      {key, _} -> [key]
+      _other -> []
+    end)
+  end
+
+  # Walks the raw schema and data (before strict-mode filtering drops
+  # unknown keys) collecting spellcheck candidates per absolute path, so
+  # nested schemas can suggest typo'd keys too. Structs are opaque input,
+  # so they collect nothing.
+  defp collect_spellcheck(_schema, data) when is_struct(data), do: %{}
+  defp collect_spellcheck(schema, data), do: do_collect_spellcheck(schema, data, [], %{})
+
+  defp do_collect_spellcheck(schema, data, path, acc) do
+    acc =
+      case spellcheck_candidates(schema, data) do
+        [] -> acc
+        candidates -> Map.put(acc, path, candidates)
+      end
+
+    Enum.reduce(schema, acc, fn {key, type}, acc ->
+      collect_nested_spellcheck(spellcheck_subschema(type), data, key, path, acc)
+    end)
+  end
+
+  defp collect_nested_spellcheck({:nested, sub}, data, key, path, acc) do
+    case get_enumerable_value(data, key) do
+      value when is_map(value) and not is_struct(value) ->
+        do_collect_spellcheck(sub, value, path ++ [key], acc)
+
+      value when is_list(value) ->
+        if Keyword.keyword?(value) do
+          do_collect_spellcheck(sub, value, path ++ [key], acc)
+        else
+          acc
+        end
+
+      _other ->
+        acc
+    end
+  end
+
+  defp collect_nested_spellcheck({:list_of, sub}, data, key, path, acc) do
+    case get_enumerable_value(data, key) do
+      values when is_list(values) ->
+        values
+        |> Enum.with_index()
+        |> Enum.reduce(acc, fn
+          {value, index}, acc when is_map(value) and not is_struct(value) ->
+            do_collect_spellcheck(sub, value, path ++ [key, index], acc)
+
+          {_value, _index}, acc ->
+            acc
+        end)
+
+      _other ->
+        acc
+    end
+  end
+
+  defp collect_nested_spellcheck(_other, _data, _key, _path, acc), do: acc
+
+  defp spellcheck_subschema({:required, type}), do: spellcheck_subschema(type)
+
+  defp spellcheck_subschema({:required, type, opts}) when is_list(opts),
+    do: spellcheck_subschema(type)
+
+  defp spellcheck_subschema({:meta, type, _opts}), do: spellcheck_subschema(type)
+  defp spellcheck_subschema({:schema, schema}), do: spellcheck_subschema(schema)
+  defp spellcheck_subschema({:schema, schema, _opts}), do: spellcheck_subschema(schema)
+
+  defp spellcheck_subschema({:list, type}) do
+    case spellcheck_subschema(type) do
+      {:nested, sub} -> {:list_of, sub}
+      other -> other
+    end
+  end
+
+  defp spellcheck_subschema(type) when is_map(type), do: {:nested, type}
+
+  defp spellcheck_subschema(type) when is_list(type) do
+    if Keyword.keyword?(type), do: {:nested, type}, else: nil
+  end
+
+  defp spellcheck_subschema(_type), do: nil
+
+  defp spellcheck_path(%Peri.Parser{path: path}) when is_list(path), do: path
+  defp spellcheck_path(_other), do: []
 
   # Access.key/1 only support maps and structs
   def get_enumerable_value(enum, key) when is_struct(enum) do
@@ -1422,11 +1564,16 @@ defmodule Peri do
     root = maybe_get_root_data(p)
     current = maybe_get_current_data(p)
     filtered_data = filter_data(schema, data, opts)
+    path = spellcheck_path(p)
+
+    opts =
+      Keyword.put(opts, :spellcheck_candidates, Map.get(opts[:spellcheck] || %{}, path, []))
 
     new_parser = %Peri.Parser{
       data: filtered_data,
       root_data: root,
-      current_data: current
+      current_data: current,
+      path: path
     }
 
     case traverse_schema(schema, new_parser, opts) do
