@@ -1580,6 +1580,100 @@ defmodule Peri do
   end
 
   @doc """
+  Deep merges two map schemas into a new one.
+
+  When both schemas define the same key as a plain map (a nested schema), the
+  nested schemas are merged recursively. Otherwise the value from the right
+  side wins: type tuples and directives are never merged structurally.
+
+  The resulting schema is checked with `validate_schema/1`, returning its
+  error tuple when the composed schema is invalid.
+
+  ## Examples
+
+      iex> Peri.merge(%{name: :string}, %{age: :integer})
+      {:ok, %{name: :string, age: :integer}}
+
+      iex> Peri.merge(%{name: :string}, %{name: :atom})
+      {:ok, %{name: :atom}}
+
+      iex> Peri.merge(%{user: %{name: :string}}, %{user: %{age: :integer}})
+      {:ok, %{user: %{name: :string, age: :integer}}}
+  """
+  @spec merge(map_schema, map_schema) :: {:ok, map_schema} | {:error, [Peri.Error.t()]}
+  def merge(schema1, schema2) when is_map(schema1) and is_map(schema2) do
+    schema1 |> deep_merge(schema2) |> validate_schema()
+  end
+
+  def merge(schema1, schema2) do
+    raise ArgumentError,
+          "Peri.merge/2 expects two map schemas, got: " <>
+            inspect(schema1) <> " and " <> inspect(schema2)
+  end
+
+  defp deep_merge(schema1, schema2) do
+    Map.merge(schema1, schema2, fn _key, value1, value2 ->
+      if plain_map?(value1) and plain_map?(value2),
+        do: deep_merge(value1, value2),
+        else: value2
+    end)
+  end
+
+  defp plain_map?(value), do: is_map(value) and not is_struct(value)
+
+  @doc """
+  Keeps only the given top-level keys of a map schema.
+
+  Keys not present in the schema are ignored. The resulting schema is checked
+  with `validate_schema/1`, returning its error tuple when invalid.
+
+  ## Examples
+
+      iex> Peri.select(%{name: :string, age: :integer}, [:name])
+      {:ok, %{name: :string}}
+
+      iex> Peri.select(%{name: :string}, [:name, :missing])
+      {:ok, %{name: :string}}
+  """
+  @spec select(map_schema, [atom | String.t()]) ::
+          {:ok, map_schema} | {:error, [Peri.Error.t()]}
+  def select(schema, keys) when is_map(schema) and is_list(keys) do
+    schema |> Map.take(keys) |> validate_schema()
+  end
+
+  def select(schema, keys) do
+    raise ArgumentError,
+          "Peri.select/2 expects a map schema and a list of keys, got: " <>
+            inspect(schema) <> " and " <> inspect(keys)
+  end
+
+  @doc """
+  Drops the given top-level keys from a map schema.
+
+  Keys not present in the schema are ignored. The resulting schema is checked
+  with `validate_schema/1`, returning its error tuple when invalid.
+
+  ## Examples
+
+      iex> Peri.except(%{name: :string, age: :integer}, [:age])
+      {:ok, %{name: :string}}
+
+      iex> Peri.except(%{name: :string}, [:missing])
+      {:ok, %{name: :string}}
+  """
+  @spec except(map_schema, [atom | String.t()]) ::
+          {:ok, map_schema} | {:error, [Peri.Error.t()]}
+  def except(schema, keys) when is_map(schema) and is_list(keys) do
+    schema |> Map.drop(keys) |> validate_schema()
+  end
+
+  def except(schema, keys) do
+    raise ArgumentError,
+          "Peri.except/2 expects a map schema and a list of keys, got: " <>
+            inspect(schema) <> " and " <> inspect(keys)
+  end
+
+  @doc """
   Validates a schema definition to ensure it adheres to the expected structure and types.
 
   This function can handle both simple and complex schema definitions, including nested schemas, custom validation functions, and various type constraints.

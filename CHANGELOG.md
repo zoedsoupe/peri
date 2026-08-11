@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.9.1](https://github.com/zoedsoupe/peri/compare/v0.9.0...v0.9.1) (2026-08-07)
+
+
+### Bug Fixes
+
+* ambigous numeric validation, integers allowed floats and vice-versa ([993eabf](https://github.com/zoedsoupe/peri/commit/993eabf2c77fa06bf5865deb8c584a9ea622a89c)), closes [#72](https://github.com/zoedsoupe/peri/issues/72)
+
 ## [0.9.0](https://github.com/zoedsoupe/peri/compare/v0.8.5...v0.9.0) (2026-06-10)
 
 
