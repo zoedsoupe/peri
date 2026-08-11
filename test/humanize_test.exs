@@ -80,6 +80,18 @@ defmodule Peri.HumanizeTest do
       assert Peri.Error.humanize(parent) == %{user: %{age: ["is invalid", "is suspicious"]}}
     end
 
+    test "prefix-colliding paths keep both messages and nested entries" do
+      errors = [
+        %Peri.Error{path: [:user], key: :user, message: "is invalid"},
+        %Peri.Error{path: [:user, :age], key: :age, message: "is required"}
+      ]
+
+      assert Peri.Error.humanize(errors) == %{user: %{_: ["is invalid"], age: ["is required"]}}
+
+      assert Peri.Error.humanize(Enum.reverse(errors)) ==
+               %{user: %{_: ["is invalid"], age: ["is required"]}}
+    end
+
     test "pathless errors from new_single humanize to a bare message list" do
       assert {:error, error} = Peri.validate(:string, 5)
       assert Peri.Error.humanize(error) == ["expected type of :string received 5 value"]

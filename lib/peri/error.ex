@@ -401,6 +401,15 @@ defmodule Peri.Error do
     Map.merge(left, right, fn _key, v1, v2 -> deep_merge(v1, v2) end)
   end
 
+  # A message list and a nested map collide when one error's path is a
+  # prefix of another's. Keep both, nesting the messages under :_.
+  defp deep_merge(left, right) when is_list(left) and is_map(right) do
+    Map.update(right, :_, left, &deep_merge(&1, left))
+  end
+
+  defp deep_merge(left, right) when is_map(left) and is_list(right),
+    do: deep_merge(right, left)
+
   @doc """
   Recursively converts a `Peri.Error` struct into a map.
 
