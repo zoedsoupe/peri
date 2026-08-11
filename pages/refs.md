@@ -48,6 +48,22 @@ Recursive schemas terminate when the data terminates. Pathological inputs
 of 64 ref resolutions, surfaced as a validation error rather than a stack
 overflow.
 
+## Refs in `:oneof` / `:either`
+
+Inside polymorphic types, refs keep error messages legible. A ref renders
+as its schema name, while an inlined `get_schema/1` map renders as a
+truncated key summary:
+
+```elixir
+%{body: {:oneof, [{:ref, {MyApp.Schemas, :lexicon_record}},
+                  {:ref, {MyApp.Schemas, :lexicon_query}}]}}
+# failure => "expected one of MyApp.Schemas.lexicon_record or
+#            MyApp.Schemas.lexicon_query, got: ..."
+
+%{body: {:oneof, [MyApp.Schemas.get_schema(:lexicon_record), ...]}}
+# failure => "expected one of %{keys: [:collection, :rkey]} or ..., got: ..."
+```
+
 ## Integrations
 
 - **JSON Schema export** — refs emit `$ref` + `$defs` entries. The def

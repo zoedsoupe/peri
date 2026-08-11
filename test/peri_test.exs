@@ -2483,8 +2483,8 @@ defmodule PeriTest do
                  %Peri.Error{
                    path: [:details],
                    key: :details,
-                   content: %{expected: "%{email}"},
-                   message: "is required, expected type of %{email}",
+                   content: %{expected: "%{keys: [:email]}"},
+                   message: "is required, expected type of %{keys: [:email]}",
                    errors: nil
                  }
                ]
@@ -2501,8 +2501,8 @@ defmodule PeriTest do
                  %Peri.Error{
                    path: [:details],
                    key: :details,
-                   content: %{expected: "%{country}"},
-                   message: "is required, expected type of %{country}",
+                   content: %{expected: "%{keys: [:country]}"},
+                   message: "is required, expected type of %{keys: [:country]}",
                    errors: nil
                  }
                ]
@@ -2590,8 +2590,8 @@ defmodule PeriTest do
                %Peri.Error{
                  path: [:details],
                  key: :details,
-                 content: %{expected: "%{email, country}"},
-                 message: "is required, expected type of %{email, country}",
+                 content: %{expected: "%{keys: [:country, :email]}"},
+                 message: "is required, expected type of %{keys: [:country, :email]}",
                  errors: nil
                }
              ] = errors
@@ -2784,6 +2784,41 @@ defmodule PeriTest do
       # This works for :oneof but fails for :either - showing the inconsistency
       assert {:ok, ^data_y} = schema_oneof(data_y)
     end
+
+    test "oneof with inlined map schemas renders a legible key summary" do
+      schema = %{
+        body:
+          {:oneof,
+           [
+             %{collection: {:required, :string}, rkey: :string},
+             %{endpoint: {:required, :string}}
+           ]}
+      }
+
+      assert {:error, [%Peri.Error{message: msg} = err]} = Peri.validate(schema, %{body: 1})
+
+      assert msg ==
+               "expected one of %{keys: [:collection, :rkey]} or %{keys: [:endpoint]}, got: 1"
+
+      assert err.content[:oneof] == "%{keys: [:collection, :rkey]} or %{keys: [:endpoint]}"
+    end
+
+    test "oneof map summary truncates past 6 keys" do
+      big = %{a: 1, b: 2, c: 3, d: 4, e: 5, f: 6, g: 7, h: 8}
+      schema = %{body: {:oneof, [:string, big]}}
+
+      assert {:error, [%Peri.Error{message: msg}]} = Peri.validate(schema, %{body: 1})
+
+      assert msg == "expected one of :string or %{keys: [:a, :b, :c, :d, :e, :f, ...]}, got: 1"
+    end
+
+    test "either with inlined map schema renders a legible key summary" do
+      schema = %{body: {:either, {%{collection: {:required, :string}}, :string}}}
+
+      assert {:error, [%Peri.Error{message: msg}]} = Peri.validate(schema, %{body: 1})
+
+      assert msg == "expected either %{keys: [:collection]} or :string, got: 1"
+    end
   end
 
   defschema(:schema_multiopts, %{
@@ -2846,8 +2881,8 @@ defmodule PeriTest do
                 %Peri.Error{
                   path: [:profile],
                   key: :profile,
-                  content: %{expected: "%{name, email}"},
-                  message: "is required, expected type of %{name, email}",
+                  content: %{expected: "%{keys: [:email, :name]}"},
+                  message: "is required, expected type of %{keys: [:email, :name]}",
                   errors: nil
                 }
               ]} = Peri.validate(required, %{id: "123"})

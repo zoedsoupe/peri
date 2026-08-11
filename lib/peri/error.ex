@@ -237,10 +237,10 @@ defmodule Peri.Error do
   Used in error messages to avoid dumping the entire schema (which can be huge
   for deeply nested or polymorphic schemas). Named schemas
   (`{:schema, _, name: "..."}`) render as their name; raw maps render as a
-  truncated key list (`%{a, b, c, +N more}`).
+  sorted key list (`%{keys: [:a, :b, ...]}`) truncated past 6 entries.
   """
   @spec summarize(term) :: String.t()
-  def summarize(type), do: summarize(type, 3)
+  def summarize(type), do: summarize(type, 6)
 
   defp summarize(type, _max_keys) when is_atom(type), do: inspect(type)
 
@@ -304,7 +304,7 @@ defmodule Peri.Error do
        do: inspect(type)
 
   defp summarize(schema, max_keys) when is_map(schema) and not is_struct(schema) do
-    keys = Map.keys(schema)
+    keys = schema |> Map.keys() |> Enum.sort()
     total = length(keys)
 
     shown =
@@ -314,17 +314,17 @@ defmodule Peri.Error do
 
     cond do
       total == 0 -> "%{}"
-      total <= max_keys -> "%{#{shown}}"
-      true -> "%{#{shown}, +#{total - max_keys} more}"
+      total <= max_keys -> "%{keys: [#{shown}]}"
+      true -> "%{keys: [#{shown}, ...]}"
     end
   end
 
   defp summarize(other, _max_keys),
     do: inspect(other, limit: 3, printable_limit: 50)
 
-  defp summarize_schema_opts({:schema, schema, _opts}), do: summarize(schema, 3)
+  defp summarize_schema_opts({:schema, schema, _opts}), do: summarize(schema, 6)
 
-  defp format_key(key) when is_atom(key), do: Atom.to_string(key)
+  defp format_key(key) when is_atom(key), do: inspect(key)
   defp format_key(key) when is_binary(key), do: inspect(key)
   defp format_key(key), do: inspect(key)
 
@@ -336,6 +336,69 @@ defmodule Peri.Error do
         if(is_binary(val), do: val, else: inspect(val, pretty: true))
       )
     end)
+  end
+
+  @doc """
+  Converts an error or list of errors into a nested, data-shaped map of
+  messages, mirroring `Ecto.Changeset.traverse_errors/2` output.
+
+  Each leaf error (one without nested `errors`) contributes its `message`
+  under its `path`. Integer path segments become integer keys (list
+  indices), atoms stay atoms and binaries stay binaries. Multiple leaf
+  errors at the same path append to the message list.
+
+  Leaf errors without a path arise from `Peri.Error.new_single/2`, which is
+  how top-level scalar validations report failure
+  (`Peri.validate(:string, 5)`). Since there is no field to nest them
+  under, they humanize to a bare list of messages instead of a map.
+
+  Because `humanize/1` reads each leaf's final `message` verbatim, it
+  composes with `traverse_errors/2`: translate first, then humanize.
+
+  ## Examples
+
+      iex> errors = [
+      ...>   %Peri.Error{path: [:addresses], key: :addresses, errors: [
+      ...>     %Peri.Error{path: [:addresses, 0, :street], key: :street, message: "is too short"}
+      ...>   ]},
+      ...>   %Peri.Error{path: [:email], key: :email, message: "is required"}
+      ...> ]
+      iex> Peri.Error.humanize(errors)
+      %{addresses: %{0 => %{street: ["is too short"]}}, email: ["is required"]}
+
+      iex> Peri.Error.humanize(%Peri.Error{message: "expected type of :string received 5 value"})
+      ["expected type of :string received 5 value"]
+
+      iex> Peri.Error.humanize([])
+      %{}
+  """
+  @spec humanize(t() | [t()]) ::
+          %{
+            optional(atom | integer | binary) => [String.t()] | map()
+          }
+          | [String.t()]
+  def humanize(errors) when is_list(errors) do
+    Enum.reduce(errors, %{}, fn err, acc -> deep_merge(acc, humanize(err)) end)
+  end
+
+  def humanize(%__MODULE__{errors: [_ | _] = nested}), do: humanize(nested)
+
+  def humanize(%__MODULE__{errors: errors, message: nil}) when errors in [nil, []], do: %{}
+
+  def humanize(%__MODULE__{errors: errors, message: message} = err) when errors in [nil, []] do
+    case err.path || [] do
+      [] -> [message]
+      [_ | _] = path -> path_to_map(path, message)
+    end
+  end
+
+  defp path_to_map([key], message), do: %{key => [message]}
+  defp path_to_map([key | rest], message), do: %{key => path_to_map(rest, message)}
+
+  defp deep_merge(left, right) when is_list(left) and is_list(right), do: left ++ right
+
+  defp deep_merge(left, right) when is_map(left) and is_map(right) do
+    Map.merge(left, right, fn _key, v1, v2 -> deep_merge(v1, v2) end)
   end
 
   @doc """
