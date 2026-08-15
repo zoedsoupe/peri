@@ -1,29 +1,17 @@
 # Peri
 
-Peri is a schema validation library for Elixir, inspired by Clojure's Plumatic Schema. It provides a powerful and flexible way to define and validate schemas for your data, ensuring data integrity and consistency throughout your application.
+<!-- moduledoc:start -->
+Peri is a data description library for Elixir, in the spirit of Clojure's
+Plumatic Schema and Metosin's Malli. A schema is plain Elixir data: atoms
+like `:string`, literals like `{:literal, 42}`, tuples, maps, keyword lists,
+composed however the data demands. There is no separate DSL to learn; the
+schema language is Elixir itself. Peri is data, Peri is Elixir.
 
-## Features
-
-- **Schema Definition**: Define schemas using a concise and expressive DSL
-- **Nested Validation**: Support for deeply nested and complex schemas
-- **Custom Validation**: Implement custom validation functions for specific requirements
-- **Data Generation**: Generate sample data based on your schemas using StreamData
-- **Ecto Integration**: Convert Peri schemas to Ecto changesets for seamless database integration
-- **Phoenix Integration**: Build `Phoenix.HTML.Form` structs from schemas with `Peri.Phoenix.to_form/3`, no Ecto required
-- **Validation Modes**: Choose between strict (default) and permissive validation modes
-- **Schema Metadata**: Attach docs, examples, and tooling hints via `{:meta, type, opts}` and schema-level meta opts
-- **JSON Schema**: Bidirectional conversion (Draft 7) via `Peri.to_json_schema/2` and `Peri.from_json_schema/1`
-- **Refs**: Recursive and cross-module schemas via `{:ref, atom}` and `{:ref, {Mod, atom}}`
-- **Custom Errors / i18n**: Per-field `error:` overrides (static or MFA) and `Peri.Error.traverse_errors/2` for Gettext-style translation
-- **Error Rendering**: `Peri.Error.humanize/1` produces Ecto-style data-shaped error maps; missing required keys get "did you mean" suggestions
-- **Schema Transformation**: Depth-first rewrite via `Peri.walk/2` — make-all-optional, strip-fields, rename, etc.
-- **Schema Composition**: Build schemas from schemas with `Peri.merge/2`, `Peri.select/2`, and `Peri.except/2`
-- **Custom Generators**: Per-field `gen:` opt to override StreamData generation on tight constraint domains
-- **Coercion / Codecs**: `{:coerce, source, target}` turns string params into typed data, with `Peri.encode/3` for the reverse direction
+Because schemas are data, they are programmable: the same definition can
+validate structs, coerce string params at the boundary, generate test data,
+export JSON Schema, build Ecto changesets, or render Phoenix forms.
 
 ## Installation
-
-Add this line to your `mix.exs`:
 
 ```elixir
 defp deps do
@@ -41,36 +29,57 @@ defmodule MyApp.Schemas do
 
   defschema :user, %{
     name: {:required, :string},
-    age: {:integer, {:gte, 18}},
-    email: {:required, :string},
+    age: {:integer, gte: 18},
     role: {:enum, [:admin, :user, :guest]}
+  }
+
+  defschema :search, %{
+    page: {:coerce, :integer},
+    tags: {:coerce, {:list, :string}, split: ","}
   }
 end
 
-# Validate data
-data = %{name: "John", age: 25, email: "john@example.com", role: :user}
-MyApp.Schemas.user(data)
-# => {:ok, validated_data}
+MyApp.Schemas.user(%{name: "John", age: 25, role: :user})
+# => {:ok, %{name: "John", age: 25, role: :user}}
 
-# Validate with permissive mode (preserves extra fields)
-data_with_extra = %{name: "John", age: 25, email: "john@example.com", role: :user, extra: "field"}
-Peri.validate(MyApp.Schemas.get_schema(:user), data_with_extra, mode: :permissive)
-# => {:ok, %{name: "John", age: 25, email: "john@example.com", role: :user, extra: "field"}}
+# Boundary data arrives as strings; {:coerce, ...} types it.
+MyApp.Schemas.search(%{"page" => "2", "tags" => "elixir,otp"})
+# => {:ok, %{page: 2, tags: ["elixir", "otp"]}}
 ```
+<!-- moduledoc:end -->
+
+## Features
+
+- **Data as schema**: type expressions are plain terms (`:string`,
+  `{:list, t}`, `{:enum, [...]}`, `{:literal, v}`, tuples, maps) nested
+  however the data demands
+- **Boundary codecs**: `{:coerce, ...}` with `Peri.decode/3` and
+  `Peri.encode/3` turns string params into typed data and back; targets
+  include constrained scalars, enums, literals, and `split:`-separated lists
+- **Validation modes**: strict by default, permissive when extra keys are fine
+- **Errors**: per-field paths, custom `error:` overrides, i18n via
+  `Peri.Error.traverse_errors/2`, Ecto-style rendering via
+  `Peri.Error.humanize/1`
+- **Schema algebra**: compose with `Peri.merge/2`, `select/2`, `except/2`;
+  rewrite with `Peri.walk/2`; reuse with `{:ref, ...}`
+- **Integrations**: Ecto changesets and custom types, Phoenix forms via
+  `Peri.Phoenix.to_form/3`, JSON Schema Draft 7 in both directions
+- **Data generation**: StreamData-backed `Peri.generate/1` with per-field
+  `gen:` overrides
+- **Metadata**: `{:meta, type, opts}` attaches docs and tooling hints without
+  affecting validation
 
 ## Documentation
 
-For detailed documentation on types, validation patterns, and integrations, see:
-
-- **[Types Reference](pages/types.md)** - All available types and constraints
-- **[Validation Patterns](pages/validation.md)** - Conditional, dependent, and custom validation
-- **[Ecto Integration](pages/ecto.md)** - Converting schemas to Ecto changesets
-- **[Data Generation](pages/generation.md)** - Generate sample data with StreamData
-- **[JSON Schema](pages/json_schema.md)** - Convert to and from JSON Schema (Draft 7)
-- **[Refs](pages/refs.md)** - Recursive and cross-module schema references
+- **[Types Reference](pages/types.md)**: all types, constraints, coercion, and schema transformation
+- **[Validation Patterns](pages/validation.md)**: modes, conditional and dependent validation, decoding/encoding, error handling
+- **[Ecto Integration](pages/ecto.md)**: changesets and custom Ecto types
+- **[Phoenix Integration](pages/phoenix.md)**: forms and params without Ecto
+- **[Data Generation](pages/generation.md)**: sample data and property testing with StreamData
+- **[JSON Schema](pages/json_schema.md)**: Draft 7 export and import
+- **[Refs](pages/refs.md)**: recursive and cross-module schema references
 
 ## Why the Name "Peri"?
 
-The name "Peri" is derived from the Greek word "περί" (pronounced "peri"), which means "around" or "about." This name was chosen to reflect the library's primary purpose: to provide comprehensive and flexible schema validation for data structures in Elixir. Just as "peri" suggests encompassing or surrounding something, Peri aims to cover all aspects of data validation, ensuring that data conforms to specified rules and constraints.
-
-The choice of the name "Peri" also hints at the library's ability to handle a wide variety of data types and structures, much like how the term "around" can denote versatility and inclusiveness. Whether it's validating nested maps, complex tuples, or strings with specific patterns, Peri is designed to be a robust tool that can adapt to various validation needs in Elixir programming.
+From the Greek "περί", meaning "around" or "about": the library wraps data
+structures with descriptions of what they must conform to.
