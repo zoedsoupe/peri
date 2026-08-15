@@ -73,6 +73,7 @@ if Code.ensure_loaded?(StreamData) do
 
     """
     def gen(:atom), do: StreamData.atom(:alphanumeric)
+    def gen(:atom!), do: gen(:atom)
     def gen(:string), do: StreamData.string(:alphanumeric)
     def gen(:integer), do: StreamData.integer()
     def gen(:float), do: StreamData.float()
@@ -257,6 +258,8 @@ if Code.ensure_loaded?(StreamData) do
       StreamData.map(stream, mapper)
     end
 
+    def gen({:coerce, target}), do: gen(target)
+    def gen({:coerce, target, opts}) when is_list(opts), do: gen(target)
     def gen({:coerce, _source, target}), do: gen(target)
     def gen({:coerce, _source, target, _opts}), do: gen(target)
     def gen({type, {:encode, _}}), do: gen(type)

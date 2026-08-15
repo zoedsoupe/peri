@@ -250,6 +250,161 @@ defmodule Peri.CoerceTest do
     end
   end
 
+  describe "string source shorthand" do
+    test "{:coerce, target} defaults the source to :string" do
+      schema = %{page: {:coerce, :integer}, active: {:coerce, :boolean}}
+
+      assert {:ok, %{page: 2, active: true}} =
+               Peri.validate(schema, %{"page" => "2", "active" => "true"})
+    end
+
+    test "shorthand composes with target constraints" do
+      schema = %{age: {:coerce, {:integer, gte: 18}}}
+      assert {:ok, %{age: 21}} = Peri.validate(schema, %{"age" => "21"})
+
+      assert {:error, [%Peri.Error{path: [:age], message: message}]} =
+               Peri.validate(schema, %{"age" => "17"})
+
+      assert message =~ "greater then or equal to 18"
+    end
+
+    test "{:coerce, target, opts} accepts coerce opts" do
+      schema = %{tags: {:coerce, {:list, :string}, split: ","}}
+      assert {:ok, %{tags: ["a", "b"]}} = Peri.validate(schema, %{"tags" => "a,b"})
+    end
+  end
+
+  describe "atom! targets" do
+    test "creates new atoms from strings" do
+      schema = %{role: {:coerce, :atom!}}
+      assert {:ok, %{role: atom}} = Peri.validate(schema, %{"role" => "brand_new_role_xyz"})
+      assert atom == :brand_new_role_xyz
+    end
+
+    test "passes existing atoms through" do
+      schema = %{role: {:coerce, :atom!}}
+      assert {:ok, %{role: :admin}} = Peri.validate(schema, %{role: :admin})
+    end
+
+    test "encodes atoms back to strings" do
+      schema = %{role: {:coerce, :atom!}}
+      assert {:ok, %{role: "admin"}} = Peri.encode(schema, %{role: :admin})
+    end
+  end
+
+  describe "enum and literal targets" do
+    test "coerces strings into atom enum choices" do
+      schema = %{role: {:coerce, {:enum, [:admin, :user]}}}
+      assert {:ok, %{role: :admin}} = Peri.validate(schema, %{"role" => "admin"})
+
+      assert {:error, [%Peri.Error{path: [:role], message: message}]} =
+               Peri.validate(schema, %{"role" => "root"})
+
+      assert message =~ "expected one of"
+    end
+
+    test "coerces into string and mixed enums" do
+      assert {:ok, %{v: "a"}} = Peri.validate(%{v: {:coerce, {:enum, ["a", "b"]}}}, %{"v" => "a"})
+      assert {:ok, %{v: 1}} = Peri.validate(%{v: {:coerce, {:enum, [1, :two]}}}, %{"v" => "1"})
+
+      assert {:ok, %{v: :two}} =
+               Peri.validate(%{v: {:coerce, {:enum, [1, :two]}}}, %{"v" => "two"})
+    end
+
+    test "enum opts are preserved" do
+      schema = %{role: {:coerce, {:enum, [:admin, :user], error: "bad role"}}}
+
+      assert {:error, [%Peri.Error{path: [:role], message: "bad role"}]} =
+               Peri.validate(schema, %{"role" => "root"})
+    end
+
+    test "coerces strings into atom literals" do
+      schema = %{status: {:coerce, {:literal, :active}}}
+      assert {:ok, %{status: :active}} = Peri.validate(schema, %{"status" => "active"})
+
+      assert {:error, [%Peri.Error{path: [:status], message: message}]} =
+               Peri.validate(schema, %{"status" => "archived"})
+
+      assert message =~ "expected literal value"
+    end
+
+    test "coerces strings into boolean and integer literals" do
+      assert {:ok, %{v: true}} =
+               Peri.validate(%{v: {:coerce, {:literal, true}}}, %{"v" => "true"})
+
+      assert {:ok, %{v: 42}} = Peri.validate(%{v: {:coerce, {:literal, 42}}}, %{"v" => "42"})
+    end
+
+    test "values already matching the enum or literal pass through" do
+      assert {:ok, %{role: :user}} =
+               Peri.validate(%{role: {:coerce, {:enum, [:admin, :user]}}}, %{role: :user})
+
+      assert {:ok, %{status: :active}} =
+               Peri.validate(%{status: {:coerce, {:literal, :active}}}, %{status: :active})
+    end
+
+    test "encodes enum and literal targets back to strings" do
+      assert {:ok, %{role: "admin"}} =
+               Peri.encode(%{role: {:coerce, {:enum, [:admin, :user]}}}, %{role: :admin})
+
+      assert {:ok, %{status: "active"}} =
+               Peri.encode(%{status: {:coerce, {:literal, :active}}}, %{status: :active})
+    end
+  end
+
+  describe "list targets with split" do
+    test "splits and coerces each element" do
+      schema = %{scores: {:coerce, {:list, :integer}, split: ","}}
+      assert {:ok, %{scores: [1, 2, 3]}} = Peri.validate(schema, %{"scores" => "1,2,3"})
+    end
+
+    test "accepts multiple separators and trims whitespace" do
+      schema = %{scores: {:coerce, {:list, :integer}, split: [",", ";"]}}
+      assert {:ok, %{scores: [1, 2, 3]}} = Peri.validate(schema, %{"scores" => "1, 2; 3"})
+    end
+
+    test "empty string yields an empty list" do
+      schema = %{scores: {:coerce, {:list, :integer}, split: ","}}
+      assert {:ok, %{scores: []}} = Peri.validate(schema, %{"scores" => ""})
+    end
+
+    test "enforces element constraints after coercion" do
+      schema = %{scores: {:coerce, {:list, {:integer, gte: 2}}, split: ","}}
+
+      assert {:error, [%Peri.Error{path: [:scores], message: message}]} =
+               Peri.validate(schema, %{"scores" => "2,1"})
+
+      assert message =~ "greater then or equal to 2"
+    end
+
+    test "reports elements that cannot be coerced" do
+      schema = %{scores: {:coerce, {:list, :integer}, split: ","}}
+
+      assert {:error, [%Peri.Error{path: [:scores], message: message}]} =
+               Peri.validate(schema, %{"scores" => "1,nope"})
+
+      assert message =~ "cannot coerce"
+    end
+
+    test "coerces into lists of enums" do
+      schema = %{roles: {:coerce, {:list, {:enum, [:admin, :user]}}, split: ","}}
+      assert {:ok, %{roles: [:admin, :user]}} = Peri.validate(schema, %{"roles" => "admin,user"})
+    end
+
+    test "lists already matching the target pass through" do
+      schema = %{scores: {:coerce, {:list, :integer}, split: ","}}
+      assert {:ok, %{scores: [1, 2]}} = Peri.validate(schema, %{scores: [1, 2]})
+    end
+
+    test "encodes lists back to separated strings" do
+      schema = %{scores: {:coerce, {:list, :integer}, split: ","}}
+      assert {:ok, %{scores: "1,2,3"}} = Peri.encode(schema, %{scores: [1, 2, 3]})
+
+      roles = %{roles: {:coerce, {:list, {:enum, [:admin, :user]}}, split: [";", ","]}}
+      assert {:ok, %{roles: "admin;user"}} = Peri.encode(roles, %{roles: [:admin, :user]})
+    end
+  end
+
   describe "required and defaults" do
     test "required coerce fields reject missing values" do
       assert {:error, [%Peri.Error{path: [:page], message: message}]} = required_coerce(%{})
@@ -329,6 +484,36 @@ defmodule Peri.CoerceTest do
 
       assert {:ok, _} =
                Peri.validate_schema(%{x: {:coerce, :string, :integer, encode: &to_string/1}})
+
+      assert {:ok, _} = Peri.validate_schema(%{x: {:coerce, :integer}})
+      assert {:ok, _} = Peri.validate_schema(%{x: {:coerce, :atom!}})
+      assert {:ok, _} = Peri.validate_schema(%{x: {:coerce, {:enum, [:a, :b]}}})
+      assert {:ok, _} = Peri.validate_schema(%{x: {:coerce, {:literal, :active}}})
+      assert {:ok, _} = Peri.validate_schema(%{x: {:coerce, {:list, :integer}, split: ","}})
+
+      assert {:ok, _} =
+               Peri.validate_schema(%{
+                 x: {:coerce, :string, {:list, :integer}, split: [",", ";"]}
+               })
+    end
+
+    test "rejects list targets without a split opt" do
+      assert {:error, [%Peri.Error{path: [:x], message: message}]} =
+               Peri.validate_schema(%{x: {:coerce, {:list, :integer}}})
+
+      assert message =~ "split: opt"
+    end
+
+    test "rejects invalid split opt values" do
+      assert {:error, [%Peri.Error{path: [:x], message: message}]} =
+               Peri.validate_schema(%{x: {:coerce, {:list, :integer}, split: 44}})
+
+      assert message =~ "expected split: opt"
+
+      assert {:error, [%Peri.Error{path: [:x], message: message}]} =
+               Peri.validate_schema(%{x: {:coerce, {:list, :integer}, split: []}})
+
+      assert message =~ "expected split: opt"
     end
 
     test "rejects unsupported sources" do

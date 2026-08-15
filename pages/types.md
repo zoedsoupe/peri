@@ -135,11 +135,42 @@ target are enforced after coercion (`"101"` above fails the `{:lte, 100}`
 check). Values that already match the target type pass through untouched, so
 already-typed data (e.g. from a JSON decoder) is a no-op.
 
+When the source is `:string` it can be omitted — `{:coerce, target}` and
+`{:coerce, target, opts}` are shorthand for the `:string`-sourced forms:
+
+```elixir
+defschema :search_params, %{
+  page: {:coerce, :integer},
+  role: {:coerce, {:enum, [:admin, :user]}},
+  tags: {:coerce, {:list, :string}, split: ","}
+}
+```
+
 Built-in sources support `:string` into `:integer` (full parse, `"12ab"` is
 rejected), `:float` (`"1"` becomes `1.0`), `:boolean` (`"true"`/`"false"`
-only), `:atom` (existing atoms only), `:date`, `:time`, `:naive_datetime`,
-and `:datetime` (ISO 8601). Custom sources are 1-arity functions or MFA
-tuples returning `{:ok, value}` or `:error`:
+only), `:atom` (existing atoms only), `:atom!` (creates new atoms via
+`String.to_atom/1` — avoid on unbounded user input), `:date`, `:time`,
+`:naive_datetime`, and `:datetime` (ISO 8601). Beyond scalars, `:string`
+sources also coerce into `{:enum, choices}` and `{:literal, value}` targets
+by matching the wire string against `to_string/1` of each choice (so
+`"admin"` matches `:admin` and `"42"` matches `42`), and into
+`{:list, inner}` targets when a `split:` opt is given:
+
+```elixir
+defschema :filter_params, %{
+  scores: {:coerce, {:list, :integer}, split: ","},
+  ids: {:coerce, {:list, :integer}, split: [",", ";"]}
+}
+
+MySchemas.filter_params(%{"scores" => "1, 2, 3", "ids" => "4;5"})
+# => {:ok, %{scores: [1, 2, 3], ids: [4, 5]}}
+```
+
+`split:` accepts a string or a list of separator strings; whitespace around
+elements is trimmed and empty elements are dropped, so `""` decodes to `[]`.
+Each element is coerced and validated against the inner type, and
+`Peri.encode/3` joins the list back with the first separator. Custom sources
+are 1-arity functions or MFA tuples returning `{:ok, value}` or `:error`:
 
 ```elixir
 %{
@@ -154,6 +185,8 @@ MFA) that customizes the reverse direction used by `Peri.encode/3` — see
 
 | Type                              | Description                        | Example                                             |
 | --------------------------------- | ---------------------------------- | --------------------------------------------------- |
+| `{:coerce, target}`               | Coerce from `:string` to target    | `{:coerce, :integer}`                               |
+| `{:coerce, target, opts}`         | Shorthand with `encode:`/`split:`  | `{:coerce, {:list, :integer}, split: ","}`          |
 | `{:coerce, source, target}`       | Coerce from source to target       | `{:coerce, :string, :integer}`                      |
 | `{:coerce, source, target, opts}` | Coerce with a custom `encode:` fun | `{:coerce, :string, :integer, encode: &to_string/1}` |
 | `{type, {:encode, fun}}`          | Apply `fun` only when encoding     | `{:string, {:encode, &String.downcase/1}}`          |

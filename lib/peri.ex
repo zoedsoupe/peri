@@ -1,247 +1,29 @@
 defmodule Peri do
   import Peri.Error, only: [summarize: 1]
 
-  @moduledoc """
-  Peri is a schema validation library for Elixir, inspired by Clojure's Plumatic Schema.
-  It provides a flexible and powerful way to define and validate data structures using schemas.
-  The library supports nested schemas, optional fields, custom validation functions, and various type constraints.
+  @moduledoc (Path.expand("../README.md", __DIR__)
+              |> File.read!()
+              |> String.split("<!-- moduledoc:start -->")
+              |> List.last()
+              |> String.split("<!-- moduledoc:end -->")
+              |> List.first()) <>
+               """
+               ## Guides
 
-  ## Key Features
-
-  - **Simple and Nested Schemas**: Define schemas that can handle complex, nested data structures.
-  - **Optional and Required Fields**: Specify fields as optional or required with type constraints.
-  - **Custom Validation Functions**: Use custom functions to validate fields.
-  - **Comprehensive Error Handling**: Provides detailed error messages for validation failures.
-  - **Type Constraints**: Supports various types including enums, lists, maps, tuples, literals, and more.
-
-  ## Usage
-
-  To define a schema, use the `defschema` macro. By default, all fields in the schema are optional unless specified otherwise.
-
-  ```elixir
-  defmodule MySchemas do
-    import Peri
-
-    defschema :user, %{
-      name: :string,
-      age: :integer,
-      email: {:required, :string},
-      address: %{
-        street: :string,
-        city: :string
-      },
-      tags: {:list, :string},
-      role: {:enum, [:admin, :user, :guest]},
-      geolocation: {:tuple, [:float, :float]},
-      preferences: {:map, :string},
-      scores: {:map, :string, :integer},
-      status: {:literal, :active},
-      rating: {:custom, &validate_rating/1}
-    }
-
-    defp validate_rating(n) when n < 10, do: :ok
-    defp validate_rating(_), do: {:error, "invalid rating", []}
-  end
-  ```
-
-  You can then use the schema to validate data:
-
-  ```elixir
-  user_data = %{
-    name: "John", age: 30, email: "john@example.com",
-    address: %{street: "123 Main St", city: "Somewhere"},
-    tags: ["science", "funky"], role: :admin,
-    geolocation: {12.2, 34.2},
-    preferences: %{"theme" => "dark", "notifications" => "enabled"},
-    scores: %{"math" => 95, "science" => 92},
-    status: :active,
-    rating: 9
-  }
-
-  case MySchemas.user(user_data) do
-    {:ok, valid_data} -> IO.puts("Data is valid!")
-    {:error, errors} -> IO.inspect(errors, label: "Validation errors")
-  end
-  ```
-
-  ## Error Handling
-
-  Peri provides detailed error messages that include the path to the invalid data, the expected and actual values, and custom error messages for custom validations.
-
-  ## Schema Types
-
-  Peri supports the following schema types:
-
-  - `:string`, `:integer`, `:float`, `:boolean`, `:atom`, `:map`, `:pid` - Basic types
-  - `{:required, type}` - Mark a field as required
-  - `{:list, type}` - List of elements of the given type
-  - `{:map, type}` - Map with values of the given type
-  - `{:map, key_type, value_type}` - Map with keys and values of specified types
-  - `{:schema, schema}` - Explicitly tagged nested schema
-  - `{:schema, map_schema, {:additional_keys, type}}` - Nested schema map, with extra entries validated using another type
-  - `{:tuple, [type1, type2, ...]}` - Tuple with elements of specified types
-  - `{:enum, [value1, value2, ...]}` - One of the specified values
-  - `{:enum, [value1, value2, ...], opts}` - Enum with opts (`:type`, `:error`, `:gen`); `:type` constrains members to a base type and surfaces it in JSON Schema output
-  - `{:literal, value}` - Exactly matches the specified value
-  - `{:either, {type1, type2}}` - Either type1 or type2
-  - `{:oneof, [type1, type2, ...]}` - One of the specified types
-  - `{:cond, condition, true_type, false_type}` - Conditional validation based on callback
-  - `{:dependent, callback}` - Dynamic type based on callback result
-  - `{:coerce, source, target}` - Coerce a value from `source` representation to `target` type during validation
-  - `{type, {:encode, fun}}` - Apply `fun` to the value when encoding with `Peri.encode/3` (inert under validation)
-  - `{:meta, type, opts}` - Attach documentation/example/description to a field; passthrough at validation
-  - Nested maps for complex structures
-
-  ## Coercion and Encoding
-
-  `{:coerce, source, target}` validates boundary data (e.g. Phoenix params,
-  where everything arrives as a string) by coercing from the `source`
-  representation into the `target` type. Values that already match the target
-  type pass through untouched, so JSON-decoded data is a no-op.
-
-  ```elixir
-  defschema :params, %{
-    page: {:coerce, :string, :integer},
-    active: {:coerce, :string, :boolean}
-  }
-
-  MySchemas.params(%{"page" => "2", "active" => "true"})
-  # => {:ok, %{page: 2, active: true}}
-  ```
-
-  Built-in sources support `:string` into `:integer`, `:float`, `:boolean`,
-  `:atom`, `:date`, `:time`, `:naive_datetime`, and `:datetime`. Custom
-  sources are 1-arity functions (or MFA tuples) returning `{:ok, value}` or
-  `:error`.
-
-  `Peri.encode/3` runs the same schema in the opposite direction: it validates
-  data against the target types and produces the wire representation (strings
-  for built-ins, or the `encode:` opt when given). `Peri.decode/3` is an alias
-  of `validate/3` for API symmetry. `{:transform, fun}` is skipped during
-  encoding, and `{type, {:encode, fun}}` applies only during encoding.
-
-  ## Custom Error Messages
-
-  Override the default validation message per field via the `error:` opt in the
-  type's options list. Accepts either a static string or an MFA tuple
-  `{module, function, args}`. The MFA receives the `%Peri.Error{}` (with its
-  `content`) prepended to `args` and must return a string.
-
-  ```elixir
-  %{
-    age:   {:integer, gte: 18, error: "must be adult"},
-    email: {:required, :string, [error: {MyApp.Errors, :email_msg, []}]}
-  }
-  ```
-
-  For i18n / Gettext, walk the resulting errors with
-  `Peri.Error.traverse_errors/2` and translate each leaf message — see that
-  function's docs for an example.
-
-  ## Schema Metadata
-
-  Fields can carry metadata via the `{:meta, type, opts}` wrapper. Metadata is
-  ignored at validation time but available for documentation, JSON Schema
-  export, and tooling. The JSON Schema encoder recognises the standard
-  Draft-7 annotation/format vocabulary (`:title`, `:description`, `:example`,
-  `:examples`, `:deprecated`, `:default`, `:format`, `:pattern`, `:read_only`,
-  `:write_only`, `:content_encoding`, `:content_media_type`); other keys
-  (e.g. `:doc`) are preserved opaquely for non-encoder tooling.
-
-  ```elixir
-  defschema :user, %{
-    email: {:meta, {:required, :string}, doc: "Login email", example: "a@b.io"},
-    age: {:meta, {:integer, gte: 0}, description: "Years"}
-  }, title: "User", description: "Account holder"
-  ```
-
-  Schema-level meta opts are exposed via the generated `__schema_meta__/1`
-  function. Validation opts (e.g. `:mode`) are split out, not surfaced as meta.
-
-  ## Callback Functions for :cond and :dependent
-
-  Both `:cond` and `:dependent` types support 1-arity and 2-arity callbacks:
-
-  - **1-arity callbacks** receive the root data structure (backward compatible)
-  - **2-arity callbacks** receive `(current, root)` where:
-    - `current` is the data at the current validation context (e.g., list element)
-    - `root` is the entire root data structure
-
-  This is especially useful when validating elements within lists:
-
-  ```elixir
-  defschema :parent, %{
-    items: {:list, %{
-      type: :string,
-      value: {:dependent, fn current, _root ->
-        case current.type do
-          "number" -> {:ok, :integer}
-          "text" -> {:ok, :string}
-          _ -> {:ok, :any}
-        end
-      end}
-    }}
-  }
-  ```
-
-  ## Custom Generators
-
-  When data generation matters (`Peri.generate/1`), constrained types like
-  `{:integer, gt: 1_000_000}` or `{:string, {:regex, …}}` fall back to
-  rejection sampling, which can be slow on tight domains. Provide a `gen:`
-  opt with an MFA, `{mod, fun}`, or 0-arity function returning
-  `%StreamData{}` to skip rejection entirely. Accepted in multi-options,
-  `{:required, type, opts}`, and `{:meta, type, opts}` positions.
-
-      %{
-        age:   {:integer, gte: 18, gen: {MyApp.Gens, :age, []}},
-        email: {:meta, :string, doc: "Login", gen: {MyApp.Gens, :email}}
-      }
-
-  ## Schema Transformation
-
-  `Peri.walk/2` runs a depth-first rewrite over a schema, useful for
-  derivations like "make every field optional" or "strip private keys from a
-  public DTO". The callback receives `{:field, key, value}` for entries
-  inside a map/keyword schema and the type expression itself everywhere
-  else; return `{:cont, _}` to continue or `:drop` to remove a field. See
-  `Peri.Walker` for full semantics.
-
-      Peri.walk(schema, fn
-        {:required, t} -> {:cont, t}
-        other -> {:cont, other}
-      end)
-
-  ## Functions
-
-  - `validate/2` - Validates data against a schema.
-  - `decode/3` - Alias of `validate/3`; decodes wire data, applying `{:coerce, ...}` directives.
-  - `encode/3` - Validates data and produces its wire representation.
-  - `conforms?/2` - Checks if data conforms to a schema.
-  - `validate_schema/1` - Validates the schema definition.
-  - `generate/1` - Generates sample data based on schema (when StreamData is available).
-  - `walk/2` - Depth-first rewrite of a schema tree.
-
-  ## Example
-
-  ```elixir
-  defmodule MySchemas do
-    import Peri
-
-    defschema :user, %{
-      name: :string,
-      age: :integer,
-      email: {:required, :string}
-    }
-  end
-
-  user_data = %{name: "John", age: 30, email: "john@example.com"}
-  case MySchemas.user(user_data) do
-    {:ok, valid_data} -> IO.puts("Data is valid!")
-    {:error, errors} -> IO.inspect(errors, label: "Validation errors")
-  end
-  ```
-  """
+                 * [Schema types and directives](types.md): the full type vocabulary,
+                   basic and time types, collections, enums, literals, constraints,
+                   coercion/encoding, `{:meta, ...}`, custom error messages, schema
+                   transformation with `Peri.walk/2`
+                 * [Validation semantics](validation.md): strict/permissive modes,
+                   `:cond` and `:dependent` callbacks and their arities, custom
+                   validators, error context, decoding and encoding wire data
+                 * [Data generation](generation.md): `Peri.generate/1`, constraint-aware
+                   generators, `gen:` overrides, property-based testing
+                 * [JSON Schema export](json_schema.md): `Peri.to_json_schema/1`
+                 * [Ecto integration](ecto.md): changesets and custom Ecto types
+                 * [Phoenix integration](phoenix.md): form and params bridging
+                 * [Schema refs](refs.md): reusable named schemas via `{:ref, ...}`
+               """
 
   @type validation :: (term -> validation_result)
   @type validation_result :: :ok | {:error, template :: String.t(), context :: map | keyword}
@@ -277,7 +59,9 @@ defmodule Peri do
           | {module, atom}
           | {module, atom, list(term)}
   @type coerce_def ::
-          {:coerce, coerce_source, schema_def}
+          {:coerce, schema_def}
+          | {:coerce, schema_def, keyword}
+          | {:coerce, coerce_source, schema_def}
           | {:coerce, coerce_source, schema_def, keyword}
   @type encode_def ::
           {schema_def, {:encode, (term -> term)}}
@@ -305,6 +89,7 @@ defmodule Peri do
   @type schema_def ::
           :any
           | :atom
+          | :atom!
           | :boolean
           | :map
           | :pid
@@ -1035,6 +820,7 @@ defmodule Peri do
   defp validate_field(%DateTime{}, :datetime, _data, _opts), do: :ok
   defp validate_field(%NaiveDateTime{}, :naive_datetime, _data, _opts), do: :ok
   defp validate_field(val, :atom, _data, _opts) when is_atom(val), do: :ok
+  defp validate_field(val, :atom!, _data, _opts) when is_atom(val), do: :ok
   defp validate_field(val, :map, _data, _opts) when is_map(val), do: :ok
   defp validate_field(val, :string, _data, _opts) when is_binary(val), do: :ok
   defp validate_field(val, :integer, _data, _opts) when is_integer(val), do: :ok
@@ -1355,6 +1141,13 @@ defmodule Peri do
        when is_atom(mod) and is_atom(fun) and is_list(args),
        do: validate_with_encode(val, type, {mod, fun, args}, data, opts)
 
+  defp validate_field(val, {:coerce, target}, data, opts),
+    do: validate_field(val, {:coerce, :string, target, []}, data, opts)
+
+  defp validate_field(val, {:coerce, target, coerce_opts}, data, opts)
+       when is_list(coerce_opts),
+       do: validate_field(val, {:coerce, :string, target, coerce_opts}, data, opts)
+
   defp validate_field(val, {:coerce, source, target}, data, opts),
     do: validate_field(val, {:coerce, source, target, []}, data, opts)
 
@@ -1363,7 +1156,7 @@ defmodule Peri do
     if encoding?(opts) do
       encode_coercion(val, source, target, coerce_opts, data, opts)
     else
-      decode_coercion(val, source, target, data, opts)
+      decode_coercion(val, source, target, coerce_opts, data, opts)
     end
   end
 
@@ -1675,23 +1468,74 @@ defmodule Peri do
   defp apply_encoder({mod, fun, args}, val) when is_atom(mod) and is_atom(fun) and is_list(args),
     do: apply(mod, fun, [val | args])
 
-  defp decode_coercion(val, source, target, data, opts) do
+  defp decode_coercion(val, :string, {:list, inner}, coerce_opts, data, opts)
+       when is_binary(val) do
+    case Keyword.fetch(coerce_opts, :split) do
+      {:ok, separators} ->
+        val
+        |> split_wire_list(separators)
+        |> validate_wire_list({:list, {:coerce, :string, inner}}, data, opts)
+
+      :error ->
+        validate_field(val, {:list, inner}, data, opts)
+    end
+  end
+
+  defp decode_coercion(val, :string, {:list, inner, list_opts}, coerce_opts, data, opts)
+       when is_binary(val) and is_list(list_opts) do
+    case Keyword.fetch(coerce_opts, :split) do
+      {:ok, separators} ->
+        val
+        |> split_wire_list(separators)
+        |> validate_wire_list({:list, {:coerce, :string, inner}, list_opts}, data, opts)
+
+      :error ->
+        validate_field(val, {:list, inner, list_opts}, data, opts)
+    end
+  end
+
+  defp decode_coercion(val, source, target, coerce_opts, data, opts) do
     if matches_type?(val, target) do
       validate_field(val, target, data, opts)
     else
       val
       |> validate_field(target, data, opts)
-      |> handle_coercion_fallback(val, source, target, data, opts)
+      |> handle_coercion_fallback(val, source, target, coerce_opts, data, opts)
     end
   end
 
-  defp handle_coercion_fallback(:ok, _val, _source, _target, _data, _opts), do: :ok
-  defp handle_coercion_fallback({:ok, _} = ok, _val, _source, _target, _data, _opts), do: ok
+  defp split_wire_list(val, separators) do
+    val
+    |> String.split(List.wrap(separators), trim: true)
+    |> Enum.map(&String.trim/1)
+  end
 
-  defp handle_coercion_fallback(target_error, val, source, target, data, opts) do
+  # a split always replaces the wire value with a list, even when the
+  # elements validate unchanged (:ok from list validation keeps the original)
+  defp validate_wire_list(parts, list_type, data, opts) do
+    case validate_field(parts, list_type, data, opts) do
+      :ok -> {:ok, parts}
+      other -> other
+    end
+  end
+
+  defp handle_coercion_fallback(:ok, _val, _source, _target, _coerce_opts, _data, _opts), do: :ok
+
+  defp handle_coercion_fallback(
+         {:ok, _} = ok,
+         _val,
+         _source,
+         _target,
+         _coerce_opts,
+         _data,
+         _opts
+       ),
+       do: ok
+
+  defp handle_coercion_fallback(target_error, val, source, target, coerce_opts, data, opts) do
     if matches_source?(val, source) do
       val
-      |> do_coerce(source, target)
+      |> do_coerce(source, target, coerce_opts)
       |> finish_coercion(val, source, target, data, opts)
     else
       target_error
@@ -1722,7 +1566,20 @@ defmodule Peri do
   defp encode_coerced_value(val, source, target, coerce_opts) do
     case Keyword.fetch(coerce_opts, :encode) do
       {:ok, encoder} -> apply_encoder(encoder, val)
-      :error -> default_wire_encode(val, source, target)
+      :error -> default_wire_encode(val, source, target, coerce_opts)
+    end
+  end
+
+  defp default_wire_encode(val, source, target, coerce_opts) do
+    case {source, target} do
+      {:string, {:list, inner}} when is_list(val) ->
+        encode_wire_list(val, inner, coerce_opts)
+
+      {:string, {:list, inner, list_opts}} when is_list(val) and is_list(list_opts) ->
+        encode_wire_list(val, inner, coerce_opts)
+
+      _other ->
+        default_wire_encode(val, source, target)
     end
   end
 
@@ -1738,11 +1595,17 @@ defmodule Peri do
 
   defp default_wire_encode(val, _source, _target), do: val
 
+  defp encode_wire_list(val, inner, coerce_opts) do
+    separator = coerce_opts |> Keyword.get(:split, ",") |> List.wrap() |> List.first()
+    Enum.map_join(val, separator, &default_wire_encode(&1, :string, inner))
+  end
+
   defp matches_type?(val, :string), do: is_binary(val)
   defp matches_type?(val, :integer), do: is_integer(val)
   defp matches_type?(val, :float), do: is_float(val)
   defp matches_type?(val, :boolean), do: is_boolean(val)
   defp matches_type?(val, :atom), do: is_atom(val)
+  defp matches_type?(val, :atom!), do: is_atom(val)
   defp matches_type?(%Date{}, :date), do: true
   defp matches_type?(%Time{}, :time), do: true
   defp matches_type?(%DateTime{}, :datetime), do: true
@@ -1759,20 +1622,42 @@ defmodule Peri do
 
   defp matches_source?(_val, _source), do: false
 
-  defp do_coerce(val, source, _target) when is_function(source, 1),
+  defp do_coerce(val, source, _target, _coerce_opts) when is_function(source, 1),
     do: normalize_coercion_result(source.(val))
 
-  defp do_coerce(val, {mod, fun}, _target) when is_atom(mod) and is_atom(fun),
+  defp do_coerce(val, {mod, fun}, _target, _coerce_opts) when is_atom(mod) and is_atom(fun),
     do: normalize_coercion_result(apply(mod, fun, [val]))
 
-  defp do_coerce(val, {mod, fun, args}, _target)
+  defp do_coerce(val, {mod, fun, args}, _target, _coerce_opts)
        when is_atom(mod) and is_atom(fun) and is_list(args),
        do: normalize_coercion_result(apply(mod, fun, [val | args]))
 
-  defp do_coerce(val, :string, target) when is_binary(val),
+  defp do_coerce(val, :string, {:enum, choices}, _coerce_opts) when is_binary(val),
+    do: coerce_wire_choice(val, choices)
+
+  defp do_coerce(val, :string, {:enum, choices, enum_opts}, _coerce_opts)
+       when is_binary(val) and is_list(enum_opts),
+       do: coerce_wire_choice(val, choices)
+
+  defp do_coerce(val, :string, {:literal, literal}, _coerce_opts) when is_binary(val),
+    do: coerce_wire_choice(val, [literal])
+
+  defp do_coerce(val, :string, target, _coerce_opts) when is_binary(val),
     do: coerce_from_string(val, coerce_target_atom(target))
 
-  defp do_coerce(_val, _source, _target), do: :error
+  defp do_coerce(_val, _source, _target, _coerce_opts), do: :error
+
+  # on a choice miss the raw value goes through so the enum/literal
+  # validation produces its own error (including any error: override)
+  defp coerce_wire_choice(val, choices) do
+    Enum.find_value(choices, {:ok, val}, fn
+      choice when is_atom(choice) or is_binary(choice) or is_number(choice) ->
+        if to_string(choice) == val, do: {:ok, choice}
+
+      _other ->
+        nil
+    end)
+  end
 
   defp normalize_coercion_result({:ok, val}), do: {:ok, val}
   defp normalize_coercion_result(_other), do: :error
@@ -1804,6 +1689,8 @@ defmodule Peri do
   rescue
     ArgumentError -> :error
   end
+
+  defp coerce_from_string(val, :atom!), do: {:ok, String.to_atom(val)}
 
   defp coerce_from_string(val, :date), do: wrap_iso8601(Date.from_iso8601(val))
   defp coerce_from_string(val, :time), do: wrap_iso8601(Time.from_iso8601(val))
@@ -2229,6 +2116,7 @@ defmodule Peri do
   defp validate_type(nil, _parser), do: :ok
   defp validate_type(:any, _parser), do: :ok
   defp validate_type(:atom, _parser), do: :ok
+  defp validate_type(:atom!, _parser), do: :ok
   defp validate_type(:integer, _parser), do: :ok
   defp validate_type(:map, _parser), do: :ok
   defp validate_type(:float, _parser), do: :ok
@@ -2347,6 +2235,12 @@ defmodule Peri do
   defp validate_type({type, {:encode, {mod, fun, args}}}, p)
        when is_atom(mod) and is_atom(fun) and is_list(args),
        do: validate_type(type, p)
+
+  defp validate_type({:coerce, target}, p),
+    do: validate_coerce_type(:string, target, [], p)
+
+  defp validate_type({:coerce, target, coerce_opts}, p) when is_list(coerce_opts),
+    do: validate_coerce_type(:string, target, coerce_opts, p)
 
   defp validate_type({:coerce, source, target}, p),
     do: validate_coerce_type(source, target, [], p)
@@ -2557,6 +2451,7 @@ defmodule Peri do
     :float,
     :boolean,
     :atom,
+    :atom!,
     :date,
     :time,
     :naive_datetime,
@@ -2567,7 +2462,27 @@ defmodule Peri do
     with :ok <- validate_coerce_source(source),
          :ok <- validate_coerce_target(source, target),
          :ok <- validate_coerce_opts(coerce_opts),
+         :ok <- validate_coerce_list_split(source, target, coerce_opts),
          do: validate_type(target, p)
+  end
+
+  defp validate_coerce_list_split(:string, {:list, _inner}, coerce_opts),
+    do: require_split_opt(coerce_opts)
+
+  defp validate_coerce_list_split(:string, {:list, _inner, list_opts}, coerce_opts)
+       when is_list(list_opts),
+       do: require_split_opt(coerce_opts)
+
+  defp validate_coerce_list_split(_source, _target, _coerce_opts), do: :ok
+
+  defp require_split_opt(coerce_opts) do
+    if Keyword.has_key?(coerce_opts, :split) do
+      :ok
+    else
+      {:error,
+       "expected split: opt when coercing from :string to a list target, e.g. {:coerce, {:list, :integer}, split: \",\"}",
+       []}
+    end
   end
 
   defp validate_coerce_source(:string), do: :ok
@@ -2589,7 +2504,8 @@ defmodule Peri do
     if coerce_string_target?(target) do
       :ok
     else
-      {:error, "expected coerce target for :string source to be one of %{targets}, got %{actual}",
+      {:error,
+       "expected coerce target for :string source to be one of %{targets}, an {:enum, ...}, a {:literal, ...}, or a {:list, ...} of those, got %{actual}",
        targets: inspect(@coerce_string_targets), actual: summarize(target)}
     end
   end
@@ -2599,6 +2515,21 @@ defmodule Peri do
   defp coerce_string_target?(target) when target in @coerce_string_targets, do: true
 
   defp coerce_string_target?({target, _opts}) when target in @coerce_string_targets, do: true
+
+  defp coerce_string_target?({:enum, choices}) when is_list(choices), do: true
+
+  defp coerce_string_target?({:enum, choices, enum_opts})
+       when is_list(choices) and is_list(enum_opts),
+       do: true
+
+  defp coerce_string_target?({:literal, literal})
+       when is_atom(literal) or is_binary(literal) or is_number(literal),
+       do: true
+
+  defp coerce_string_target?({:list, inner}), do: coerce_string_target?(inner)
+
+  defp coerce_string_target?({:list, inner, list_opts}) when is_list(list_opts),
+    do: coerce_string_target?(inner)
 
   defp coerce_string_target?(_target), do: false
 
@@ -2612,12 +2543,25 @@ defmodule Peri do
         {:error, "expected encode: opt to be a 1-arity function or an MFA tuple, got %{actual}",
          actual: inspect(Keyword.get(opts, :encode))}
 
-      Keyword.keys(opts) -- [:encode] != [] ->
-        {:error, "unknown coerce opts %{actual}, only :encode is allowed",
-         actual: inspect(Keyword.keys(opts) -- [:encode])}
+      not valid_coerce_split_opt?(opts) ->
+        {:error, "expected split: opt to be a string or a list of strings, got %{actual}",
+         actual: inspect(Keyword.get(opts, :split))}
+
+      Keyword.keys(opts) -- [:encode, :split] != [] ->
+        {:error, "unknown coerce opts %{actual}, only :encode and :split are allowed",
+         actual: inspect(Keyword.keys(opts) -- [:encode, :split])}
 
       true ->
         :ok
+    end
+  end
+
+  defp valid_coerce_split_opt?(opts) do
+    case Keyword.fetch(opts, :split) do
+      :error -> true
+      {:ok, separator} when is_binary(separator) -> true
+      {:ok, [_ | _] = separators} -> Enum.all?(separators, &is_binary/1)
+      {:ok, _} -> false
     end
   end
 
