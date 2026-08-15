@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.11.0](https://github.com/zoedsoupe/peri/compare/v0.10.0...v0.11.0) (2026-08-15)
+
+
+### Features
+
+* coerce shorthand, atom!/enum/literal targets, split lists ([2dbb994](https://github.com/zoedsoupe/peri/commit/2dbb994eb4a4ca7bef08238189477a125eb81f47))
+
+
+### Documentation
+
+* slim README, moduledoc reads it via File.read! ([068f987](https://github.com/zoedsoupe/peri/commit/068f98721aea8bdf4e974d80bb4e1f0ea465bc5e))
+
 ## [0.10.0](https://github.com/zoedsoupe/peri/compare/v0.9.1...v0.10.0) (2026-08-11)
 
 
