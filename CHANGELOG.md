@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.11.1](https://github.com/zoedsoupe/peri/compare/v0.11.0...v0.11.1) (2026-08-15)
+
+
+### Bug Fixes
+
+* build phoenix test schema at runtime for Elixir &lt; 1.19 ([c9d7693](https://github.com/zoedsoupe/peri/commit/c9d7693bc4e1ed3a56997966f73a7ac77dbd1ac2))
+
 ## [0.11.0](https://github.com/zoedsoupe/peri/compare/v0.10.0...v0.11.0) (2026-08-15)
 
 
