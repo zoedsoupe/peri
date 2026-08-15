@@ -3,11 +3,15 @@ defmodule Peri.PhoenixTest do
 
   alias Phoenix.HTML.FormData
 
-  @schema %{
-    name: {:required, :string},
-    email: {:required, {:string, {:regex, ~r/@/}}},
-    age: {:coerce, :string, {:integer, {:gte, 18}}}
-  }
+  # Built at runtime: a compiled %Regex{} holds a reference and cannot be
+  # escaped into a function via a module attribute on Elixir < 1.19.
+  defp schema do
+    %{
+      name: {:required, :string},
+      email: {:required, {:string, {:regex, ~r/@/}}},
+      age: {:coerce, :string, {:integer, {:gte, 18}}}
+    }
+  end
 
   @nested_schema %{
     name: {:required, :string},
@@ -21,7 +25,7 @@ defmodule Peri.PhoenixTest do
   describe "to_form/3 with valid params" do
     test "returns a form with no errors and validated data" do
       form =
-        Peri.Phoenix.to_form(@schema, %{"name" => "Jane", "email" => "jane@x.com", "age" => "27"})
+        Peri.Phoenix.to_form(schema(), %{"name" => "Jane", "email" => "jane@x.com", "age" => "27"})
 
       assert %Phoenix.HTML.Form{} = form
       assert form.errors == []
@@ -31,7 +35,7 @@ defmodule Peri.PhoenixTest do
 
     test "field values are accessible through Phoenix.HTML.Form functions" do
       form =
-        Peri.Phoenix.to_form(@schema, %{"name" => "Jane", "email" => "jane@x.com", "age" => "27"})
+        Peri.Phoenix.to_form(schema(), %{"name" => "Jane", "email" => "jane@x.com", "age" => "27"})
 
       assert Phoenix.HTML.Form.input_value(form, :name) == "Jane"
       assert Phoenix.HTML.Form.input_id(form, :name) == "peri_name"
@@ -39,7 +43,7 @@ defmodule Peri.PhoenixTest do
     end
 
     test "respects the :as option for the form name" do
-      form = Peri.Phoenix.to_form(@schema, %{"name" => "Jane"}, as: :user)
+      form = Peri.Phoenix.to_form(schema(), %{"name" => "Jane"}, as: :user)
 
       assert form.name == "user"
       assert Phoenix.HTML.Form.input_name(form, :name) == "user[name]"
@@ -48,7 +52,7 @@ defmodule Peri.PhoenixTest do
 
   describe "to_form/3 with invalid params" do
     test "errors are stored in changeset format" do
-      form = Peri.Phoenix.to_form(@schema, %{"age" => "17"})
+      form = Peri.Phoenix.to_form(schema(), %{"age" => "17"})
 
       assert %Peri.Form{errors: errors} = form.source
 
@@ -57,7 +61,7 @@ defmodule Peri.PhoenixTest do
 
     test "flat form errors and FormField access expose messages" do
       form =
-        Peri.Phoenix.to_form(@schema, %{"name" => "Jane", "email" => "jane@x.com", "age" => "17"})
+        Peri.Phoenix.to_form(schema(), %{"name" => "Jane", "email" => "jane@x.com", "age" => "17"})
 
       assert [age: {"should be greater then or equal to 18", []}] = form.errors
       assert form.action == :validate
@@ -67,7 +71,7 @@ defmodule Peri.PhoenixTest do
     end
 
     test "keeps raw params as field values for re-rendering" do
-      form = Peri.Phoenix.to_form(@schema, %{"name" => "Jane", "age" => "17"})
+      form = Peri.Phoenix.to_form(schema(), %{"name" => "Jane", "age" => "17"})
 
       assert Phoenix.HTML.Form.input_value(form, :name) == "Jane"
       assert Phoenix.HTML.Form.input_value(form, :age) == "17"
@@ -77,7 +81,7 @@ defmodule Peri.PhoenixTest do
   describe "coercion" do
     test "string params are coerced by the schema and rendered from params" do
       form =
-        Peri.Phoenix.to_form(@schema, %{"name" => "Jane", "email" => "j@x.com", "age" => "30"})
+        Peri.Phoenix.to_form(schema(), %{"name" => "Jane", "email" => "j@x.com", "age" => "30"})
 
       assert form.source.data.age == 30
       assert Phoenix.HTML.Form.input_value(form, :age) == "30"
@@ -149,7 +153,7 @@ defmodule Peri.PhoenixTest do
   describe "form update path" do
     test "accepts a Peri.Form and revalidates new params against its schema" do
       form =
-        Peri.Phoenix.to_form(@schema, %{"name" => "Jane", "email" => "j@x.com", "age" => "30"})
+        Peri.Phoenix.to_form(schema(), %{"name" => "Jane", "email" => "j@x.com", "age" => "30"})
 
       updated =
         Peri.Phoenix.to_form(form.source, %{"name" => "June", "email" => "j@x.com", "age" => "31"})
@@ -159,7 +163,7 @@ defmodule Peri.PhoenixTest do
     end
 
     test "converts a Peri.Form as is when no new params are given" do
-      peri_form = %Peri.Form{schema: @schema, data: %{name: "Jane"}, params: %{}}
+      peri_form = %Peri.Form{schema: schema(), data: %{name: "Jane"}, params: %{}}
 
       form = Peri.Phoenix.to_form(peri_form)
 
@@ -178,7 +182,7 @@ defmodule Peri.PhoenixTest do
     end
 
     test "optional fields without constraints have no validations" do
-      form = Peri.Phoenix.to_form(@schema, %{})
+      form = Peri.Phoenix.to_form(schema(), %{})
 
       assert Phoenix.HTML.Form.input_validations(form, :age) == []
     end
