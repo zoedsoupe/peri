@@ -93,6 +93,19 @@ end
 
 ## Dependent Validation
 
+Two forms, with different contracts:
+
+- `{:dependent, field, condition, type}` - `condition` is called with
+  `(value, dependent_value)` and must return `:ok` or
+  `{:error, message, info}`. On `:ok`, the value is validated against `type`.
+- `{:dependent, callback}` - `callback` (fun/1, fun/2, or MFA) must return
+  `{:ok, type}` or `{:error, message, info}`. On `{:ok, type}` the field is
+  validated against `type`; `{:ok, nil}` means the field must be absent. On
+  `{:error, message, info}` the field fails with that error directly.
+
+Returning anything else (e.g. the bare type without the `:ok` wrapper) is a
+contract breach and fails validation with an error naming the field.
+
 ### Single Field Dependency
 
 Validate a field based on another field's value:
@@ -111,9 +124,11 @@ defmodule AuthSchema do
 end
 ```
 
-### Multiple Field Dependencies
+### Dynamic Type via Callback
 
-Complex validation based on multiple fields:
+Compute the field's type from the rest of the data. The callback receives the
+root data (fun/1), or the current element and the root data (fun/2), and
+returns the type to validate against:
 
 ```elixir
 defmodule ProfileSchema do
@@ -126,21 +141,35 @@ defmodule ProfileSchema do
     contact_info: {:dependent, &validate_contact/1}
   }
 
-  defp validate_contact(%{data: %{contact_type: :email}}) do
+  defp validate_contact(%{contact_type: :email}) do
     {:ok, {:required, %{email: {:required, :string}}}}
   end
 
-  defp validate_contact(%{data: %{contact_type: :phone}}) do
+  defp validate_contact(%{contact_type: :phone}) do
     {:ok, {:required, %{phone: {:required, :string}}}}
   end
 
-  defp validate_contact(%{data: %{contact_type: :both}}) do
+  defp validate_contact(%{contact_type: :both}) do
     {:ok, {:required, %{
       email: {:required, :string},
       phone: {:required, :string}
     }}}
   end
 end
+```
+
+MFA callbacks work the same way - `{:dependent, {Mod, fun}}` calls
+`Mod.fun(root)` (or `Mod.fun(current, root)` if arity 2 is exported), and
+`{:dependent, {Mod, fun, args}}` calls `Mod.fun(root, args...)`:
+
+```elixir
+defschema :attachment, %{
+  kind: {:required, {:enum, [:avatar, :document]}},
+  payload: {:dependent, {__MODULE__, :payload_type}}
+}
+
+def payload_type(%{kind: :avatar}), do: {:ok, {:required, :string}}
+def payload_type(_), do: {:ok, nil}
 ```
 
 ## Custom Validation

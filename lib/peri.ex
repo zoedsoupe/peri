@@ -82,6 +82,8 @@ defmodule Peri do
              (current :: term, root :: term ->
                 {:ok, schema_def | nil}
                 | {:error, template :: String.t(), context :: map | keyword})}
+          | {:dependent, {module, fun :: atom}}
+          | {:dependent, {module, fun :: atom, args :: list}}
   @type explicit_schema_def ::
           {:schema, schema}
           | {:schema, map_schema, {:additional_keys, schema_def}}
@@ -1030,10 +1032,9 @@ defmodule Peri do
 
   defp validate_field(val, {:dependent, callback}, parser, opts)
        when is_function(callback) do
-    with {:ok, type} <- call_callback(callback, parser),
-         {:ok, schema} <- validate_schema(type) do
-      validate_field(val, schema, parser, opts)
-    end
+    callback
+    |> call_callback(parser)
+    |> validate_dependent(val, parser, opts)
   end
 
   defp validate_field(val, {:dependent, {mod, fun}}, parser, opts)
@@ -1048,30 +1049,70 @@ defmodule Peri do
         function_exported?(mod, fun, 1) ->
           root = maybe_get_root_data(parser)
           apply(mod, fun, [root])
+
+        true ->
+          nil
       end
 
-    with {:ok, type} <- result,
-         {:ok, schema} <- validate_schema(type) do
-      validate_field(val, schema, parser, opts)
-    end
+    validate_dependent(result, val, parser, opts)
   end
 
   defp validate_field(val, {:dependent, {mod, fun, args}}, parser, opts)
        when is_atom(mod) and is_atom(fun) and is_list(args) do
     root = maybe_get_root_data(parser)
 
-    with {:ok, type} <- apply(mod, fun, [root | args]),
-         {:ok, schema} <- validate_schema(type) do
-      validate_field(val, schema, parser, opts)
+    mod
+    |> apply(fun, [root | args])
+    |> validate_dependent(val, parser, opts)
+  end
+
+  # Dependent callbacks must return {:ok, type} or {:error, reason, info}.
+  # A bare return or a type that fails schema validation is a contract breach;
+  # report it as a validation error instead of leaking the raw value into
+  # traverse_schema.
+  defp validate_dependent({:ok, type}, val, parser, opts) do
+    case validate_schema(type) do
+      {:ok, schema} ->
+        validate_field(val, schema, parser, opts)
+
+      {:error, error} ->
+        info = [schema: inspect(type), reason: inspect(error)]
+        {:error, "dependent callback returned invalid schema %{schema}: %{reason}", info}
     end
+  end
+
+  defp validate_dependent({:error, reason, info}, _val, _parser, _opts)
+       when is_binary(reason) and is_map(info),
+       do: {:error, reason, Map.to_list(info)}
+
+  defp validate_dependent({:error, reason, info}, _val, _parser, _opts)
+       when is_binary(reason) and is_list(info),
+       do: {:error, reason, info}
+
+  defp validate_dependent(other, _val, _parser, _opts) do
+    info = [actual: inspect(other)]
+    {:error, "expected dependent callback to return {:ok, type}, got %{actual}", info}
   end
 
   defp validate_field(val, {:dependent, field, condition, type}, parser, opts) do
     root = maybe_get_root_data(parser)
     dependent_val = get_enumerable_value(root, field)
 
-    with :ok <- condition.(val, dependent_val) do
-      validate_field(val, type, root, opts)
+    case condition.(val, dependent_val) do
+      :ok ->
+        validate_field(val, type, root, opts)
+
+      {:error, [_ | _]} = error ->
+        error
+
+      {:error, _reason, _info} = error ->
+        error
+
+      other ->
+        info = [actual: inspect(other)]
+
+        {:error, "expected dependent condition to return :ok or {:error, reason}, got %{actual}",
+         info}
     end
   end
 

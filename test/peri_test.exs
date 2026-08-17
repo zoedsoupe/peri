@@ -2999,4 +2999,75 @@ defmodule PeriTest do
       assert {:ok, _result} = Peri.validate(schema, valid_data)
     end
   end
+
+  describe "dependent callback contract" do
+    test "returns a clear error when the callback returns a bare type" do
+      schema = %{x: {:dependent, fn _ -> {:required, {:coerce, {:integer, gte: 0}}} end}}
+
+      assert {:error, [error]} = Peri.validate(schema, %{x: "18"})
+
+      assert %Peri.Error{path: [:x], key: :x} = error
+      assert error.message =~ "expected dependent callback to return {:ok, type}"
+    end
+
+    test "returns a clear error when the callback returns nil" do
+      schema = %{x: {:dependent, fn _ -> nil end}}
+
+      assert {:error, [error]} = Peri.validate(schema, %{x: "18"})
+
+      assert error.message =~ "expected dependent callback to return {:ok, type}"
+    end
+
+    test "returns a clear error when the callback returns an invalid schema" do
+      schema = %{x: {:dependent, fn _ -> {:ok, :nope} end}}
+
+      assert {:error, [error]} = Peri.validate(schema, %{x: "18"})
+
+      assert error.message =~ "dependent callback returned invalid schema"
+    end
+
+    test "returns a clear error when the MFA callback is not exported" do
+      schema = %{x: {:dependent, {String, :no_such_fun}}}
+
+      assert {:error, [error]} = Peri.validate(schema, %{x: "18"})
+
+      assert error.message =~ "expected dependent callback to return {:ok, type}"
+    end
+
+    test "MFA callback returning a bare type also gets a clear error" do
+      defmodule BareMFA do
+        def type_for(_root), do: {:required, :string}
+      end
+
+      schema = %{x: {:dependent, {BareMFA, :type_for}}}
+
+      assert {:error, [error]} = Peri.validate(schema, %{x: "18"})
+
+      assert error.message =~ "expected dependent callback to return {:ok, type}"
+    end
+
+    test "callback may fail validation directly with {:error, reason, info}" do
+      schema = %{x: {:dependent, fn _ -> {:error, "not allowed here", []} end}}
+
+      assert {:error, [error]} = Peri.validate(schema, %{x: "18"})
+
+      assert %Peri.Error{path: [:x], message: "not allowed here"} = error
+    end
+
+    test "callback error accepts a map context" do
+      schema = %{x: {:dependent, fn _ -> {:error, "got %{got}", %{got: 1}} end}}
+
+      assert {:error, [error]} = Peri.validate(schema, %{x: "18"})
+
+      assert error.message == "got 1"
+    end
+
+    test "field condition must return :ok or an error tuple" do
+      schema = %{y: :string, x: {:dependent, :y, fn _, _ -> true end, :integer}}
+
+      assert {:error, [error]} = Peri.validate(schema, %{y: "a", x: 1})
+
+      assert error.message =~ "expected dependent condition to return :ok or {:error, reason}"
+    end
+  end
 end
