@@ -16,7 +16,7 @@ export JSON Schema, build Ecto changesets, or render Phoenix forms.
 ```elixir
 defp deps do
   [
-    {:peri, "~> 0.11.1"} # x-release-please-version
+    {:peri, "~> 0.11.2"} # x-release-please-version
   ]
 end
 ```
