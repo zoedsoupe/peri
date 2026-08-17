@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.11.2](https://github.com/zoedsoupe/peri/compare/v0.11.1...v0.11.2) (2026-08-17)
+
+
+### Bug Fixes
+
+* clear errors for dependent callback contract breaches ([2423cd9](https://github.com/zoedsoupe/peri/commit/2423cd9b996d44607cfa99cff84d4b5a580a075b))
+
 ## [0.11.1](https://github.com/zoedsoupe/peri/compare/v0.11.0...v0.11.1) (2026-08-15)
 
 
