@@ -167,5 +167,14 @@ defmodule Peri.HumanizeTest do
       assert err.message == "we need your email"
       assert err.content[:did_you_mean] == :emial
     end
+
+    test "ignores keys that are neither atoms nor strings" do
+      assert {:ok, _} = Peri.validate(%{}, %{self() => :a, [false] => :b, {} => :c})
+
+      assert {:error, [%Peri.Error{} = err]} =
+               Peri.validate(%{email: {:required, :string}}, %{self() => :a})
+
+      refute Map.has_key?(err.content, :did_you_mean)
+    end
   end
 end

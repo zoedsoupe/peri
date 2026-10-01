@@ -636,16 +636,20 @@ defmodule Peri do
 
   # Keys present in the data but absent from the schema, in their original
   # (atom or string) form. Compared as strings so string-keyed data matches
-  # against atom-keyed schemas.
+  # against atom-keyed schemas. Keys that are neither atoms nor strings
+  # (PIDs, tuples, ...) can't be typo suggestions, so they're skipped.
   defp spellcheck_candidates(schema, data) do
     schema_keys = MapSet.new(enum_keys(schema))
 
     data
     |> enum_keys()
     |> Enum.reject(fn key ->
-      key == :__struct__ or MapSet.member?(schema_keys, to_string(key))
+      key == :__struct__ or not spellcheckable_key?(key) or
+        MapSet.member?(schema_keys, to_string(key))
     end)
   end
+
+  defp spellcheckable_key?(key), do: is_atom(key) or is_binary(key)
 
   defp enum_keys(enum) do
     Enum.flat_map(enum, fn
