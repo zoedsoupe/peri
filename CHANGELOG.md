@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.11.3](https://github.com/zoedsoupe/peri/compare/v0.11.2...v0.11.3) (2026-10-01)
+
+### Bug Fixes
+
+* generate floats for {:float, {:range, {min, max}}} ([9650166](https://github.com/zoedsoupe/peri/commit/965016674ce9532a5cc12e65416077074422732e)), closes [#81](https://github.com/zoedsoupe/peri/issues/81)
+* keep unique list generation within length bounds ([1e0d4e9](https://github.com/zoedsoupe/peri/commit/1e0d4e99894c852f350e2e6ac62894c2caa161e5)), closes [#80](https://github.com/zoedsoupe/peri/issues/80)
+* skip non-string keys in spellcheck candidates ([1b1e443](https://github.com/zoedsoupe/peri/commit/1b1e443e0d7bfc6ada0ecdc22ba32294a477283e)), closes [#82](https://github.com/zoedsoupe/peri/issues/82)
+
 ## [0.11.2](https://github.com/zoedsoupe/peri/compare/v0.11.1...v0.11.2) (2026-08-17)
 
 
