@@ -158,12 +158,10 @@ if Code.ensure_loaded?(StreamData) do
           _ -> []
         end)
 
-      stream = StreamData.list_of(gen(type), sd_opts)
-
       if Keyword.get(list_opts, :unique) == true do
-        StreamData.map(stream, &Enum.uniq/1)
+        StreamData.uniq_list_of(gen(type), sd_opts)
       else
-        stream
+        StreamData.list_of(gen(type), sd_opts)
       end
     end
 
