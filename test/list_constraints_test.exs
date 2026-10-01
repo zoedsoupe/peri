@@ -173,6 +173,16 @@ defmodule Peri.ListConstraintsTest do
           assert n >= 1.0 and n <= 10.0
         end
       end
+
+      test "unique list with min always passes validation" do
+        schema = {:list, :integer, [min: 2, unique: true]}
+
+        for list <- Enum.take(Peri.Generatable.gen(schema), 20) do
+          assert length(list) >= 2
+          assert list == Enum.uniq(list)
+          assert {:ok, ^list} = Peri.validate(schema, list)
+        end
+      end
     end
   end
 end
