@@ -222,9 +222,13 @@ if Code.ensure_loaded?(StreamData) do
       StreamData.filter(stream, &(&1 <= lte))
     end
 
+    def gen({:float, {:range, {min, max}}}) do
+      StreamData.float(min: min / 1, max: max / 1)
+    end
+
     def gen({type, {:range, {min, max}}}) when Peri.is_numeric_type(type) do
       stream = gen(type)
-      StreamData.filter(stream, &(&1 in min..max))
+      StreamData.filter(stream, &(&1 >= min and &1 <= max))
     end
 
     def gen({type, {:multiple_of, n}}) when Peri.is_numeric_type(type) do

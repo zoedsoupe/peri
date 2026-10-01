@@ -164,6 +164,15 @@ defmodule Peri.ListConstraintsTest do
           assert rem(n, 3) == 0
         end
       end
+
+      test "float range generates floats within bounds" do
+        schema = {:float, {:range, {1.0, 10.0}}}
+
+        for n <- Enum.take(Peri.Generatable.gen(schema), 20) do
+          assert is_float(n)
+          assert n >= 1.0 and n <= 10.0
+        end
+      end
     end
   end
 end
