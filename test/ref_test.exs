@@ -75,6 +75,35 @@ defmodule Peri.RefTest do
     end
   end
 
+  describe "top-level refs" do
+    test "validates referenced data directly" do
+      data = %{id: 1, name: "node"}
+      assert {:ok, ^data} = Peri.validate({:ref, {Other, :node}}, data)
+    end
+
+    test "returns validation errors for invalid referenced data" do
+      assert {:error, [%Peri.Error{path: [:id]}]} =
+               Peri.validate({:ref, {Other, :node}}, %{id: "bad"})
+    end
+
+    test "reports a missing top-level ref" do
+      assert {:error, %Peri.Error{message: message}} =
+               Peri.validate({:ref, {Other, :missing}}, %{})
+
+      assert message =~ "not defined"
+    end
+
+    test "preserves the ref depth limit through nested schemas" do
+      data =
+        Enum.reduce(1..65, %{value: 0, children: []}, fn value, child ->
+          %{value: value, children: [child]}
+        end)
+
+      assert {:error, errors} = Peri.validate({:ref, {Trees, :tree}}, data)
+      assert inspect(errors, limit: :infinity) =~ "depth limit"
+    end
+  end
+
   describe "ref errors" do
     defmodule Broken do
       import Peri

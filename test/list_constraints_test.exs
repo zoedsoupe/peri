@@ -2,6 +2,12 @@ defmodule Peri.ListConstraintsTest do
   use ExUnit.Case, async: true
 
   describe "validate_schema/1 — list constraint shape" do
+    test "accepts :list as an untyped list schema" do
+      assert {:ok, :list} = Peri.validate_schema(:list)
+      assert {:ok, [1]} = Peri.validate(:list, [1])
+      assert {:error, _} = Peri.validate(:list, :not_a_list)
+    end
+
     test "accepts :min, :max, :unique" do
       assert {:ok, _} = Peri.validate_schema({:list, :integer, [min: 1, max: 5, unique: true]})
     end

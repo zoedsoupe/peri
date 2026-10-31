@@ -93,6 +93,7 @@ defmodule Peri do
           | :atom
           | :atom!
           | :boolean
+          | :list
           | :map
           | :pid
           | {:either, {schema_def, schema_def}}
@@ -564,7 +565,7 @@ defmodule Peri do
   defp make_filter_data_accumulator(schema, _data) when is_list(schema), do: []
 
   defp enumerable_has_key?(data, key) when is_struct(data) do
-    !!get_in(data, [Access.key(key)])
+    Map.has_key?(data, key)
   end
 
   defp enumerable_has_key?(data, key) when is_map(data) and is_binary(key) do
@@ -1264,7 +1265,7 @@ defmodule Peri do
   defp validate_field(data, {:list, type}, source, opts) when is_list(data) do
     data
     |> Enum.with_index()
-    |> Enum.reduce_while({:ok, []}, fn {el, index}, {:ok, vals} ->
+    |> Enum.reduce_while({:ok, [], false}, fn {el, index}, {:ok, vals, changed?} ->
       element_source =
         case source do
           %Peri.Parser{} = parser -> Peri.Parser.for_list_element(el, parser, index)
@@ -1272,15 +1273,15 @@ defmodule Peri do
         end
 
       case validate_field(el, type, element_source, opts) do
-        :ok -> {:cont, {:ok, vals}}
-        {:ok, val} -> {:cont, {:ok, [val | vals]}}
+        :ok -> {:cont, {:ok, [el | vals], changed?}}
+        {:ok, val} -> {:cont, {:ok, [val | vals], true}}
         {:error, errors} -> {:halt, {:error, errors}}
         {:error, reason, info} -> {:halt, {:error, reason, info}}
       end
     end)
     |> then(fn
-      {:ok, []} -> :ok
-      {:ok, val} -> {:ok, Enum.reverse(val)}
+      {:ok, _vals, false} -> :ok
+      {:ok, vals, true} -> {:ok, Enum.reverse(vals)}
       err -> err
     end)
   end
@@ -1312,15 +1313,11 @@ defmodule Peri do
 
   defp validate_field(data, {:map, key_type, value_type}, source, opts) when is_map(data) do
     Enum.reduce_while(data, {:ok, %{}}, fn {key, val}, {:ok, map_acc} ->
-      with :ok <- validate_field(key, key_type, source, opts),
-           :ok <- validate_field(val, value_type, source, opts) do
-        {:cont, {:ok, Map.put(map_acc, key, val)}}
+      with {:ok, validated_key} <- validate_and_extract(key, key_type, source, opts),
+           {:ok, validated_val} <- validate_and_extract(val, value_type, source, opts) do
+        {:cont, {:ok, Map.put(map_acc, validated_key, validated_val)}}
       else
-        {:ok, validated_val} ->
-          {:cont, {:ok, Map.put(map_acc, key, validated_val)}}
-
-        error ->
-          {:halt, error}
+        error -> {:halt, error}
       end
     end)
     |> then(fn
@@ -1358,9 +1355,9 @@ defmodule Peri do
       |> Enum.filter(fn {key, _} -> MapSet.member?(additional_keys, key) end)
       |> Map.new()
 
-    with {:ok, schema_data} <- validate_field(data, schema, source, opts),
+    with {:ok, schema_data} <- validate_and_extract(data, schema, source, opts),
          {:ok, additional_data} <-
-           validate_field(additional_data, {:map, value_schema}, source, opts) do
+           validate_and_extract(additional_data, {:map, value_schema}, source, opts) do
       {:ok, Map.merge(schema_data, additional_data)}
     end
   end
@@ -1383,7 +1380,8 @@ defmodule Peri do
       data: filtered_data,
       root_data: root,
       current_data: current,
-      path: path
+      path: path,
+      ref_depth: parser_ref_depth(p)
     }
 
     case traverse_schema(schema, new_parser, opts) do
@@ -1427,13 +1425,13 @@ defmodule Peri do
 
   defp validate_tuple_elements(source, types, data, opts) do
     Enum.with_index(types)
-    |> Enum.reduce_while({:ok, []}, fn {type, index}, {:ok, vals} ->
+    |> Enum.reduce_while({:ok, [], false}, fn {type, index}, {:ok, vals, changed?} ->
       case validate_field(elem(source, index), type, data, opts) do
         :ok ->
-          {:cont, {:ok, vals}}
+          {:cont, {:ok, [elem(source, index) | vals], changed?}}
 
         {:ok, val} ->
-          {:cont, {:ok, [val | vals]}}
+          {:cont, {:ok, [val | vals], true}}
 
         {:error, errors} when is_list(errors) ->
           info = [index: index]
@@ -1445,8 +1443,8 @@ defmodule Peri do
       end
     end)
     |> then(fn
-      {:ok, []} -> :ok
-      {:ok, vals} -> {:ok, List.to_tuple(Enum.reverse(vals))}
+      {:ok, _vals, false} -> :ok
+      {:ok, vals, true} -> {:ok, List.to_tuple(Enum.reverse(vals))}
       {:error, reason, info} -> {:error, reason, info}
     end)
   end
@@ -1759,6 +1757,9 @@ defmodule Peri do
   defp maybe_get_root_data(%Peri.Parser{} = p), do: p.root_data
   defp maybe_get_root_data(data), do: data
 
+  defp parser_ref_depth(%Peri.Parser{ref_depth: depth}), do: depth
+  defp parser_ref_depth(_data), do: 0
+
   defp maybe_get_current_data(%Peri.Parser{} = p), do: p.current_data || p.data
   defp maybe_get_current_data(data), do: data
 
@@ -1849,8 +1850,23 @@ defmodule Peri do
         validate_field(val, {:enum, choices}, data, opts)
 
       {:ok, type} ->
-        with :ok <- validate_field(val, type, data, opts),
-             do: validate_field(val, {:enum, choices}, data, opts)
+        case validate_field(val, type, data, opts) do
+          :ok ->
+            validate_field(val, {:enum, choices}, data, opts)
+
+          {:ok, validated_val} ->
+            validate_enum_membership(validated_val, choices, data, opts)
+
+          error ->
+            error
+        end
+    end
+  end
+
+  defp validate_enum_membership(val, choices, data, opts) do
+    case validate_field(val, {:enum, choices}, data, opts) do
+      :ok -> {:ok, val}
+      error -> error
     end
   end
 
@@ -1888,6 +1904,12 @@ defmodule Peri do
   defp resolve_ref({mod, name}, val, parser, opts) when is_atom(mod) and is_atom(name) do
     case fetch_ref_schema(mod, name) do
       {:ok, schema} ->
+        parser =
+          case parser do
+            %Peri.Parser{} = parser -> parser
+            data -> Peri.Parser.new(data, root_data: data)
+          end
+
         validate_field(val, schema, Peri.Parser.bump_ref_depth(parser), opts)
 
       {:error, reason} ->
@@ -2163,6 +2185,7 @@ defmodule Peri do
   defp validate_type(:atom, _parser), do: :ok
   defp validate_type(:atom!, _parser), do: :ok
   defp validate_type(:integer, _parser), do: :ok
+  defp validate_type(:list, _parser), do: :ok
   defp validate_type(:map, _parser), do: :ok
   defp validate_type(:float, _parser), do: :ok
   defp validate_type(:boolean, _parser), do: :ok
@@ -2667,7 +2690,7 @@ defmodule Peri do
     defp process_defaults(definition) do
       definition
       |> Enum.map(fn {key, %{default: val}} -> {key, val} end)
-      |> Enum.filter(fn {_key, default} -> default end)
+      |> Enum.reject(fn {_key, default} -> is_nil(default) end)
       |> Map.new()
     end
 
@@ -2729,12 +2752,6 @@ defmodule Peri do
             {:embed, %{cardinality: cardinality}} = def[:type]
             validate_and_cast_nested(changeset, key, value, def[:nested], cardinality)
 
-          match?({:parameterized, {Peri.Ecto.Type.OneOf, _}}, def[:type]) ->
-            validate_composite_nested(changeset, key, value, def[:nested])
-
-          match?({:parameterized, {Peri.Ecto.Type.Either, _}}, def[:type]) ->
-            validate_composite_nested(changeset, key, value, def[:nested])
-
           true ->
             changeset
         end
@@ -2760,24 +2777,6 @@ defmodule Peri do
     defp validate_and_cast_nested(changeset, key, _value, _schema, :many) do
       Ecto.Changeset.add_error(changeset, key, "is invalid")
     end
-
-    defp validate_composite_nested(changeset, _key, nil, _schemas), do: changeset
-
-    defp validate_composite_nested(changeset, key, value, schemas) when is_map(value) do
-      schemas
-      |> Enum.find_value(fn {_, schema} ->
-        case Peri.validate(schema, value) do
-          {:ok, _} -> process_changeset(schema, value)
-          _ -> nil
-        end
-      end)
-      |> case do
-        nil -> changeset
-        nested -> cast_nested_result(changeset, key, nested)
-      end
-    end
-
-    defp validate_composite_nested(changeset, _key, _value, _schemas), do: changeset
 
     defp process_special_fields(changeset, special_keys, attrs, definition) do
       Enum.reduce(special_keys, changeset, fn key, acc ->

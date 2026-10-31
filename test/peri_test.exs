@@ -185,6 +185,32 @@ defmodule PeriTest do
       assert {:ok, ^data} = nested_explicit(data)
     end
 
+    test "preserves defaults and transforms when additional keys are absent" do
+      schema =
+        {:schema,
+         %{
+           a: {:integer, {:default, 1}},
+           b: {:integer, {:transform, fn value -> value * 2 end}}
+         }, {:additional_keys, :string}}
+
+      for mode <- [:strict, :permissive] do
+        assert {:ok, %{a: 1, b: 4}} = Peri.validate(schema, %{b: 2}, mode: mode)
+      end
+    end
+
+    test "preserves defaults and transforms in nested additional-key schemas" do
+      schema = %{
+        settings:
+          {:schema,
+           %{
+             a: {:integer, {:default, 1}},
+             b: {:integer, {:transform, fn value -> value * 2 end}}
+           }, {:additional_keys, :string}}
+      }
+
+      assert {:ok, %{settings: %{a: 1, b: 4}}} = Peri.validate(schema, %{settings: %{b: 2}})
+    end
+
     test "validates additional keys in a nested schema" do
       data = %{
         definitions: %{
@@ -371,6 +397,12 @@ defmodule PeriTest do
       assert list_example(data) == {:ok, data}
     end
 
+    test "preserves unchanged elements when another element is coerced" do
+      schema = %{xs: {:list, {:coerce, :string, :integer}}}
+
+      assert {:ok, %{xs: [1, 2, 3]}} = Peri.validate(schema, %{xs: [1, "2", 3]})
+    end
+
     test "handles missing lists correctly" do
       data = %{}
       assert list_example(data) == {:ok, data}
@@ -432,6 +464,24 @@ defmodule PeriTest do
 
       assert {:error, %Peri.Error{message: "expected type of :integer received \"2\" value"}} =
                Peri.validate(schema, "2")
+    end
+
+    test "checks membership after a type transforms the value" do
+      schema = {:enum, [2], type: {:coerce, :string, :integer}}
+
+      assert {:ok, 2} = Peri.validate(schema, "2")
+
+      assert {:error, %Peri.Error{message: "expected one of [2] received 1"}} =
+               Peri.validate(schema, "1")
+    end
+
+    test "checks membership after a type returns without transforming" do
+      schema = {:enum, [1], type: :integer}
+
+      assert {:ok, 1} = Peri.validate(schema, 1)
+
+      assert {:error, %Peri.Error{message: "expected one of [1] received 2"}} =
+               Peri.validate(schema, 2)
     end
 
     test ":type passes but value not in choices fails on enum" do
@@ -735,6 +785,22 @@ defmodule PeriTest do
       assert string_to_integer_map(data) == {:ok, data}
     end
 
+    test "validates and transforms typed map keys and values independently" do
+      key_schema = {:map, {:coerce, :string, :integer}, :string}
+      value_schema = {:map, :string, {:coerce, :string, :integer}}
+      both_schema = {:map, {:coerce, :string, :integer}, {:coerce, :string, :integer}}
+
+      assert {:ok, %{1 => "one"}} = Peri.validate(key_schema, %{"1" => "one"})
+
+      assert {:ok, %{"one" => 1, "two" => 2}} =
+               Peri.validate(value_schema, %{"one" => "1", "two" => 2})
+
+      assert {:ok, %{1 => 2}} = Peri.validate(both_schema, %{"1" => "2"})
+
+      assert {:error, _} = Peri.validate(key_schema, %{"bad" => "one"})
+      assert {:error, _} = Peri.validate(value_schema, %{"one" => "bad"})
+    end
+
     test "handles missing map correctly" do
       data = %{}
       assert string_to_integer_map(data) == {:ok, data}
@@ -873,6 +939,12 @@ defmodule PeriTest do
     test "validates tuple with correct data" do
       data = %{coordinates: {10.5, 20.5}}
       assert tuple_example(data) == {:ok, data}
+    end
+
+    test "preserves unchanged elements when another element is coerced" do
+      schema = {:tuple, [{:coerce, :string, :integer}, {:coerce, :string, :integer}, :integer]}
+
+      assert {:ok, {1, 2, 3}} = Peri.validate(schema, {1, "2", 3})
     end
 
     test "validates tuple with incorrect data type" do
@@ -2630,6 +2702,17 @@ defmodule PeriTest do
     defstruct [:name, :age, :email]
   end
 
+  defmodule Flag do
+    defstruct [:enabled, :optional]
+  end
+
+  defmodule StructWithNestedDefaults do
+    defstruct [:settings]
+  end
+
+  defschema(:flag_struct_schema, %{enabled: {:required, :boolean}, optional: :boolean})
+  defschema(:struct_nested_defaults, %{settings: %{count: {:integer, {:default, 1}}}})
+
   defschema(:user_map_schema, %{
     name: {:required, :string},
     age: :integer,
@@ -2660,6 +2743,26 @@ defmodule PeriTest do
                   message: "expected type of :integer received \"thirty\" value"
                 }
               ]} = user_map_schema(data)
+    end
+
+    test "treats false as a present required struct field and preserves nil optional fields" do
+      data = %Flag{enabled: false, optional: nil}
+      assert {:ok, ^data} = flag_struct_schema(data)
+    end
+
+    test "rejects nil for a required struct field" do
+      data = %Flag{enabled: nil}
+
+      assert {:error,
+              [%Peri.Error{path: [:enabled], message: "is required, expected type of :boolean"}]} =
+               flag_struct_schema(data)
+    end
+
+    test "applies nested defaults when a struct field is present with nil" do
+      data = %StructWithNestedDefaults{settings: nil}
+
+      assert {:ok, %StructWithNestedDefaults{settings: %{count: 1}}} =
+               struct_nested_defaults(data)
     end
   end
 

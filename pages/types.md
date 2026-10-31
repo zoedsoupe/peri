@@ -12,6 +12,7 @@ Peri provides a comprehensive set of built-in types for schema validation.
 | `:integer` | Validates integers                     | `:integer` |
 | `:float`   | Validates floats                       | `:float`   |
 | `:boolean` | Validates booleans                     | `:boolean` |
+| `:list`    | Validates lists without checking items | `:list`    |
 | `:map`     | Validates maps (no content validation) | `:map`     |
 | `:pid`     | Validates process identifiers          | `:pid`     |
 
