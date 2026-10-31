@@ -2759,7 +2759,10 @@ defmodule Peri do
     end
 
     defp get_nested_value(attrs, key) do
-      Map.get(attrs, key) || Map.get(attrs, to_string(key))
+      case Map.fetch(attrs, key) do
+        {:ok, value} -> value
+        :error -> Map.get(attrs, to_string(key))
+      end
     end
 
     defp validate_and_cast_nested(changeset, _key, nil, _schema, _cardinality), do: changeset

@@ -51,6 +51,34 @@ defmodule Peri.EctoTest do
       assert get_field(changeset, :age) == 18
     end
 
+    test "preserves false and other falsy defaults when applying changes" do
+      schema = %{
+        active: {:boolean, {:default, false}},
+        count: {:integer, {:default, 0}},
+        label: {:string, {:default, ""}},
+        enabled: {:boolean, {:default, true}}
+      }
+
+      changeset = Peri.to_changeset!(schema, %{})
+
+      assert changeset.valid?
+
+      assert Ecto.Changeset.apply_changes(changeset) == %{
+               active: false,
+               count: 0,
+               label: "",
+               enabled: true
+             }
+    end
+
+    test "evaluates zero-arity function defaults" do
+      schema = %{value: {:integer, {:default, fn -> 42 end}}}
+      changeset = Peri.to_changeset!(schema, %{})
+
+      assert changeset.valid?
+      assert get_field(changeset, :value) == 42
+    end
+
     test "validates string format with regex" do
       schema = %{numeric: {:string, {:regex, ~r|\d+|}}}
 
@@ -185,6 +213,30 @@ defmodule Peri.EctoTest do
                long_text: ["should be at least 10 character(s)"]
              } =
                errors_on(invalid_changeset)
+    end
+
+    test "validates multiple string and numeric constraints" do
+      schema = %{
+        password: {:string, [min: 8, max: 12, regex: ~r/^[A-Z0-9]+$/]},
+        interval: {:integer, [gte: 10, lte: 20, multiple_of: 5]}
+      }
+
+      valid = Peri.to_changeset!(schema, %{password: "SECRET123", interval: 15})
+
+      invalid =
+        Peri.to_changeset!(schema, %{password: "bad", interval: 12})
+
+      assert valid.valid?
+      refute invalid.valid?
+      assert %{password: [_ | _], interval: [_ | _]} = errors_on(invalid)
+    end
+
+    test "enforces required fields with validation options" do
+      schema = %{name: {:required, :string, [error: "name is required"]}}
+      changeset = Peri.to_changeset!(schema, %{})
+
+      refute changeset.valid?
+      assert %{name: ["can't be blank"]} = errors_on(changeset)
     end
 
     test "validates numeric constraints" do
@@ -456,6 +508,18 @@ defmodule Peri.EctoTest do
       refute invalid_changeset.valid?
       assert %{role: ["is invalid"]} = errors_on(invalid_changeset)
     end
+
+    test "validates typed enums with Ecto casting" do
+      schema = %{level: {:enum, [1, 2, 3], type: :integer}}
+
+      valid = Peri.to_changeset!(schema, %{level: "2"})
+      invalid = Peri.to_changeset!(schema, %{level: "4"})
+
+      assert valid.valid?
+      assert get_change(valid, :level) == 2
+      refute invalid.valid?
+      assert %{level: ["is invalid"]} = errors_on(invalid)
+    end
   end
 
   describe "list type validation" do
@@ -485,6 +549,20 @@ defmodule Peri.EctoTest do
       assert get_change(valid_changeset, :tags) == ["elixir", "ecto"]
       assert get_change(valid_changeset, :scores) == [85, 90, 95]
       assert %{tags: ["is invalid"], scores: ["is invalid"]} = errors_on(invalid_changeset)
+    end
+
+    test "validates list length and uniqueness constraints" do
+      schema = %{tags: {:list, :string, [min: 2, max: 3, unique: true]}}
+
+      valid = Peri.to_changeset!(schema, %{tags: ["elixir", "ecto"]})
+      too_short = Peri.to_changeset!(schema, %{tags: ["elixir"]})
+      duplicate = Peri.to_changeset!(schema, %{tags: ["elixir", "elixir"]})
+      too_long = Peri.to_changeset!(schema, %{tags: ["a", "b", "c", "d"]})
+
+      assert valid.valid?
+      refute too_short.valid?
+      refute duplicate.valid?
+      refute too_long.valid?
     end
 
     test "validates list of maps" do
@@ -622,6 +700,28 @@ defmodule Peri.EctoTest do
       assert get_field(user, :name) == "JOHN"
       profile = get_change(user, :profile)
       assert get_field(profile, :bio) == "Hello World"
+    end
+  end
+
+  describe "coercion types" do
+    test "applies Peri coercions at the changeset boundary" do
+      schema = %{
+        age: {:coerce, :string, :integer},
+        active: {:coerce, :string, :boolean}
+      }
+
+      changeset = Peri.to_changeset!(schema, %{age: "42", active: "false"})
+
+      assert changeset.valid?
+      assert changeset.changes == %{age: 42, active: false}
+    end
+
+    test "returns an invalid changeset for coercion failures" do
+      schema = %{age: {:coerce, :string, :integer}}
+      changeset = Peri.to_changeset!(schema, %{age: "not an integer"})
+
+      refute changeset.valid?
+      assert %{age: ["is invalid"]} = errors_on(changeset)
     end
   end
 

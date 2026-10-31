@@ -56,10 +56,23 @@ if Code.ensure_loaded?(Ecto) do
     end
 
     def parse_peri({key, {:enum, _} = type}, ecto) do
-      put_in(ecto[key][:type], Type.from(type))
+      put_peri_validation(ecto, key, type)
+    end
+
+    def parse_peri({key, {:enum, choices, opts} = type}, ecto)
+        when is_list(choices) and is_list(opts) do
+      case Keyword.fetch(opts, :type) do
+        {:ok, enum_type} -> put_typed_enum_validation(ecto, key, type, enum_type)
+        :error -> put_peri_validation(ecto, key, type)
+      end
     end
 
     def parse_peri({key, {:required, type}}, ecto) do
+      ecto = put_in(ecto[key][:required], true)
+      parse_peri({key, type}, ecto)
+    end
+
+    def parse_peri({key, {:required, type, _opts}}, ecto) do
       ecto = put_in(ecto[key][:required], true)
       parse_peri({key, type}, ecto)
     end
@@ -83,6 +96,11 @@ if Code.ensure_loaded?(Ecto) do
 
     def parse_peri({key, {type, {:default, {mod, fun, args}}}}, ecto) do
       put_in(ecto[key][:default], apply(mod, fun, args))
+      |> then(&parse_peri({key, type}, &1))
+    end
+
+    def parse_peri({key, {type, {:default, default}}}, ecto) when is_function(default, 0) do
+      put_in(ecto[key][:default], default.())
       |> then(&parse_peri({key, type}, &1))
     end
 
@@ -122,6 +140,16 @@ if Code.ensure_loaded?(Ecto) do
       |> then(&parse_peri({key, :string}, &1))
     end
 
+    def parse_peri({key, {type, options}}, ecto)
+        when type in [:string, :integer, :float] and is_list(options) do
+      options = Keyword.drop(options, [:error, :gen])
+      ecto = parse_peri({key, type}, ecto)
+
+      Enum.reduce(options, ecto, fn option, acc ->
+        parse_peri({key, {type, option}}, acc)
+      end)
+    end
+
     @number_checks [
       eq: :equal_to,
       neq: :not_equal_to,
@@ -150,6 +178,29 @@ if Code.ensure_loaded?(Ecto) do
         end)
         |> then(&parse_peri({key, unquote(type)}, &1))
       end
+
+      def parse_peri({key, {unquote(type), {:multiple_of, n}}}, ecto) do
+        put_validation(ecto, key, multiple_of_validation(key, n))
+        |> then(&parse_peri({key, unquote(type)}, &1))
+      end
+    end
+
+    def parse_peri({key, {:list, type, list_opts}}, ecto) when is_list(list_opts) do
+      ecto = parse_peri({key, {:list, type}}, ecto)
+
+      Enum.reduce(Keyword.drop(list_opts, [:error, :gen]), ecto, fn
+        {:min, min}, acc ->
+          put_validation(acc, key, list_length_validation(key, min: min))
+
+        {:max, max}, acc ->
+          put_validation(acc, key, list_length_validation(key, max: max))
+
+        {:unique, true}, acc ->
+          put_validation(acc, key, list_unique_validation(key))
+
+        {:unique, false}, acc ->
+          acc
+      end)
     end
 
     def parse_peri({key, {:list, type}}, ecto) when is_map(type) do
@@ -178,6 +229,18 @@ if Code.ensure_loaded?(Ecto) do
         validate_tuple(changeset, key, types)
       end)
     end
+
+    def parse_peri({key, :list}, ecto),
+      do: put_peri_validation(ecto, key, :list)
+
+    def parse_peri({key, {:coerce, _} = type}, ecto),
+      do: put_peri_validation(ecto, key, type)
+
+    def parse_peri({key, {:coerce, _, _} = type}, ecto),
+      do: put_peri_validation(ecto, key, type)
+
+    def parse_peri({key, {:coerce, _, _, _} = type}, ecto),
+      do: put_peri_validation(ecto, key, type)
 
     def parse_peri({key, type}, ecto) when is_map(type) do
       ecto = put_in(ecto[key][:nested], parse(type))
@@ -563,6 +626,93 @@ if Code.ensure_loaded?(Ecto) do
 
     defp put_validation(ecto, key, validation) do
       update_in(ecto[key][:validations], &[validation | &1])
+    end
+
+    defp list_length_validation(key, opts) do
+      fn changeset -> validate_length(changeset, key, opts) end
+    end
+
+    defp list_unique_validation(key) do
+      fn changeset ->
+        validate_change(changeset, key, fn ^key, values -> unique_items_error(key, values) end)
+      end
+    end
+
+    defp unique_items_error(key, values) do
+      if length(Enum.uniq(values)) == length(values),
+        do: [],
+        else: [{key, "should have unique items"}]
+    end
+
+    defp multiple_of_validation(key, n) do
+      fn changeset ->
+        validate_change(changeset, key, fn ^key, value ->
+          multiple_of_error(key, n, value)
+        end)
+      end
+    end
+
+    defp multiple_of_error(key, n, value) do
+      if multiple_of?(value, n), do: [], else: [{key, "is not a multiple of #{n}"}]
+    end
+
+    defp put_peri_validation(ecto, key, schema) do
+      ecto = put_in(ecto[key][:type], :any)
+      put_validation(ecto, key, &validate_peri_field(&1, key, schema))
+    end
+
+    defp validate_peri_field(changeset, key, schema) do
+      case fetch_change(changeset, key) do
+        {:ok, nil} -> changeset
+        {:ok, value} -> validate_peri_change(changeset, key, schema, value)
+        :error -> changeset
+      end
+    end
+
+    defp multiple_of?(value, n) when is_integer(value) and is_integer(n),
+      do: rem(value, n) == 0
+
+    defp multiple_of?(value, n) when is_number(value) and is_number(n) and n != 0 do
+      quotient = value / n
+      abs(quotient - Float.round(quotient)) < 1.0e-9
+    end
+
+    defp multiple_of?(_value, _n), do: false
+
+    defp put_typed_enum_validation(ecto, key, schema, enum_type) do
+      ecto = put_in(ecto[key][:type], :any)
+      put_validation(ecto, key, &validate_typed_enum_field(&1, key, schema, enum_type))
+    end
+
+    defp validate_typed_enum_field(changeset, key, schema, enum_type) do
+      case fetch_change(changeset, key) do
+        {:ok, nil} -> changeset
+        {:ok, value} -> validate_typed_enum_value(changeset, key, schema, enum_type, value)
+        :error -> changeset
+      end
+    end
+
+    defp validate_typed_enum_value(changeset, key, schema, enum_type, value) do
+      case cast_enum_type(enum_type, value) do
+        {:ok, casted} -> validate_peri_change(changeset, key, schema, casted)
+        :error -> add_error(changeset, key, "is invalid")
+      end
+    end
+
+    defp cast_enum_type(type, value) when type in @raw_types do
+      case Ecto.Type.cast(Type.from(type), value) do
+        {:ok, casted} -> {:ok, casted}
+        :error -> :error
+      end
+    end
+
+    defp cast_enum_type(_type, value), do: {:ok, value}
+
+    defp validate_peri_change(changeset, key, schema, value) do
+      case Peri.validate(schema, value) do
+        {:ok, validated} -> put_change(changeset, key, validated)
+        {:error, _} -> add_error(changeset, key, "is invalid")
+      end
     end
 
     defp validate_tuple(changeset, key, types) do

@@ -39,15 +39,17 @@ Peri types are automatically mapped to appropriate Ecto types:
 | `:date`            | `:date`           | Direct mapping            |
 | `:datetime`        | `:utc_datetime`   | UTC datetime              |
 | `:naive_datetime`  | `:naive_datetime` | Direct mapping            |
-| `{:enum, choices}` | Custom validation | Validates against choices |
+| `{:enum, choices}` | Peri validation   | Checks the original choice values |
+| `{:enum, choices, type: type}` | Peri validation after primitive Ecto casting | Typed enum |
 | `{:list, type}`    | `{:array, type}`  | Array of specified type   |
+| `{:list, type, opts}` | Array plus changeset validations | `min`, `max`, and `unique` |
 | `:any`             | Custom type       | Allows any value          |
 | `:atom`            | Custom type       | Validates atoms           |
 | `{:tuple, types}`  | Custom type       | Validates tuple structure |
 
 ## Constraint Mapping
 
-Peri constraints are converted to Ecto validations:
+Supported string and numeric constraints are converted to Ecto validations:
 
 ```elixir
 # Peri schema
@@ -63,6 +65,37 @@ changeset
 |> validate_number(:age, greater_than_or_equal_to: 18, less_than_or_equal_to: 65)
 |> validate_format(:email, ~r/@/)
 ```
+
+Multiple constraints on one field are applied independently. Numeric
+`multiple_of` uses a changeset validation because Ecto's number validator does
+not provide a divisibility option. Required fields with error options preserve
+their required/type behavior, but custom Peri error messages are not used by
+the changeset adapter.
+
+List-level `min`, `max`, and `unique` options are validated after Ecto casts the
+array:
+
+```elixir
+%{tags: {:list, :string, [min: 1, max: 5, unique: true]}}
+```
+
+## Support and limitations
+
+- Primitive types use Ecto casting. Tuple, map, either, oneof, literal, custom,
+  conditional, dependent, and transform forms use adapter validations where
+  supported by the parser.
+- Peri coercion directives run through `Peri.validate/2` at the changeset
+  boundary. Failed coercions add a normal field error; successful coercions
+  store their result as a changeset change.
+- Typed enums use the declared primitive type's Ecto cast where available,
+  then check choice membership. Enum `error:` and `gen:` metadata is ignored.
+- Required `error:` and schema/list constraint `error:` or `gen:` metadata do
+  not alter Ecto errors or runtime casting.
+- Ecto changesets do not execute Peri's full validation pipeline. Callback
+  context and exact `Peri.Error` structures are not transferred. Map key/value
+  constraints are limited to the adapter's supported primitive checks.
+- Recursive refs are represented as opaque maps in the changeset. Use
+  `Peri.validate/2` when ref resolution or the full Peri error path is needed.
 
 ## Nested Validation
 
@@ -124,7 +157,8 @@ Peri.Ecto.Type.OneOf    # Multiple choice types
 
 ## Error Handling
 
-Peri validation errors are automatically converted to Ecto changeset errors:
+Adapter validation failures are reported as ordinary Ecto changeset errors.
+Error templates and nested `Peri.Error` structures are not preserved:
 
 ```elixir
 attrs = %{"name" => "", "age" => 15}
@@ -189,7 +223,7 @@ end
 ## Benefits
 
 - **Familiar API**: Uses standard Ecto changeset interface
-- **Rich Validation**: Access to all Peri's validation features
+- **Rich Validation**: Use the documented subset of Peri validations supported by the adapter
 - **Error Consistency**: Standard Ecto error format
 - **Phoenix Ready**: Works seamlessly with Phoenix forms and APIs
 - **Composable**: Combine with other Ecto changeset operations

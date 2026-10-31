@@ -123,9 +123,9 @@ if Code.ensure_loaded?(Ecto) do
     def init(elements: types) when is_list(types) do
       case Peri.validate_schema({:tuple, types}) do
         {:ok, {:tuple, types}} ->
-          {processed_types, nested_map_info} = process_tuple_types(types)
+          processed_types = process_tuple_types(types)
 
-          %{elements: processed_types, original_types: types, map_indexes: nested_map_info}
+          %{elements: processed_types, original_types: types}
 
         {:error, message} ->
           raise Peri.Error, message
@@ -178,8 +178,7 @@ if Code.ensure_loaded?(Ecto) do
       # Get the schema from the original type
       case tuple_validate_map(map_val, original_type) do
         {:ok, validated_map} -> {:ok, validated_map}
-        # Default to returning original map if validation fails
-        _ -> {:ok, map_val}
+        _ -> :error
       end
     end
 
@@ -200,18 +199,16 @@ if Code.ensure_loaded?(Ecto) do
     defp process_tuple_types(types) do
       types
       |> Enum.with_index()
-      |> Enum.map_reduce(%{}, &process_single_tuple_type/2)
+      |> Enum.map(fn {type, idx} -> process_single_tuple_type(type, idx) end)
     end
 
-    defp process_single_tuple_type({type, idx}, map_info_acc) when is_map(type) do
+    defp process_single_tuple_type(type, idx) when is_map(type) do
       map_key = "map_#{idx}"
       embed_type = {:embed, Ecto.Embedded.init(field: map_key, cardinality: :one, related: nil)}
-      {embed_type, Map.put(map_info_acc, map_key, idx)}
+      embed_type
     end
 
-    defp process_single_tuple_type({type, _idx}, map_info_acc) do
-      {Peri.Ecto.Type.from(type), map_info_acc}
-    end
+    defp process_single_tuple_type(type, _idx), do: Peri.Ecto.Type.from(type)
 
     defp cast_elements(tuple, types) do
       if tuple_size(tuple) != length(types) do

@@ -149,6 +149,12 @@ defmodule Peri.Ecto.TypeTest do
       assert {:ok, {"id", %{name: "John"}}} = Type.Tuple.cast({"id", %{name: "John"}}, params)
     end
 
+    test "rejects tuples with invalid nested maps" do
+      {:parameterized, {_, params}} = Type.from({:tuple, [:string, %{age: :integer}]})
+
+      assert :error = Type.Tuple.cast({"id", %{age: "invalid"}}, params)
+    end
+
     test "dumps tuples to maps and loads them back" do
       {:parameterized, {_, params}} = Type.from({:tuple, [:string, :integer]})
       tuple = {"hello", 42}
