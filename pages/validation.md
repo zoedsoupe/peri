@@ -74,6 +74,22 @@ Permissive mode is useful when:
 
 **Note**: Fields not defined in the schema are not validated, they are simply passed through unchanged.
 
+## Reusing Validated Schemas
+
+`Peri.validate_schema/1` returns a schema ready for reuse. Pass that value to
+`Peri.validate/3` or an adapter that accepts a Peri schema instead of calling
+`defschema` for every request:
+
+```elixir
+{:ok, user_schema} = Peri.validate_schema(%{email: {:required, :string}})
+
+Peri.validate(user_schema, %{email: "ada@example.com"})
+# => {:ok, %{email: "ada@example.com"}}
+```
+
+This workflow has no global cache. Literal schemas passed to `defschema` are
+validated at compile time; dynamic schema expressions keep runtime validation.
+
 ## Conditional Validation
 
 Use `:cond` to validate fields based on runtime conditions.
@@ -397,3 +413,11 @@ error.content[:did_you_mean]
 This works in both strict and permissive modes, including inside nested
 schemas and list elements. A static or MFA `error:` override still
 replaces the message; the `:did_you_mean` content remains available.
+
+Pass `spellcheck: false` to skip candidate lookup when typo suggestions are
+not needed. The option is accepted by `validate/3`, `decode/3`, `encode/3`,
+`conforms?/3`, and as a `defschema` validation option:
+
+```elixir
+Peri.validate(schema, data, spellcheck: false)
+```

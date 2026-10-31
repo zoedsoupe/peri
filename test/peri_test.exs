@@ -1719,22 +1719,6 @@ defmodule PeriTest do
     }
   })
 
-  defschema(:invalid_nested_default_values, %{
-    user: %{
-      name: {:string, {:default, "John Doe"}},
-      profile:
-        {:required,
-         %{
-           age: {:required, :integer},
-           email: {:required, {:string, {:default, "default@example.com"}}},
-           address: %{
-             street: {:string, {:default, "123 Main St"}},
-             number: {:integer, {:default, 1}}
-           }
-         }}
-    }
-  })
-
   describe "default values schema validation" do
     test "applies default values when fields are missing" do
       data = %{email: "user@example.com"}
@@ -1787,49 +1771,16 @@ defmodule PeriTest do
       assert {:ok, ^data} = nested_default_values(data)
     end
 
-    test "required fields should not receive default values" do
-      data = %{user: %{profile: %{age: 30}}}
+    test "rejects invalid literal schemas when defschema is defined" do
+      assert_raise ArgumentError, ~r/invalid literal schema for :invalid/, fn ->
+        Code.compile_string("""
+        defmodule Peri.InvalidLiteralSchema do
+          import Peri
 
-      assert {
-               :error,
-               [
-                 %Peri.Error{
-                   path: [:user],
-                   key: :user,
-                   content: nil,
-                   message: nil,
-                   errors: [
-                     %Peri.Error{
-                       path: [:user, :profile],
-                       key: :profile,
-                       content: nil,
-                       message: nil,
-                       errors: [
-                         %Peri.Error{
-                           path: [:user, :profile, :email],
-                           key: :email,
-                           content: %{
-                             type: ":string",
-                             value: "default@example.com",
-                             schema: %{
-                               address: %{
-                                 number: {:integer, {:default, 1}},
-                                 street: {:string, {:default, "123 Main St"}}
-                               },
-                               age: {:required, :integer},
-                               email: {:required, {:string, {:default, "default@example.com"}}}
-                             }
-                           },
-                           message:
-                             "cannot set default value of default@example.com for required field of type :string",
-                           errors: nil
-                         }
-                       ]
-                     }
-                   ]
-                 }
-               ]
-             } = invalid_nested_default_values(data)
+          defschema :invalid, %{field: {:required, {:string, {:default, \"value\"}}}}
+        end
+        """)
+      end
     end
   end
 

@@ -25,9 +25,41 @@ defmodule Peri.Parser do
   def for_field(%__MODULE__{} = parent, key, exists?) do
     root = parent.root_data || parent.data
     current_data = parent.current_data || parent.data
-    path = List.wrap(parent.path) ++ List.wrap(key)
-    %{parent | current_data: current_data, root_data: root, field_presence?: exists?, path: path}
+    path = path(parent) ++ List.wrap(key)
+
+    %{
+      parent
+      | current_data: current_data,
+        root_data: root,
+        field_presence?: exists?,
+        path: path
+    }
   end
+
+  @doc false
+  def push_field(%__MODULE__{} = parent, key, exists?, parent_path_rev) do
+    root = parent.root_data || parent.data
+    current_data = parent.current_data || parent.data
+
+    %{
+      parent
+      | current_data: current_data,
+        root_data: root,
+        field_presence?: exists?,
+        path: {:peri_path_rev, [key | parent_path_rev]}
+    }
+  end
+
+  @doc false
+  def path(%__MODULE__{path: {:peri_path_rev, path}}), do: Enum.reverse(path)
+  def path(%__MODULE__{path: path}), do: List.wrap(path)
+
+  @doc false
+  def path_rev(%__MODULE__{path: {:peri_path_rev, path}}), do: path
+  def path_rev(%__MODULE__{path: path}), do: Enum.reverse(List.wrap(path))
+
+  @doc false
+  def internal_path(path), do: {:peri_path_rev, path}
 
   @doc """
   Initializes a new `Peri.Parser` struct with the given data.
@@ -100,7 +132,19 @@ defmodule Peri.Parser do
       current_data: element_data,
       root_data: parent_parser.root_data || parent_parser.data,
       errors: [],
-      path: parent_parser.path ++ [index],
+      path: path(parent_parser) ++ [index],
+      ref_depth: parent_parser.ref_depth
+    }
+  end
+
+  @doc false
+  def push_list_element(element_data, %__MODULE__{} = parent_parser, index) do
+    %__MODULE__{
+      data: element_data,
+      current_data: element_data,
+      root_data: parent_parser.root_data || parent_parser.data,
+      errors: [],
+      path: internal_path([index | path_rev(parent_parser)]),
       ref_depth: parent_parser.ref_depth
     }
   end

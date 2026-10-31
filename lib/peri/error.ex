@@ -324,8 +324,6 @@ defmodule Peri.Error do
 
   defp summarize_schema_opts({:schema, schema, _opts}), do: summarize(schema, 6)
 
-  defp format_key(key) when is_atom(key), do: inspect(key)
-  defp format_key(key) when is_binary(key), do: inspect(key)
   defp format_key(key), do: inspect(key)
 
   def format_error_message(reason, context) when is_list(context) and is_binary(reason) do

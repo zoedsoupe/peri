@@ -27,6 +27,8 @@ defmodule Peri do
 
   @type validation :: (term -> validation_result)
   @type validation_result :: :ok | {:error, template :: String.t(), context :: map | keyword}
+  @type validation_opt :: {:mode, :strict | :permissive} | {:spellcheck, boolean}
+  @type validation_opts :: [validation_opt]
   @type string_option ::
           {:regex, Regex.t()} | {:eq, String.t()} | {:min, integer} | {:max, integer}
   @type numeric_option(type) ::
@@ -168,12 +170,16 @@ defmodule Peri do
       MySchemas.flexible_user(flexible_data)
       # => {:ok, %{name: "John", email: "john@example.com", role: "admin"}}
   """
-  @validation_opts [:mode]
+  @validation_opts [:mode, :spellcheck]
 
   defmacro defschema(name, schema, opts \\ []) do
     bang = :"#{name}!"
     {validation_opts, meta_opts} = Keyword.split(opts, @validation_opts)
     schema = rewrite_local_refs(schema)
+
+    {schema, prevalidated?} = prepare_schema(name, schema, __CALLER__)
+    {validation_body, bang_body} = schema_function_bodies(schema, prevalidated?, validation_opts)
+    changeset_definition = changeset_definition(name, schema)
 
     quote do
       def get_schema(unquote(name)) do
@@ -184,24 +190,73 @@ defmodule Peri do
         unquote(meta_opts)
       end
 
-      if Code.ensure_loaded?(Ecto) do
-        def unquote(:"#{name}_changeset")(data) do
-          Peri.to_changeset!(unquote(schema), data)
+      unquote(changeset_definition)
+
+      def unquote(name)(data), do: unquote(validation_body)
+
+      def unquote(bang)(data), do: unquote(bang_body)
+    end
+  end
+
+  defp prepare_schema(name, schema, caller) do
+    case literal_schema(schema, caller) do
+      {:ok, schema_value} ->
+        case validate_schema(schema_value) do
+          {:ok, validated_schema} ->
+            {Macro.escape(validated_schema), true}
+
+          {:error, errors} ->
+            raise ArgumentError,
+                  "invalid literal schema for #{inspect(name)}: #{inspect(errors)}"
+        end
+
+      :error ->
+        {schema, false}
+    end
+  end
+
+  defp schema_function_bodies(schema, true, opts) do
+    validation = quote do: Peri.validate(unquote(schema), data, unquote(opts))
+
+    bang =
+      quote do
+        case Peri.validate(unquote(schema), data, unquote(opts)) do
+          {:ok, valid_data} -> valid_data
+          {:error, errors} -> raise Peri.InvalidSchema, errors
         end
       end
 
-      def unquote(name)(data) do
+    {validation, bang}
+  end
+
+  defp schema_function_bodies(schema, false, opts) do
+    validation =
+      quote do
         with {:ok, schema} <- Peri.validate_schema(unquote(schema)) do
-          Peri.validate(schema, data, unquote(validation_opts))
+          Peri.validate(schema, data, unquote(opts))
         end
       end
 
-      def unquote(bang)(data) do
+    bang =
+      quote do
         with {:ok, valid_schema} <- Peri.validate_schema(unquote(schema)),
-             {:ok, valid_data} <- Peri.validate(valid_schema, data, unquote(validation_opts)) do
+             {:ok, valid_data} <- Peri.validate(valid_schema, data, unquote(opts)) do
           valid_data
         else
           {:error, errors} -> raise Peri.InvalidSchema, errors
+        end
+      end
+
+    {validation, bang}
+  end
+
+  defp changeset_definition(name, schema) do
+    changeset = :"#{name}_changeset"
+
+    if Code.ensure_loaded?(Ecto) do
+      quote do
+        def unquote(changeset)(data) do
+          Peri.to_changeset!(unquote(schema), data)
         end
       end
     end
@@ -219,6 +274,22 @@ defmodule Peri do
       other ->
         other
     end)
+  end
+
+  defp literal_schema(ast, caller) do
+    ast =
+      Macro.prewalk(ast, fn
+        {:__MODULE__, _, _} -> caller.module
+        {:__aliases__, _, _} = alias_ast -> Macro.expand(alias_ast, caller)
+        other -> other
+      end)
+
+    if Macro.quoted_literal?(ast) do
+      {value, _binding} = Code.eval_quoted(ast)
+      {:ok, value}
+    else
+      :error
+    end
   end
 
   @doc """
@@ -257,6 +328,8 @@ defmodule Peri do
     - `:mode` - Validation mode. Can be `:strict` (default) or `:permissive`.
       - `:strict` - Only fields defined in the schema are returned.
       - `:permissive` - All fields from the input data are preserved.
+    - `:spellcheck` - Set to `false` to skip missing-required-field typo
+      suggestions. Defaults to `true`.
 
   ## Returns
 
@@ -274,10 +347,13 @@ defmodule Peri do
       iex> Peri.conforms?(schema, invalid_data)
       false
   """
+  @spec conforms?(schema, term, validation_opts) :: boolean
   def conforms?(schema, data, opts \\ []) do
     mode = Keyword.get(opts, :mode, :strict)
 
-    case validate(schema, data, mode: mode) do
+    validate_opts = Keyword.take(opts, [:spellcheck]) ++ [mode: mode]
+
+    case validate(schema, data, validate_opts) do
       {:ok, _} -> true
       {:error, _errors} -> false
     end
@@ -389,6 +465,12 @@ defmodule Peri do
     - `:mode` - Validation mode. Can be `:strict` (default) or `:permissive`.
       - `:strict` - Only fields defined in the schema are returned.
       - `:permissive` - All fields from the input data are preserved.
+    - `:spellcheck` - Set to `false` to skip missing-required-field typo
+      suggestions. Defaults to `true`.
+
+  A schema returned by `validate_schema/1` can be reused directly with
+  `validate/3` and the integrations that accept schemas. This avoids
+  `defschema`'s runtime schema validation for each call.
 
   ## Examples
 
@@ -403,6 +485,7 @@ defmodule Peri do
       Peri.validate(schema, data, mode: :permissive)
       # => {:ok, %{name: "John", age: 30, extra: "field"}}
   """
+  @spec validate(schema, term, validation_opts) :: {:ok, term} | {:error, term}
   def validate(schema, data, opts \\ [])
 
   def validate(schema, data, opts) when is_enumerable(schema) and is_enumerable(data) do
@@ -412,13 +495,19 @@ defmodule Peri do
       raise ArgumentError, "Invalid mode: #{inspect(mode)}. Must be :strict or :permissive"
     end
 
-    spellcheck = collect_spellcheck(schema, data)
+    spellcheck = Keyword.get(opts, :spellcheck, true)
+
+    unless is_boolean(spellcheck) do
+      raise ArgumentError,
+            "Invalid spellcheck option: #{inspect(spellcheck)}. Must be a boolean"
+    end
 
     field_opts =
       [
         mode: mode,
         spellcheck: spellcheck,
-        spellcheck_candidates: Map.get(spellcheck, [], [])
+        spellcheck_data: data,
+        spellcheck_schema: schema
       ] ++ Keyword.take(opts, [:direction])
 
     data = filter_data(schema, data, field_opts)
@@ -431,6 +520,18 @@ defmodule Peri do
   end
 
   def validate(schema, data, opts) do
+    spellcheck = Keyword.get(opts, :spellcheck, true)
+
+    unless is_boolean(spellcheck) do
+      raise ArgumentError,
+            "Invalid spellcheck option: #{inspect(spellcheck)}. Must be a boolean"
+    end
+
+    opts =
+      opts
+      |> Keyword.put(:spellcheck, spellcheck)
+      |> Keyword.put(:spellcheck_data, data)
+
     case validate_field(data, schema, data, opts) do
       :ok ->
         {:ok, data}
@@ -466,7 +567,7 @@ defmodule Peri do
       iex> Peri.decode(schema, %{page: 2})
       {:ok, %{page: 2}}
   """
-  @spec decode(schema, data :: term, keyword) :: {:ok, term} | {:error, term}
+  @spec decode(schema, term, validation_opts) :: {:ok, term} | {:error, term}
   def decode(schema, data, opts \\ []), do: validate(schema, data, opts)
 
   @doc """
@@ -496,7 +597,7 @@ defmodule Peri do
       iex> Peri.encode(schema, %{upcased: "HELLO"})
       {:ok, %{upcased: "hello"}}
   """
-  @spec encode(schema, data :: term, keyword) :: {:ok, term} | {:error, term}
+  @spec encode(schema, term, validation_opts) :: {:ok, term} | {:error, term}
   def encode(schema, data, opts \\ []) do
     validate(schema, data, Keyword.put(opts, :direction, :encode))
   end
@@ -582,10 +683,13 @@ defmodule Peri do
 
   @doc false
   defp traverse_schema(schema, %Peri.Parser{} = state, opts, path \\ []) do
+    opts = Keyword.put(opts, :spellcheck_schema, schema)
+    parent_path_rev = Peri.Parser.path_rev(state)
+
     Enum.reduce(schema, state, fn {key, type}, parser ->
       exists? = enumerable_has_key?(parser.data, key)
       value = if exists?, do: get_enumerable_value(parser.data, key)
-      parser = Peri.Parser.for_field(parser, key, exists?)
+      parser = Peri.Parser.push_field(parser, key, exists?, parent_path_rev)
 
       case validate_field(value, type, parser, opts) do
         :ok ->
@@ -598,7 +702,7 @@ defmodule Peri do
           reduce_errors(path, key, nested_errs, parser)
 
         {:error, reason, info} ->
-          {reason, info} = maybe_suggest_key(reason, info, key, type, exists?, opts)
+          {reason, info} = maybe_suggest_key(reason, info, key, type, exists?, parser, opts)
           err = Peri.Error.new_child(path, key, reason, info)
           Peri.Parser.add_error(parser, err)
       end
@@ -606,20 +710,28 @@ defmodule Peri do
   end
 
   # When a required field is missing, suggest a typo'd sibling key present in
-  # the data but absent from the schema (e.g. `:emial` for `:email`).
-  # Candidates are computed from the unfiltered data and threaded through
-  # opts under `:spellcheck_candidates`, so this works in both strict and
-  # permissive modes.
-  defp maybe_suggest_key(reason, info, key, {:required, _}, false, opts),
-    do: suggest_key(reason, info, key, opts)
+  # the data but absent from the schema (e.g. `:emial` for `:email`). Candidates
+  # are computed from the unfiltered data only at this point, in either mode.
+  defp maybe_suggest_key(reason, info, key, {:required, _}, false, parser, opts),
+    do: suggest_key(reason, info, key, parser, opts)
 
-  defp maybe_suggest_key(reason, info, key, {:required, _, _}, false, opts),
-    do: suggest_key(reason, info, key, opts)
+  defp maybe_suggest_key(reason, info, key, {:required, _, _}, false, parser, opts),
+    do: suggest_key(reason, info, key, parser, opts)
 
-  defp maybe_suggest_key(reason, info, _key, _type, _exists?, _opts), do: {reason, info}
+  defp maybe_suggest_key(reason, info, _key, _type, _exists?, _parser, _opts),
+    do: {reason, info}
 
-  defp suggest_key(reason, info, key, opts) do
-    candidates = Keyword.get(opts, :spellcheck_candidates, [])
+  defp suggest_key(reason, info, key, parser, opts) do
+    candidates =
+      if Keyword.get(opts, :spellcheck, true) do
+        path = Peri.Parser.path(parser) |> Enum.drop(-1)
+        schema = Keyword.get(opts, :spellcheck_schema)
+        data = data_at_path(Keyword.get(opts, :spellcheck_data), path)
+        spellcheck_candidates(schema, data)
+      else
+        []
+      end
+
     key_string = to_string(key)
     distance = &String.jaro_distance(to_string(&1), key_string)
 
@@ -639,7 +751,9 @@ defmodule Peri do
   # (atom or string) form. Compared as strings so string-keyed data matches
   # against atom-keyed schemas. Keys that are neither atoms nor strings
   # (PIDs, tuples, ...) can't be typo suggestions, so they're skipped.
-  defp spellcheck_candidates(schema, data) do
+  defp spellcheck_candidates(_schema, data) when is_struct(data), do: []
+
+  defp spellcheck_candidates(schema, data) when is_map(schema) or is_list(schema) do
     schema_keys = MapSet.new(enum_keys(schema))
 
     data
@@ -650,6 +764,8 @@ defmodule Peri do
     end)
   end
 
+  defp spellcheck_candidates(_schema, _data), do: []
+
   defp spellcheckable_key?(key), do: is_atom(key) or is_binary(key)
 
   defp enum_keys(enum) do
@@ -659,88 +775,22 @@ defmodule Peri do
     end)
   end
 
-  # Walks the raw schema and data (before strict-mode filtering drops
-  # unknown keys) collecting spellcheck candidates per absolute path, so
-  # nested schemas can suggest typo'd keys too. Structs are opaque input,
-  # so they collect nothing.
-  defp collect_spellcheck(_schema, data) when is_struct(data), do: %{}
-  defp collect_spellcheck(schema, data), do: do_collect_spellcheck(schema, data, [], %{})
+  defp data_at_path(data, []), do: data
 
-  defp do_collect_spellcheck(schema, data, path, acc) do
-    acc =
-      case spellcheck_candidates(schema, data) do
-        [] -> acc
-        candidates -> Map.put(acc, path, candidates)
-      end
+  defp data_at_path(data, [segment | rest]) when is_list(data) do
+    value =
+      if is_integer(segment) and not Keyword.keyword?(data),
+        do: Enum.at(data, segment),
+        else: get_enumerable_value(data, segment)
 
-    Enum.reduce(schema, acc, fn {key, type}, acc ->
-      collect_nested_spellcheck(spellcheck_subschema(type), data, key, path, acc)
-    end)
+    data_at_path(value, rest)
   end
 
-  defp collect_nested_spellcheck({:nested, sub}, data, key, path, acc) do
-    case get_enumerable_value(data, key) do
-      value when is_map(value) and not is_struct(value) ->
-        do_collect_spellcheck(sub, value, path ++ [key], acc)
-
-      value when is_list(value) ->
-        if Keyword.keyword?(value) do
-          do_collect_spellcheck(sub, value, path ++ [key], acc)
-        else
-          acc
-        end
-
-      _other ->
-        acc
-    end
+  defp data_at_path(data, [segment | rest]) when is_map(data) do
+    data_at_path(get_enumerable_value(data, segment), rest)
   end
 
-  defp collect_nested_spellcheck({:list_of, sub}, data, key, path, acc) do
-    case get_enumerable_value(data, key) do
-      values when is_list(values) ->
-        values
-        |> Enum.with_index()
-        |> Enum.reduce(acc, fn
-          {value, index}, acc when is_map(value) and not is_struct(value) ->
-            do_collect_spellcheck(sub, value, path ++ [key, index], acc)
-
-          {_value, _index}, acc ->
-            acc
-        end)
-
-      _other ->
-        acc
-    end
-  end
-
-  defp collect_nested_spellcheck(_other, _data, _key, _path, acc), do: acc
-
-  defp spellcheck_subschema({:required, type}), do: spellcheck_subschema(type)
-
-  defp spellcheck_subschema({:required, type, opts}) when is_list(opts),
-    do: spellcheck_subschema(type)
-
-  defp spellcheck_subschema({:meta, type, _opts}), do: spellcheck_subschema(type)
-  defp spellcheck_subschema({:schema, schema}), do: spellcheck_subschema(schema)
-  defp spellcheck_subschema({:schema, schema, _opts}), do: spellcheck_subschema(schema)
-
-  defp spellcheck_subschema({:list, type}) do
-    case spellcheck_subschema(type) do
-      {:nested, sub} -> {:list_of, sub}
-      other -> other
-    end
-  end
-
-  defp spellcheck_subschema(type) when is_map(type), do: {:nested, type}
-
-  defp spellcheck_subschema(type) when is_list(type) do
-    if Keyword.keyword?(type), do: {:nested, type}, else: nil
-  end
-
-  defp spellcheck_subschema(_type), do: nil
-
-  defp spellcheck_path(%Peri.Parser{path: path}) when is_list(path), do: path
-  defp spellcheck_path(_other), do: []
+  defp data_at_path(_data, _path), do: nil
 
   # Access.key/1 only support maps and structs
   def get_enumerable_value(enum, key) when is_struct(enum) do
@@ -1268,7 +1318,7 @@ defmodule Peri do
     |> Enum.reduce_while({:ok, [], false}, fn {el, index}, {:ok, vals, changed?} ->
       element_source =
         case source do
-          %Peri.Parser{} = parser -> Peri.Parser.for_list_element(el, parser, index)
+          %Peri.Parser{} = parser -> Peri.Parser.push_list_element(el, parser, index)
           _ -> source
         end
 
@@ -1371,16 +1421,13 @@ defmodule Peri do
     root = maybe_get_root_data(p)
     current = maybe_get_current_data(p)
     filtered_data = filter_data(schema, data, opts)
-    path = spellcheck_path(p)
-
-    opts =
-      Keyword.put(opts, :spellcheck_candidates, Map.get(opts[:spellcheck] || %{}, path, []))
+    opts = Keyword.put(opts, :spellcheck_schema, schema)
 
     new_parser = %Peri.Parser{
       data: filtered_data,
       root_data: root,
       current_data: current,
-      path: path,
+      path: Peri.Parser.internal_path(parser_path_rev(p)),
       ref_depth: parser_ref_depth(p)
     }
 
@@ -1759,6 +1806,9 @@ defmodule Peri do
 
   defp parser_ref_depth(%Peri.Parser{ref_depth: depth}), do: depth
   defp parser_ref_depth(_data), do: 0
+
+  defp parser_path_rev(%Peri.Parser{} = parser), do: Peri.Parser.path_rev(parser)
+  defp parser_path_rev(_data), do: []
 
   defp maybe_get_current_data(%Peri.Parser{} = p), do: p.current_data || p.data
   defp maybe_get_current_data(data), do: data
