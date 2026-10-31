@@ -60,6 +60,21 @@ literals, `:either`, `:oneof`, `:multi`, refs, defaults, coercions and custom
 validators. Regex constraints and custom predicates use filtering, which can be
 slow when only a small fraction of values match.
 
+## Schema and Dependent Wrappers
+
+`{:schema, type}`, `{:schema, type, opts}` and
+`{:schema, map, {:additional_keys, value_type}}` generate from the wrapped
+schema. Additional-key wrappers generate the declared fields only; random extra
+keys are not necessary for a valid sample.
+
+The fixed dependent form `{:dependent, field, condition, type}` generates values
+from `type` and does not call `condition` during generation. Validation still
+calls the condition with the real root data, so a dependent field should be
+generated inside its parent map. Dynamic dependent forms such as
+`{:dependent, callback}` select their schema at runtime and raise an
+`ArgumentError` during generation; generation does not invoke that callback or
+invent root data.
+
 ## Constraint-Aware Generation
 
 Integer `gt`, `gte`, `lt`, `lte` and `range` constraints use bounded integer
@@ -154,6 +169,7 @@ Enum.take(generator, 5)
 
 - Regex and custom predicates remain rejection-filtered and can be inefficient
   for narrow domains.
+- Dynamic dependent schemas need a user-supplied generation strategy.
 - Required-only recursion has no finite base value and is rejected during
   generation.
 - Generation requires the optional StreamData dependency.

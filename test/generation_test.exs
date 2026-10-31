@@ -169,4 +169,67 @@ defmodule Peri.GenerationTest do
       end
     end
   end
+
+  describe "schema and dependent wrappers" do
+    test "schema wrappers generate their underlying type" do
+      schema = {:schema, {:required, :string}}
+      assert {:ok, generator} = Peri.generate(schema)
+
+      for sample <- Enum.take(generator, 20) do
+        assert is_binary(sample)
+        assert {:ok, _validated} = Peri.validate(schema, sample)
+      end
+    end
+
+    test "named schema wrappers generate their declared fields" do
+      schema = {:schema, %{id: {:required, :integer}}, title: "record"}
+      assert {:ok, generator} = Peri.generate(schema)
+
+      for sample <- Enum.take(generator, 20) do
+        assert is_integer(sample.id)
+        assert {:ok, _validated} = Peri.validate(schema, sample)
+      end
+    end
+
+    test "additional-key schema wrappers generate the fixed declared map" do
+      schema =
+        {:schema, %{name: {:required, :string}}, {:additional_keys, {:required, :integer}}}
+
+      assert {:ok, generator} = Peri.generate(schema)
+
+      for sample <- Enum.take(generator, 20) do
+        assert Map.keys(sample) == [:name]
+        assert {:ok, _validated} = Peri.validate(schema, sample)
+      end
+    end
+
+    test "fixed dependent type generates underlying values when wrapped" do
+      dependent = {:dependent, :password, fn _current, _root_value -> :ok end, :string}
+      schema = {:schema, dependent}
+      assert {:ok, generator} = Peri.generate(schema)
+
+      assert Enum.all?(Enum.take(generator, 20), &is_binary/1)
+    end
+
+    test "fixed dependent type validates in its parent root context" do
+      schema = %{
+        password:
+          {:required, {:dependent, :password, fn _current, _root_value -> :ok end, :string}}
+      }
+
+      assert {:ok, generator} = Peri.generate(schema)
+
+      for sample <- Enum.take(generator, 20) do
+        assert {:ok, _validated} = Peri.validate(schema, sample)
+      end
+    end
+
+    test "dynamic dependent schemas fail with a documented error" do
+      schema = {:dependent, fn _root -> {:ok, :string} end}
+
+      assert_raise ArgumentError, ~r/dynamic dependent schema/, fn ->
+        Peri.generate(schema)
+      end
+    end
+  end
 end

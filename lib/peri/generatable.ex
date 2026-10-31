@@ -107,6 +107,20 @@ if Code.ensure_loaded?(StreamData) do
 
     def gen({:literal, literal}), do: StreamData.constant(literal)
 
+    def gen({:schema, type}), do: gen(type)
+
+    def gen({:schema, schema, {:additional_keys, _value_type}}) when is_map(schema),
+      do: gen(schema)
+
+    def gen({:schema, type, opts}) when is_list(opts), do: gen(type)
+
+    def gen({:dependent, _field, _condition, type}), do: gen(type)
+
+    def gen({:dependent, _callback}) do
+      raise ArgumentError,
+            "cannot generate a dynamic dependent schema; use a fixed dependent type or a gen override"
+    end
+
     def gen({:required, type}) do
       ensure_required_ref_is_generatable!(type)
       gen(type)
@@ -305,7 +319,6 @@ if Code.ensure_loaded?(StreamData) do
     end
 
     def gen({type, {:default, _}}), do: gen(type)
-    def gen({type, {:dependent, _, _, _}}), do: gen(type)
 
     def gen({type, {:transform, mapper}}) do
       stream = gen(type)
