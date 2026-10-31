@@ -246,9 +246,13 @@ For untagged "any of these types" semantics, use `{:oneof, types}` instead.
 
 | Type                          | Description                 | Example                             |
 | ----------------------------- | --------------------------- | ----------------------------------- |
-| `{:custom, callback}`         | Custom validation function  | `{:custom, &validate_email/1}`      |
-| `{:custom, {mod, fun}}`       | Custom validation MFA       | `{:custom, {MyMod, :validate}}`     |
-| `{:custom, {mod, fun, args}}` | Custom validation with args | `{:custom, {MyMod, :validate, []}}` |
+| `{:custom, callback}`         | Validate with `callback.(value)` or `callback.(value, root)` | `{:custom, &validate_email/1}`      |
+| `{:custom, {mod, fun}}`       | MFA taking `value` or `value, root` | `{:custom, {MyMod, :validate}}`     |
+| `{:custom, {mod, fun, args}}` | MFA taking `value, args...` or `value, root, args...` | `{:custom, {MyMod, :validate, [:strict]}}` |
+
+The one-arity form is preferred when both supported arities are exported. See
+[custom validation callbacks](validation.md#custom-validation) for root-data
+semantics and examples.
 
 ## Custom Error Messages
 

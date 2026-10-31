@@ -27,6 +27,9 @@ defmodule Peri do
 
   @type validation :: (term -> validation_result)
   @type validation_result :: :ok | {:error, template :: String.t(), context :: map | keyword}
+  @type custom_validation ::
+          (value :: term -> validation_result)
+          | (value :: term, root :: term -> validation_result)
   @type validation_opt :: {:mode, :strict | :permissive} | {:spellcheck, boolean}
   @type validation_opts :: [validation_opt]
   @type string_option ::
@@ -52,7 +55,7 @@ defmodule Peri do
           | {schema_def, {:transform, {module, atom}}}
           | {schema_def, {:transform, {module, atom, list(term)}}}
   @type custom_def ::
-          {:custom, validation}
+          {:custom, custom_validation}
           | {:custom, {module, atom}}
           | {:custom, {module, atom, list(term)}}
   @type coerce_source ::
@@ -1315,14 +1318,41 @@ defmodule Peri do
     callback.(val)
   end
 
-  defp validate_field(val, {:custom, {mod, fun}}, _data, _opts)
-       when is_atom(mod) and is_atom(fun) do
-    apply(mod, fun, [val])
+  defp validate_field(val, {:custom, callback}, data, _opts) when is_function(callback, 2) do
+    callback.(val, maybe_get_root_data(data))
   end
 
-  defp validate_field(val, {:custom, {mod, fun, args}}, _data, _opts)
+  defp validate_field(val, {:custom, {mod, fun}}, data, _opts)
+       when is_atom(mod) and is_atom(fun) do
+    root = maybe_get_root_data(data)
+
+    cond do
+      function_exported?(mod, fun, 1) ->
+        apply(mod, fun, [val])
+
+      function_exported?(mod, fun, 2) ->
+        apply(mod, fun, [val, root])
+
+      true ->
+        {:error, "expected %{mod} to export %{fun}/1 or %{fun}/2", mod: mod, fun: fun}
+    end
+  end
+
+  defp validate_field(val, {:custom, {mod, fun, args}}, data, _opts)
        when is_atom(mod) and is_atom(fun) and is_list(args) do
-    apply(mod, fun, [val | args])
+    root = maybe_get_root_data(data)
+
+    cond do
+      function_exported?(mod, fun, length(args) + 1) ->
+        apply(mod, fun, [val | args])
+
+      function_exported?(mod, fun, length(args) + 2) ->
+        apply(mod, fun, [val, root | args])
+
+      true ->
+        template = "expected %{mod} to export %{fun} with arity from %{base} to %{arity}"
+        {:error, template, mod: mod, fun: fun, base: length(args) + 1, arity: length(args) + 2}
+    end
   end
 
   defp validate_field(val, {:either, {type_1, type_2}}, data, opts) do
@@ -2580,7 +2610,10 @@ defmodule Peri do
     end
   end
 
-  defp validate_type({:custom, cb}, _) when is_function(cb, 1), do: :ok
+  defp validate_type({:custom, cb}, _)
+       when is_function(cb, 1) or is_function(cb, 2),
+       do: :ok
+
   defp validate_type({:custom, {mod, fun}}, _) when is_atom(mod) and is_atom(fun), do: :ok
 
   defp validate_type({:custom, {mod, fun, args}}, _)

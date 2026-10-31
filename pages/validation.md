@@ -205,6 +205,33 @@ defmodule ProductSchema do
 end
 ```
 
+Custom validators return `:ok` for a valid value or `{:error, message, context}`
+for an invalid one. A one-arity callback receives the current value. A two-arity
+callback receives the current value and the original root input, including
+fields removed by strict filtering and values before transformation.
+
+```elixir
+schema = %{
+  amount: {:coerce, :string, :integer},
+  amount_check: {:custom, fn value, root ->
+    if value == "ok" and root.amount == "12" and Map.has_key?(root, :ignored) do
+      :ok
+    else
+      {:error, "amount does not match the original input", []}
+    end
+  end}
+}
+
+Peri.validate(schema, %{amount: "12", amount_check: "ok", ignored: "still visible to callback"})
+```
+
+The same arities are available through MFA forms. `{mod, fun}` calls
+`fun(value)` when exported, otherwise `fun(value, root)`. The args form calls
+`fun(value, args...)` when exported, otherwise `fun(value, root, args...)`.
+When both arities exist, the form without `root` is preferred for backward
+compatibility. A two-arity callback also receives the original root input when
+validation is nested or running on a list element.
+
 ### MFA Custom Validators
 
 ```elixir
