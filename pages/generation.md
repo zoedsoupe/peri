@@ -1,10 +1,7 @@
 # Data Generation
 
-Generate sample data based on your Peri schemas using StreamData.
-
-## Setup
-
-Add StreamData to your dependencies:
+Generate sample data based on Peri schemas using StreamData. Add StreamData to
+your dependencies to enable `Peri.generate/1`:
 
 ```elixir
 # mix.exs
@@ -18,226 +15,148 @@ end
 
 ## Basic Usage
 
-```elixir
-defmodule UserSchema do
-  import Peri
-
-  defschema :user, %{
-    name: :string,
-    age: {:integer, {:gte, 18}},
-    active: :boolean
-  }
-end
-
-# Generate sample data
-sample_data = Peri.generate(UserSchema.get_schema(:user))
-Enum.take(sample_data, 3)
-# [
-#   %{name: "abc", age: 23, active: true},
-#   %{name: "xyz", age: 45, active: false},
-#   %{name: "def", age: 67, active: true}
-# ]
-```
-
-## Constraint-Aware Generation
-
-Generators respect Peri constraints:
+`Peri.generate/1` returns `{:ok, generator}` for a valid schema, or
+`{:error, errors}` when schema validation fails. The returned StreamData
+generator implements `Enumerable`:
 
 ```elixir
 schema = %{
-  username: {:string, {:regex, ~r/^[a-z]+$/}},
-  score: {:integer, {:range, {0, 100}}},
+  name: {:required, :string},
+  age: {:integer, gte: 18, lte: 120},
+  active: :boolean
+}
+
+{:ok, generator} = Peri.generate(schema)
+Enum.take(generator, 3)
+```
+
+Map fields are optional unless wrapped with `{:required, type}`. The generator
+includes optional fields with generated values; required fields are also always
+included.
+
+## Supported Types
+
+Generators are provided for all built-in scalar types:
+
+| Type | Generated values |
+| --- | --- |
+| `:any` | Bounded StreamData terms |
+| `:atom`, `:atom!` | Alphanumeric atoms |
+| `:boolean` | Booleans |
+| `:date` | Dates from 1970 through 2100 |
+| `:datetime` | UTC datetimes from 1970 through 2100 |
+| `:duration` | A finite one-second duration |
+| `:float` | StreamData floats |
+| `:integer` | StreamData integers |
+| `:list` | Lists of at most five terms |
+| `:map` | Empty maps |
+| `:naive_datetime` | Naive datetimes from 1970 through 2100 |
+| `:pid` | The current process PID |
+| `:string` | Alphanumeric strings |
+| `:time` | Times from midnight through 23:59:59 |
+
+Composite schemas also support constrained lists, typed maps, tuples, enums,
+literals, `:either`, `:oneof`, `:multi`, refs, defaults, coercions and custom
+validators. Regex constraints and custom predicates use filtering, which can be
+slow when only a small fraction of values match.
+
+## Constraint-Aware Generation
+
+Integer `gt`, `gte`, `lt`, `lte` and `range` constraints use bounded integer
+generators. Combined bounds are intersected, including inclusive and exclusive
+edges. Integer `multiple_of` constraints are combined with integer bounds when
+the step is an integer. String `min` and `max` constraints set generator length
+bounds; `eq` generates the exact value. Other constraints, including `neq`,
+regex and custom predicates, are applied as filters where needed. Float ranges
+and float `multiple_of` retain their existing generator behavior.
+
+```elixir
+schema = %{
+  username: {:string, [min: 3, max: 12]},
+  score: {:integer, [gt: 0, lte: 100]},
   role: {:enum, [:admin, :user, :guest]},
   tags: {:list, :string}
 }
 
-# Generated data will match constraints
-samples = Peri.generate(schema) |> Enum.take(5)
-# All usernames will be lowercase letters only
-# All scores will be 0-100
-# All roles will be from the enum
+{:ok, generator} = Peri.generate(schema)
+samples = Enum.take(generator, 5)
+Enum.all?(samples, &(match?({:ok, _}, Peri.validate(schema, &1))))
 ```
 
 ## Property-Based Testing
 
-Perfect for property-based testing with ExUnit:
+Use the returned generator with ExUnitProperties:
 
 ```elixir
 defmodule UserTest do
   use ExUnit.Case
   use ExUnitProperties
-  import Peri
 
-  defschema :user, %{
+  @schema %{
     name: {:required, :string},
-    age: {:integer, {:gte, 0, :lte, 120}},
+    age: {:integer, [gte: 0, lte: 120]},
     email: {:string, {:regex, ~r/@/}}
   }
 
-  property "user validation always succeeds for generated data" do
-    check all user_data <- Peri.generate(get_schema(:user)) do
-      assert {:ok, _} = Peri.validate(get_schema(:user), user_data)
-    end
-  end
+  property "generated user data passes validation" do
+    {:ok, generator} = Peri.generate(@schema)
 
-  property "age is always within bounds" do
-    check all %{age: age} <- Peri.generate(get_schema(:user)) do
-      assert age >= 0 and age <= 120
+    check all user_data <- generator do
+      assert {:ok, _} = Peri.validate(@schema, user_data)
     end
   end
 end
 ```
 
-## Complex Data Structures
+## Transforms
 
-Generate nested and complex data:
+Generation preserves the existing one-argument transform behavior when the
+transformed value is still valid input for the underlying schema. If the
+callback raises for a generated value or returns a value that does not satisfy
+the underlying schema, that sample remains the original valid input. MFA
+transforms use their value-plus-arguments arity when available. Root-aware
+two-argument function transforms, and MFA transforms that require a root value,
+generate the underlying input without calling the callback. Validation then
+applies the transform with the real root data; generation does not fabricate
+root data.
 
-```elixir
-defmodule ComplexSchema do
-  import Peri
+## Recursive Refs
 
-  defschema :address, %{
-    street: :string,
-    city: :string,
-    zip: {:string, {:regex, ~r/^\d{5}$/}}
-  }
+Ref generation is bounded to five expansions. At the depth limit, an optional
+recursive ref is represented as `nil`, which validation treats as absent. A
+schema whose recursive path is required at every level has no finite valid
+value; generation raises an `ArgumentError` rather than yielding an invalid
+sample. Add an optional base case to recursive schemas when finite sample
+generation is needed.
 
-  defschema :person, %{
-    name: {:required, :string},
-    addresses: {:list, get_schema(:address)},
-    preferences: {:map, :string, :boolean},
-    coordinates: {:tuple, [:float, :float]}
-  }
-end
+## Custom Generators (`gen:`)
 
-# Generates fully nested structures
-sample = Peri.generate(ComplexSchema.get_schema(:person)) |> Enum.take(1) |> hd()
-# %{
-#   name: "John",
-#   addresses: [
-#     %{street: "123 Main", city: "Boston", zip: "02101"},
-#     %{street: "456 Oak", city: "Salem", zip: "01970"}
-#   ],
-#   preferences: %{"dark_mode" => true, "notifications" => false},
-#   coordinates: {42.3601, -71.0589}
-# }
-```
-
-## Custom Generators
-
-For `:custom` types, provide your own generators:
-
-```elixir
-defmodule CustomSchema do
-  import Peri
-
-  defschema :product, %{
-    id: {:custom, &validate_uuid/1},
-    price: {:custom, &validate_price/1}
-  }
-
-  defp validate_uuid(uuid) when is_binary(uuid) do
-    # UUID validation logic
-    :ok
-  end
-
-  defp validate_price(price) when is_number(price) and price > 0, do: :ok
-  defp validate_price(_), do: {:error, "invalid price", []}
-end
-
-# Note: Custom generators need to be implemented separately
-# This is a limitation - custom types require manual generator setup
-```
-
-## Seeding Development Data
-
-Use for development database seeding:
-
-```elixir
-defmodule MyApp.Seeds do
-  import Peri
-
-  defschema :user_seed, %{
-    name: {:string, {:min, 3}},
-    email: {:string, {:regex, ~r/.+@.+\..+/}},
-    role: {:enum, [:admin, :user]},
-    active: {:boolean, {:default, true}}
-  }
-
-  def seed_users(count \\ 50) do
-    Peri.generate(get_schema(:user_seed))
-    |> Enum.take(count)
-    |> Enum.each(fn user_data ->
-      MyApp.Users.create_user(user_data)
-    end)
-  end
-end
-
-# Run in seeds.exs or IEx
-MyApp.Seeds.seed_users(100)
-```
-
-## API Testing
-
-Generate test data for API endpoints:
-
-```elixir
-defmodule MyAppWeb.UserControllerTest do
-  use MyAppWeb.ConnCase
-  use ExUnitProperties
-  import Peri
-
-  defschema :user_request, %{
-    name: {:required, :string},
-    email: {:required, {:string, {:regex, ~r/@/}}},
-    age: {:integer, {:gte, 18}}
-  }
-
-  property "POST /users accepts valid user data" do
-    check all user_params <- Peri.generate(get_schema(:user_request)) do
-      conn = post(build_conn(), "/users", user_params)
-      assert json_response(conn, 201)
-    end
-  end
-end
-```
-
-## Custom Generators (`gen:` opt)
-
-Constrained types fall back to rejection sampling, which can be slow when
-the accepting domain is narrow (e.g. `{:integer, gt: 1_000_000}` or a regex
-that few random strings satisfy). Provide a `gen:` opt that returns a
-`%StreamData{}` directly to skip rejection entirely.
+For supported `gen:` options, provide a function that returns a StreamData
+generator. Accepted forms are `{module, function, args}`, `{module, function}`
+for a zero-arity function, or a zero-arity function:
 
 ```elixir
 defmodule MyApp.Gens do
   def adult_age, do: StreamData.integer(18..120)
-  def email_with_prefix(prefix), do: StreamData.constant(prefix <> "@example.com")
+  def fixed_login, do: StreamData.constant("system")
 end
 
-%{
-  age:   {:integer, gte: 18, lte: 120, gen: {MyApp.Gens, :adult_age, []}},
-  login: {:required, :string, [gen: {MyApp.Gens, :fixed_login}]},
-  email: {:meta, :string,
-                 doc: "Login email",
-                 gen: {MyApp.Gens, :email_with_prefix, ["root"]}}
+schema = %{
+  age: {:integer, [gte: 18, lte: 120, gen: {MyApp.Gens, :adult_age, []}]},
+  login: {:required, :string, [gen: {MyApp.Gens, :fixed_login}]}
 }
-```
 
-Accepted callable forms: `{mod, fun, args}` (MFA), `{mod, fun}` (zero args),
-or a 0-arity function. Without a `gen:` opt, the generator chains
-`StreamData.filter/2` for each constraint — correct, but slow on tight
-domains.
+{:ok, generator} = Peri.generate(schema)
+Enum.take(generator, 5)
+```
 
 ## Limitations
 
-- **Custom Types**: Custom validation types need manual generator implementation
-- **Performance**: Large data generation may be slow for complex nested structures
-- **Dependencies**: Requires StreamData dependency for generation features
+- Regex and custom predicates remain rejection-filtered and can be inefficient
+  for narrow domains.
+- Required-only recursion has no finite base value and is rejected during
+  generation.
+- Generation requires the optional StreamData dependency.
 
-## Best Practices
-
-- Use generation primarily for testing and development seeding
-- Keep generated data size reasonable for performance
-- Combine with ExUnitProperties for comprehensive property-based testing
-- Use constraints to ensure realistic data generation
+Use generation primarily for tests and development data, and keep generated
+collection sizes reasonable.
