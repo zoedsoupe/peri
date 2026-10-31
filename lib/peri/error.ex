@@ -60,7 +60,7 @@ defmodule Peri.Error do
           errors: list(t()) | nil
         }
 
-  if Code.ensure_loaded?(Jason) and not Code.ensure_loaded?(JSON) do
+  if Code.ensure_loaded?(Jason) do
     @derive {Jason.Encoder, except: [:__exception__]}
   end
 
