@@ -974,8 +974,10 @@ defmodule Peri do
   defp validate_field(val, {:literal, literal}, _data, _opts) when val === literal, do: :ok
 
   defp validate_field(val, {:literal, literal}, _data, _opts) do
-    {:error, "expected literal value %{expected} but got %{actual}",
-     [expected: inspect(literal), actual: inspect(val)]}
+    error_with_code(:literal, "expected literal value %{expected} but got %{actual}",
+      expected: inspect(literal),
+      actual: inspect(val)
+    )
   end
 
   defp validate_field(val, {:meta, type, _meta_opts}, data, opts),
@@ -996,7 +998,9 @@ defmodule Peri do
   end
 
   defp validate_field(nil, {:required, type}, _data, _opts) do
-    {:error, "is required, expected type of %{expected}", expected: summarize(type)}
+    error_with_code(:required, "is required, expected type of %{expected}",
+      expected: summarize(type)
+    )
   end
 
   defp validate_field(_val, {:required, {type, {:default, default}}}, _data, _opts) do
@@ -1037,7 +1041,7 @@ defmodule Peri do
     if Regex.match?(regex, val) do
       :ok
     else
-      {:error, "should match the %{regex} pattern", [regex: regex]}
+      error_with_code(:regex, "should match the %{regex} pattern", regex: regex)
     end
   end
 
@@ -1045,7 +1049,7 @@ defmodule Peri do
     if val === eq do
       :ok
     else
-      {:error, "should be equal to literal %{literal}", [literal: eq]}
+      error_with_code(:eq, "should be equal to literal %{literal}", literal: eq)
     end
   end
 
@@ -1053,7 +1057,7 @@ defmodule Peri do
     if String.length(val) >= min do
       :ok
     else
-      {:error, "should have the minimum length of %{length}", [length: min]}
+      error_with_code(:min, "should have the minimum length of %{length}", length: min)
     end
   end
 
@@ -1061,7 +1065,7 @@ defmodule Peri do
     if String.length(val) <= max do
       :ok
     else
-      {:error, "should have the maximum length of %{length}", [length: max]}
+      error_with_code(:max, "should have the maximum length of %{length}", length: max)
     end
   end
 
@@ -1070,7 +1074,7 @@ defmodule Peri do
     if val == value do
       :ok
     else
-      {:error, "should be equal to %{value}", [value: value]}
+      error_with_code(:eq, "should be equal to %{value}", value: value)
     end
   end
 
@@ -1079,7 +1083,7 @@ defmodule Peri do
     if val != value do
       :ok
     else
-      {:error, "should be not equal to %{value}", [value: value]}
+      error_with_code(:neq, "should be not equal to %{value}", value: value)
     end
   end
 
@@ -1088,7 +1092,7 @@ defmodule Peri do
     if val > value do
       :ok
     else
-      {:error, "should be greater then %{value}", [value: value]}
+      error_with_code(:gt, "should be greater then %{value}", value: value)
     end
   end
 
@@ -1097,7 +1101,7 @@ defmodule Peri do
     if val >= value do
       :ok
     else
-      {:error, "should be greater then or equal to %{value}", [value: value]}
+      error_with_code(:gte, "should be greater then or equal to %{value}", value: value)
     end
   end
 
@@ -1106,7 +1110,7 @@ defmodule Peri do
     if val <= value do
       :ok
     else
-      {:error, "should be less then or equal to %{value}", [value: value]}
+      error_with_code(:lte, "should be less then or equal to %{value}", value: value)
     end
   end
 
@@ -1115,7 +1119,7 @@ defmodule Peri do
     if val < value do
       :ok
     else
-      {:error, "should be less then %{value}", [value: value]}
+      error_with_code(:lt, "should be less then %{value}", value: value)
     end
   end
 
@@ -1125,8 +1129,8 @@ defmodule Peri do
     template = "should be in the range of %{min}..%{max} (inclusive)"
 
     cond do
-      val < min -> {:error, template, info}
-      val > max -> {:error, template, info}
+      val < min -> error_with_code(:range, template, info)
+      val > max -> error_with_code(:range, template, info)
       true -> :ok
     end
   end
@@ -1136,7 +1140,7 @@ defmodule Peri do
     if multiple_of?(val, n) do
       :ok
     else
-      {:error, "should be a multiple of %{value}", [value: n]}
+      error_with_code(:multiple_of, "should be a multiple of %{value}", value: n)
     end
   end
 
@@ -1216,16 +1220,19 @@ defmodule Peri do
         validate_field(val, type, root, opts)
 
       {:error, [_ | _]} = error ->
-        error
+        tag_error_code(:dependent, error)
 
       {:error, _reason, _info} = error ->
-        error
+        tag_error_code(:dependent, error)
 
       other ->
         info = [actual: inspect(other)]
 
-        {:error, "expected dependent condition to return :ok or {:error, reason}, got %{actual}",
-         info}
+        error_with_code(
+          :dependent,
+          "expected dependent condition to return :ok or {:error, reason}, got %{actual}",
+          info
+        )
     end
   end
 
@@ -1315,44 +1322,50 @@ defmodule Peri do
   end
 
   defp validate_field(val, {:custom, callback}, _data, _opts) when is_function(callback, 1) do
-    callback.(val)
+    tag_error_code(:custom, callback.(val))
   end
 
   defp validate_field(val, {:custom, callback}, data, _opts) when is_function(callback, 2) do
-    callback.(val, maybe_get_root_data(data))
+    tag_error_code(:custom, callback.(val, maybe_get_root_data(data)))
   end
 
   defp validate_field(val, {:custom, {mod, fun}}, data, _opts)
        when is_atom(mod) and is_atom(fun) do
     root = maybe_get_root_data(data)
 
-    cond do
-      function_exported?(mod, fun, 1) ->
-        apply(mod, fun, [val])
+    result =
+      cond do
+        function_exported?(mod, fun, 1) ->
+          apply(mod, fun, [val])
 
-      function_exported?(mod, fun, 2) ->
-        apply(mod, fun, [val, root])
+        function_exported?(mod, fun, 2) ->
+          apply(mod, fun, [val, root])
 
-      true ->
-        {:error, "expected %{mod} to export %{fun}/1 or %{fun}/2", mod: mod, fun: fun}
-    end
+        true ->
+          {:error, "expected %{mod} to export %{fun}/1 or %{fun}/2", mod: mod, fun: fun}
+      end
+
+    tag_error_code(:custom, result)
   end
 
   defp validate_field(val, {:custom, {mod, fun, args}}, data, _opts)
        when is_atom(mod) and is_atom(fun) and is_list(args) do
     root = maybe_get_root_data(data)
 
-    cond do
-      function_exported?(mod, fun, length(args) + 1) ->
-        apply(mod, fun, [val | args])
+    result =
+      cond do
+        function_exported?(mod, fun, length(args) + 1) ->
+          apply(mod, fun, [val | args])
 
-      function_exported?(mod, fun, length(args) + 2) ->
-        apply(mod, fun, [val, root | args])
+        function_exported?(mod, fun, length(args) + 2) ->
+          apply(mod, fun, [val, root | args])
 
-      true ->
-        template = "expected %{mod} to export %{fun} with arity from %{base} to %{arity}"
-        {:error, template, mod: mod, fun: fun, base: length(args) + 1, arity: length(args) + 2}
-    end
+        true ->
+          template = "expected %{mod} to export %{fun} with arity from %{base} to %{arity}"
+          {:error, template, mod: mod, fun: fun, base: length(args) + 1, arity: length(args) + 2}
+      end
+
+    tag_error_code(:custom, result)
   end
 
   defp validate_field(val, {:either, {type_1, type_2}}, data, opts) do
@@ -1365,7 +1378,7 @@ defmodule Peri do
       ]
 
       template = "expected either %{first_type} or %{second_type}, got: %{actual}"
-      {:error, template, info}
+      error_with_code(:either, template, info)
     end
   end
 
@@ -1391,7 +1404,7 @@ defmodule Peri do
         info = [oneof: expected, actual: inspect(val)]
         template = "expected one of %{oneof}, got: %{actual}"
 
-        {:error, template, info}
+        error_with_code(:oneof, template, info)
     end)
   end
 
@@ -1401,7 +1414,7 @@ defmodule Peri do
     else
       info = [length: length(types), actual: length(Tuple.to_list(source))]
       template = "expected tuple of size %{length} received tuple with %{actual} length"
-      {:error, template, info}
+      error_with_code(:tuple_size, template, info)
     end
   end
 
@@ -1411,7 +1424,7 @@ defmodule Peri do
     else
       info = [choices: inspect(choices, pretty: true), actual: inspect(val)]
       template = "expected one of %{choices} received %{actual}"
-      {:error, template, info}
+      error_with_code(:enum, template, info)
     end
   end
 
@@ -1436,10 +1449,17 @@ defmodule Peri do
         end
 
       case validate_field(el, type, element_source, opts) do
-        :ok -> {:cont, {:ok, [el | vals], changed?}}
-        {:ok, val} -> {:cont, {:ok, [val | vals], true}}
-        {:error, errors} -> {:halt, {:error, errors}}
-        {:error, reason, info} -> {:halt, {:error, reason, info}}
+        :ok ->
+          {:cont, {:ok, [el | vals], changed?}}
+
+        {:ok, val} ->
+          {:cont, {:ok, [val | vals], true}}
+
+        {:error, errors} ->
+          {:halt, tag_list_error({:error, errors}, index)}
+
+        {:error, reason, info} ->
+          {:halt, tag_list_error({:error, reason, info}, index)}
       end
     end)
     |> then(fn
@@ -1453,9 +1473,8 @@ defmodule Peri do
        when is_list(data) and is_list(list_opts) do
     constraint_opts = Keyword.drop(list_opts, [:error, :gen])
 
-    with :ok <- check_list_constraints(data, constraint_opts) do
-      validate_field(data, {:list, type}, source, opts)
-    end
+    with :ok <- check_list_constraints(data, constraint_opts),
+         do: validate_field(data, {:list, type}, source, opts)
   end
 
   defp validate_field(data, {:map, type}, source, opts) when is_map(data) do
@@ -1527,7 +1546,11 @@ defmodule Peri do
 
   defp validate_field(data, schema, _data, _opts)
        when is_enumerable(data) and not is_enumerable(schema) do
-    {:error, "expected a nested schema but received schema: %{type}", [type: summarize(schema)]}
+    error_with_code(
+      :type,
+      "expected a nested schema but received schema: %{type}",
+      type: summarize(schema)
+    )
   end
 
   defp validate_field(data, schema, p, opts) when is_enumerable(data) do
@@ -1559,7 +1582,7 @@ defmodule Peri do
 
   defp validate_field(val, type, _data, _opts) do
     info = [expected: summarize(type), actual: inspect(val, pretty: true)]
-    {:error, "expected type of %{expected} received %{actual} value", info}
+    error_with_code(:type, "expected type of %{expected} received %{actual} value", info)
   end
 
   # Dependent callbacks must return {:ok, type} or {:error, reason, info}.
@@ -1573,21 +1596,31 @@ defmodule Peri do
 
       {:error, error} ->
         info = [schema: inspect(type), reason: inspect(error)]
-        {:error, "dependent callback returned invalid schema %{schema}: %{reason}", info}
+
+        error_with_code(
+          :dependent,
+          "dependent callback returned invalid schema %{schema}: %{reason}",
+          info
+        )
     end
   end
 
   defp validate_dependent({:error, reason, info}, _val, _parser, _opts)
        when is_binary(reason) and is_map(info),
-       do: {:error, reason, Map.to_list(info)}
+       do: error_with_code(:dependent, reason, Map.to_list(info))
 
   defp validate_dependent({:error, reason, info}, _val, _parser, _opts)
        when is_binary(reason) and is_list(info),
-       do: {:error, reason, info}
+       do: tag_error_code(:dependent, {:error, reason, info})
 
   defp validate_dependent(other, _val, _parser, _opts) do
     info = [actual: inspect(other)]
-    {:error, "expected dependent callback to return {:ok, type}, got %{actual}", info}
+
+    error_with_code(
+      :dependent,
+      "expected dependent callback to return {:ok, type}, got %{actual}",
+      info
+    )
   end
 
   defp validate_tuple_elements(source, types, data, opts) do
@@ -1602,11 +1635,11 @@ defmodule Peri do
 
         {:error, errors} when is_list(errors) ->
           info = [index: index]
-          {:halt, {:error, "tuple element %{index}: invalid", info}}
+          {:halt, error_with_code(:tuple_element, "tuple element %{index}: invalid", info)}
 
         {:error, reason, nested_info} ->
           info = [index: index] ++ nested_info
-          {:halt, {:error, "tuple element %{index}: #{reason}", info}}
+          {:halt, error_with_code(:tuple_element, "tuple element %{index}: #{reason}", info)}
       end
     end)
     |> then(fn
@@ -1762,7 +1795,7 @@ defmodule Peri do
 
   defp finish_coercion(:error, val, source, target, _data, _opts) do
     info = [value: inspect(val), source: inspect(source), target: summarize(target)]
-    {:error, "cannot coerce %{value} from %{source} to %{target}", info}
+    error_with_code(:coercion, "cannot coerce %{value} from %{source} to %{target}", info)
   end
 
   defp encode_coercion(val, source, target, coerce_opts, data, opts) do
@@ -1976,7 +2009,7 @@ defmodule Peri do
     if length(data) >= min do
       :ok
     else
-      {:error, "should have at least %{min} items", [min: min]}
+      error_with_code(:min, "should have at least %{min} items", min: min)
     end
   end
 
@@ -1984,7 +2017,7 @@ defmodule Peri do
     if length(data) <= max do
       :ok
     else
-      {:error, "should have at most %{max} items", [max: max]}
+      error_with_code(:max, "should have at most %{max} items", max: max)
     end
   end
 
@@ -1992,7 +2025,7 @@ defmodule Peri do
     if length(Enum.uniq(data)) == length(data) do
       :ok
     else
-      {:error, "should have unique items", []}
+      error_with_code(:unique, "should have unique items", [])
     end
   end
 
@@ -2063,12 +2096,75 @@ defmodule Peri do
 
   defp tag_error_override(other, _), do: other
 
+  defp error_with_code(code, reason, info) when is_map(info) do
+    error_with_code(code, reason, Map.to_list(info))
+  end
+
+  defp error_with_code(code, reason, info) when is_list(info) do
+    {:error, reason, Keyword.put(info, :__error_code__, code)}
+  end
+
+  defp tag_error_code(code, {:error, reason, info}) when is_map(info),
+    do: error_with_code(code, reason, info)
+
+  defp tag_error_code(code, {:error, reason, info}) when is_list(info),
+    do: error_with_code(code, reason, info)
+
+  defp tag_error_code(code, {:error, errors}) when is_list(errors) do
+    {:error, Enum.map(errors, &tag_error_code(code, &1))}
+  end
+
+  defp tag_error_code(code, %Peri.Error{errors: nested} = error) when is_list(nested) do
+    %{error | errors: Enum.map(nested, &tag_error_code(code, &1))}
+  end
+
+  defp tag_error_code(code, %Peri.Error{code: nil} = error), do: %{error | code: code}
+  defp tag_error_code(_code, %Peri.Error{} = error), do: error
+  defp tag_error_code(_code, other), do: other
+
+  defp tag_list_error({:error, reason, info}, index) when is_map(info),
+    do: tag_list_error({:error, reason, Map.to_list(info)}, index)
+
+  defp tag_list_error({:error, reason, info}, index) when is_list(info) do
+    path_prefix = Keyword.get(info, :__error_path_prefix__, [])
+
+    info =
+      info
+      |> Keyword.put_new(:index, index)
+      |> Keyword.put(:__error_path_prefix__, [index | path_prefix])
+
+    {:error, reason, info}
+  end
+
+  defp tag_list_error({:error, errors}, index) when is_list(errors) do
+    {:error, Enum.map(errors, &tag_list_error(&1, index))}
+  end
+
+  defp tag_list_error(%Peri.Error{} = error, index) do
+    error = Peri.Error.update_error_paths(error, [index])
+    add_list_index_content(error, index)
+  end
+
+  defp tag_list_error(other, _index), do: other
+
+  defp add_list_index_content(%Peri.Error{errors: nested} = error, index)
+       when is_list(nested) do
+    %{error | errors: Enum.map(nested, &add_list_index_content(&1, index))}
+  end
+
+  defp add_list_index_content(%Peri.Error{} = error, index) do
+    content = if is_map(error.content), do: error.content, else: %{}
+    %{error | content: Map.put_new(content, :index, index)}
+  end
+
   @ref_depth_limit 64
 
   defp resolve_ref({_mod, _name} = ref, _val, %Peri.Parser{ref_depth: d}, _opts)
        when d >= @ref_depth_limit do
-    {:error, "ref resolution exceeded depth limit of %{limit} at %{ref}",
-     limit: @ref_depth_limit, ref: inspect(ref)}
+    error_with_code(:ref, "ref resolution exceeded depth limit of %{limit} at %{ref}",
+      limit: @ref_depth_limit,
+      ref: inspect(ref)
+    )
   end
 
   defp resolve_ref({mod, name}, val, parser, opts) when is_atom(mod) and is_atom(name) do
@@ -2083,7 +2179,7 @@ defmodule Peri do
         validate_field(val, schema, Peri.Parser.bump_ref_depth(parser), opts)
 
       {:error, reason} ->
-        {:error, reason, ref: inspect({mod, name})}
+        error_with_code(:ref, reason, ref: inspect({mod, name}))
     end
   end
 
@@ -2113,12 +2209,17 @@ defmodule Peri do
     with {:ok, tag} <- fetch_dispatch_value(val, field),
          {:ok, branch} <- fetch_branch(branches, tag, field) do
       validate_field(val, branch, parser, opts)
+    else
+      {:error, reason, info} -> tag_error_code(:multi_dispatch, {:error, reason, info})
     end
   end
 
   defp dispatch_multi(val, _field, _branches, _parser, _opts) do
-    {:error, "expected a map or keyword list for :multi dispatch, got %{actual}",
-     actual: inspect(val)}
+    error_with_code(
+      :multi_dispatch,
+      "expected a map or keyword list for :multi dispatch, got %{actual}",
+      actual: inspect(val)
+    )
   end
 
   defp fetch_dispatch_value(val, field) when is_map(val) do
@@ -2330,7 +2431,7 @@ defmodule Peri do
         {:ok, schema}
 
       {:error, reason, info} ->
-        {:error, Peri.Error.new_single(reason, info)}
+        {:error, Peri.Error.new_single(reason, Keyword.put(info, :__error_code__, :type))}
     end
   end
 
@@ -2344,7 +2445,14 @@ defmodule Peri do
           reduce_errors(path, key, nested_errs, parser)
 
         {:error, reason, info} ->
-          err = Peri.Error.new_child(path, key, reason, [{:schema, schema} | info])
+          err =
+            Peri.Error.new_child(
+              path,
+              key,
+              reason,
+              [{:schema, schema}, {:__error_code__, :type} | info]
+            )
+
           Peri.Parser.add_error(parser, err)
       end
     end)
@@ -3020,7 +3128,9 @@ defmodule Peri do
         |> then(&Peri.Parser.add_error(parser, &1))
 
       {:error, reason, info}, parser ->
-        err = Peri.Error.new_child(path, key, reason, info)
+        err =
+          Peri.Error.new_child(path, key, reason, Keyword.put_new(info, :__error_code__, :type))
+
         Peri.Parser.add_error(parser, err)
     end)
   end

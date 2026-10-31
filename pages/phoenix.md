@@ -131,11 +131,12 @@ first and falling back to validated data.
 - **No changeset parity.** `Peri.Form` carries validated data, raw params,
   and errors; it does not track changes, touch state, or apply/rollback
   semantics. If you need those, use the Ecto integration instead.
-- **List element errors are not indexed.** Peri currently reports errors
-  inside list elements at the field level (e.g. `[:tags, :label]`) rather
-  than per index (`[:tags, 0, :label]`), so per-entry errors for
-  list-of-map schemas cannot be attributed to a specific form entry. Nested
-  map errors are fully supported.
+- **List errors use zero-based indices.** Scalar list failures are nested
+  under the invalid entry (for example, `scores: %{1 => [message]}`), and
+  list-of-map failures include the entry index in the path
+  (for example, `[:tags, 0, :label]`). Humanized form errors retain that
+  index, so list-of-map errors can be associated with the matching
+  `inputs_for` entry.
 - **Failed validation discards data.** When validation fails the form keeps
   only the raw params (which is what inputs re-render from), not a partially
   validated result.

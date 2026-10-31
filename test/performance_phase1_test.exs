@@ -68,13 +68,13 @@ defmodule Peri.PerformancePhase1Test do
         assert {:error, [%Error{path: [:accounts], errors: [account_error]}]} =
                  Peri.validate(schema, data, mode: mode)
 
-        assert %Error{path: [:accounts, :profile], errors: [profile_error]} = account_error
+        assert %Error{path: [:accounts, 0, :profile], errors: [profile_error]} = account_error
 
-        assert %Error{path: [:accounts, :profile, :contact], errors: [contact_error]} =
+        assert %Error{path: [:accounts, 0, :profile, :contact], errors: [contact_error]} =
                  profile_error
 
         assert %Error{
-                 path: [:accounts, :profile, :contact, :email],
+                 path: [:accounts, 0, :profile, :contact, :email],
                  message: "is required, expected type of :string did you mean :emial?",
                  content: %{did_you_mean: :emial}
                } = contact_error

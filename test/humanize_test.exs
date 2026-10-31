@@ -59,6 +59,14 @@ defmodule Peri.HumanizeTest do
       assert Peri.Error.humanize(errors) == %{addresses: %{0 => %{street: ["is too short"]}}}
     end
 
+    test "scalar list failures humanize under their zero-based index" do
+      assert {:error, errors} = Peri.validate(%{scores: {:list, :integer}}, %{scores: [1, "x"]})
+
+      assert Peri.Error.humanize(errors) == %{
+               scores: %{1 => ["expected type of :integer received \"x\" value"]}
+             }
+    end
+
     test "multiple leaf errors at the same path append messages" do
       assert {:error, errors} = constrained(%{name: "bbb"})
 

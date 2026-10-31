@@ -400,6 +400,42 @@ the target types returns the usual `{:error, errors}` tuple.
 
 ## Rendering Errors
 
+Each leaf `%Peri.Error{}` has an optional stable `code` atom, separate from
+its human-readable message. Translations and `:error` overrides only replace
+the message, so callers can branch on the code without parsing text. Built-in
+codes include `:required`, `:type`, `:literal`, `:enum`, `:either`, `:oneof`,
+`:tuple_size`, `:tuple_element`, `:coercion`, `:ref`, `:multi_dispatch`,
+`:dependent`, and `:custom`. Constraint failures use their constraint name:
+`:eq`, `:neq`, `:gt`, `:gte`, `:lt`, `:lte`, `:range`, `:multiple_of`,
+`:regex`, `:min`, `:max`, or `:unique`. Invalid schema definitions use the
+broader `:type` code. Parent errors may have `code: nil`; inspect their leaf
+errors for the specific failure.
+
+```elixir
+{:error, [error]} = Peri.validate(%{age: {:required, :integer}}, %{age: "old"})
+error.code
+# => :type
+
+translated = Peri.Error.traverse_errors([error], fn _ -> "invalid age" end)
+hd(translated).code
+# => :type
+```
+
+List element errors include the zero-based index in the leaf path and in
+`content[:index]`. This applies to top-level lists and lists nested under
+fields, including list elements containing nested schemas:
+
+```elixir
+{:error, [error]} = Peri.validate(%{xs: {:list, :integer}}, %{xs: [1, "x"]})
+error.path
+# => [:xs, 1]
+error.content[:index]
+# => 1
+```
+
+`Peri.Error.error_to_map/1` includes `:code` additively, and both native
+`JSON` and optional `Jason` encoding include the field.
+
 `Peri.Error.humanize/1` converts an error (or list of errors) into a
 nested, data-shaped map of messages, mirroring
 `Ecto.Changeset.traverse_errors/2` output. Integer path segments become

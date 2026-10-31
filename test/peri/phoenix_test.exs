@@ -86,6 +86,15 @@ defmodule Peri.PhoenixTest do
       assert form.source.data.age == 30
       assert Phoenix.HTML.Form.input_value(form, :age) == "30"
     end
+
+    test "scalar list failures are attributed to the invalid entry" do
+      form =
+        Peri.Phoenix.to_form(%{scores: {:list, :integer}}, %{"scores" => [1, "bad"]})
+
+      assert form.source.errors == %{
+               scores: %{1 => [{"expected type of :integer received \"bad\" value", []}]}
+             }
+    end
   end
 
   describe "nested forms (inputs_for)" do

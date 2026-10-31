@@ -208,7 +208,15 @@ defmodule Peri.CoerceTest do
     end
 
     test "reports errors for elements that cannot be coerced" do
-      assert {:error, [%Peri.Error{path: [:scores], message: message}]} =
+      assert {:error,
+              [
+                %Peri.Error{
+                  path: [:scores, 1],
+                  code: :coercion,
+                  content: %{index: 1},
+                  message: message
+                }
+              ]} =
                list_coerce(%{"scores" => ["1", "nope"]})
 
       assert message =~ "cannot coerce"
@@ -371,7 +379,15 @@ defmodule Peri.CoerceTest do
     test "enforces element constraints after coercion" do
       schema = %{scores: {:coerce, {:list, {:integer, gte: 2}}, split: ","}}
 
-      assert {:error, [%Peri.Error{path: [:scores], message: message}]} =
+      assert {:error,
+              [
+                %Peri.Error{
+                  path: [:scores, 1],
+                  code: :gte,
+                  content: %{index: 1},
+                  message: message
+                }
+              ]} =
                Peri.validate(schema, %{"scores" => "2,1"})
 
       assert message =~ "greater then or equal to 2"
@@ -380,7 +396,15 @@ defmodule Peri.CoerceTest do
     test "reports elements that cannot be coerced" do
       schema = %{scores: {:coerce, {:list, :integer}, split: ","}}
 
-      assert {:error, [%Peri.Error{path: [:scores], message: message}]} =
+      assert {:error,
+              [
+                %Peri.Error{
+                  path: [:scores, 1],
+                  code: :coercion,
+                  content: %{index: 1},
+                  message: message
+                }
+              ]} =
                Peri.validate(schema, %{"scores" => "1,nope"})
 
       assert message =~ "cannot coerce"

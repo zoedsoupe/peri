@@ -10,7 +10,17 @@ defmodule Peri.Error do
   - `:content` - Additional information about the error, such as expected and actual values.
   - `:path` - A list representing the path to the invalid data within the structure being validated.
   - `:key` - The specific key or field that caused the error.
+  - `:code` - A stable machine-readable atom identifying the validation failure. Built-in
+    errors use `:required`, `:type`, `:literal`, `:enum`, `:either`, `:oneof`,
+    `:tuple_size`, `:tuple_element`, `:coercion`, `:ref`, `:multi_dispatch`,
+    `:dependent`, or `:custom`. Constraint codes are `:eq`, `:neq`, `:gt`,
+    `:gte`, `:lt`, `:lte`, `:range`, `:multiple_of`, `:regex`, `:min`, `:max`,
+    and `:unique`. Parent and user-created errors may have `nil` code.
   - `:errors` - A list of nested `Peri.Error` structs for detailed information about nested validation errors.
+
+  List element failures include their zero-based index in both `path` and
+  `content[:index]`. For example, an invalid element in `xs: {:list, :integer}`
+  has a leaf path of `[:xs, index]`.
 
   ## Example
 
@@ -55,10 +65,38 @@ defmodule Peri.Error do
   @type t :: %__MODULE__{
           message: String.t(),
           content: keyword,
-          path: list(atom),
+          path: list(term) | nil,
           key: atom | nil,
+          code: code() | nil,
           errors: list(t()) | nil
         }
+
+  @type code ::
+          :required
+          | :type
+          | :literal
+          | :enum
+          | :either
+          | :oneof
+          | :tuple_size
+          | :tuple_element
+          | :coercion
+          | :ref
+          | :multi_dispatch
+          | :dependent
+          | :custom
+          | :eq
+          | :neq
+          | :gt
+          | :gte
+          | :lt
+          | :lte
+          | :range
+          | :multiple_of
+          | :regex
+          | :min
+          | :max
+          | :unique
 
   if Code.ensure_loaded?(Jason) do
     @derive {Jason.Encoder, except: [:__exception__]}
@@ -68,8 +106,8 @@ defmodule Peri.Error do
     @derive {JSON.Encoder, except: [:__exception__]}
   end
 
-  @derive {Inspect, only: ~w(path key content message errors)a}
-  defstruct [:path, :key, :content, :message, :errors, __exception__: true]
+  @derive {Inspect, only: ~w(path key code content message errors)a}
+  defstruct [:path, :key, :code, :content, :message, :errors, __exception__: true]
 
   @impl true
   def exception([%__MODULE__{} | _] = errors) when is_list(errors) do
@@ -133,15 +171,21 @@ defmodule Peri.Error do
       iex> Peri.Error.new_single("Invalid value for %{field}", [field: "age"])
       %Peri.Error{
         message: "Invalid value for age",
+        code: nil,
         content: %{field: "age"}
       }
   """
   def new_single(message, context) do
     {override, context} = pop_override(context)
+    {code, context} = pop_code(context)
+    {path_prefix, context} = pop_path_prefix(context)
     msg = format_error_message(message, context)
     content = Enum.into(context, %{})
 
-    apply_override(%__MODULE__{message: msg, content: content}, override)
+    path = if path_prefix == [], do: nil, else: path_prefix
+
+    %__MODULE__{message: msg, content: content, code: code, path: path}
+    |> apply_override(override)
   end
 
   @doc """
@@ -160,16 +204,25 @@ defmodule Peri.Error do
       %Peri.Error{
         path: [:user, :age],
         key: :age,
+        code: nil,
         message: "Invalid value for age",
         content: %{field: "age"}
       }
   """
   def new_child(path, key, message, context) do
     {override, context} = pop_override(context)
+    {code, context} = pop_code(context)
+    {path_prefix, context} = pop_path_prefix(context)
     msg = format_error_message(message, context)
     content = Enum.into(context, %{})
 
-    %__MODULE__{path: path ++ [key], key: key, message: msg, content: content}
+    %__MODULE__{
+      path: path ++ [key] ++ path_prefix,
+      key: key,
+      code: code,
+      message: msg,
+      content: content
+    }
     |> apply_override(override)
   end
 
@@ -178,6 +231,14 @@ defmodule Peri.Error do
     do: Keyword.pop(context, :__error_override__)
 
   def pop_override(context), do: {nil, context}
+
+  defp pop_code(context) when is_list(context), do: Keyword.pop(context, :__error_code__)
+  defp pop_code(context), do: {nil, context}
+
+  defp pop_path_prefix(context) when is_list(context),
+    do: Keyword.pop(context, :__error_path_prefix__, [])
+
+  defp pop_path_prefix(context), do: {[], context}
 
   defp apply_override(%__MODULE__{} = err, nil), do: err
 
@@ -223,12 +284,12 @@ defmodule Peri.Error do
   end
 
   def update_error_paths(%Peri.Error{path: path, errors: nil} = error, new_path) do
-    %{error | path: new_path ++ path}
+    %{error | path: new_path ++ List.wrap(path)}
   end
 
   def update_error_paths(%Peri.Error{path: path, errors: errors} = error, new_path) do
     updated_errors = Enum.map(errors, &update_error_paths(&1, new_path))
-    %{error | path: new_path ++ path, errors: updated_errors}
+    %{error | path: new_path ++ List.wrap(path), errors: updated_errors}
   end
 
   @doc """
@@ -409,7 +470,9 @@ defmodule Peri.Error do
     do: deep_merge(right, left)
 
   @doc """
-  Recursively converts a `Peri.Error` struct into a map.
+  Recursively converts a `Peri.Error` struct into a map. The result includes
+  `:code` additively alongside message, content, path, key, and nested errors.
+  Parent or user-created errors without a classified failure keep `code: nil`.
 
   ## Parameters
 
@@ -454,6 +517,7 @@ defmodule Peri.Error do
     %{
       path: err.path,
       key: err.key,
+      code: err.code,
       content: transform_content(err.content),
       message: err.message,
       errors: transform_errors(err.errors)
