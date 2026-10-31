@@ -510,10 +510,17 @@ defmodule Peri do
         spellcheck_schema: schema
       ] ++ Keyword.take(opts, [:direction])
 
-    data = filter_data(schema, data, field_opts)
     state = Peri.Parser.new(data, root_data: data)
 
-    case traverse_schema(schema, state, field_opts) do
+    state =
+      if strict_traversal?(schema, data, field_opts) do
+        traverse_schema_strict(schema, state, field_opts)
+      else
+        data = filter_data(schema, data, field_opts)
+        traverse_schema(schema, %{state | data: data}, field_opts)
+      end
+
+    case state do
       %Peri.Parser{errors: [], data: result} -> {:ok, result}
       %Peri.Parser{errors: errors} -> {:error, errors}
     end
@@ -707,6 +714,82 @@ defmodule Peri do
           Peri.Parser.add_error(parser, err)
       end
     end)
+  end
+
+  defp traverse_schema_strict(schema, %Peri.Parser{data: source_data} = state, opts, path \\ []) do
+    opts = Keyword.put(opts, :spellcheck_schema, schema)
+    parent_path_rev = Peri.Parser.path_rev(state)
+    result = %{}
+
+    {state, result} =
+      Enum.reduce(schema, {state, result}, fn {key, type}, {parser, result} ->
+        {exists?, value} = fetch_enumerable_value(source_data, key)
+        field_parser = Peri.Parser.push_field(parser, key, exists?, parent_path_rev)
+
+        case validate_field(value, type, field_parser, opts) do
+          :ok ->
+            {parser, put_strict_value(result, key, value, exists?)}
+
+          {:ok, value} ->
+            {parser, Map.put(result, key, value)}
+
+          {:error, [_ | _] = nested_errs} ->
+            {reduce_errors(path, key, nested_errs, parser), result}
+
+          {:error, reason, info} ->
+            {reason, info} =
+              maybe_suggest_key(reason, info, key, type, exists?, field_parser, opts)
+
+            err = Peri.Error.new_child(path, key, reason, info)
+            {Peri.Parser.add_error(parser, err), result}
+        end
+      end)
+
+    %{state | data: result}
+  end
+
+  defp put_strict_value(result, key, value, true), do: Map.put(result, key, value)
+  defp put_strict_value(result, _key, _value, false), do: result
+
+  defp fetch_enumerable_value(data, key) when is_struct(data) do
+    case Map.fetch(data, key) do
+      {:ok, value} -> {true, value}
+      :error -> {false, nil}
+    end
+  end
+
+  defp fetch_enumerable_value(data, key) when is_map(data) and is_binary(key) do
+    case Map.fetch(data, key) do
+      {:ok, value} -> {true, value}
+      :error -> {false, nil}
+    end
+  end
+
+  defp fetch_enumerable_value(data, key) when is_map(data) and is_atom(key) do
+    case Map.fetch(data, key) do
+      {:ok, value} ->
+        {true, value}
+
+      :error ->
+        case Map.fetch(data, Atom.to_string(key)) do
+          {:ok, value} -> {true, value}
+          :error -> {false, nil}
+        end
+    end
+  end
+
+  defp fetch_enumerable_value(data, key) when is_list(data) do
+    case Keyword.fetch(data, key) do
+      {:ok, value} -> {true, value}
+      :error -> {false, nil}
+    end
+  end
+
+  defp strict_traversal?(schema, data, opts) do
+    # Keyword schemas can repeat keys, and the existing traversal applies earlier
+    # updates before later duplicate definitions.
+    Keyword.get(opts, :mode, :strict) == :strict and not is_struct(data) and
+      not is_list(schema)
   end
 
   # When a required field is missing, suggest a typo'd sibling key present in
@@ -1420,18 +1503,25 @@ defmodule Peri do
   defp validate_field(data, schema, p, opts) when is_enumerable(data) do
     root = maybe_get_root_data(p)
     current = maybe_get_current_data(p)
-    filtered_data = filter_data(schema, data, opts)
     opts = Keyword.put(opts, :spellcheck_schema, schema)
 
     new_parser = %Peri.Parser{
-      data: filtered_data,
+      data: data,
       root_data: root,
       current_data: current,
       path: Peri.Parser.internal_path(parser_path_rev(p)),
       ref_depth: parser_ref_depth(p)
     }
 
-    case traverse_schema(schema, new_parser, opts) do
+    parser =
+      if strict_traversal?(schema, data, opts) do
+        traverse_schema_strict(schema, new_parser, opts)
+      else
+        filtered_data = filter_data(schema, data, opts)
+        traverse_schema(schema, %{new_parser | data: filtered_data}, opts)
+      end
+
+    case parser do
       %Peri.Parser{errors: []} = parser -> {:ok, parser.data}
       %Peri.Parser{errors: errors} -> {:error, errors}
     end
