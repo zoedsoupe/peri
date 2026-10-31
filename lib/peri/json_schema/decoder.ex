@@ -5,6 +5,11 @@ defmodule Peri.JSONSchema.Decoder do
   Returns `{:ok, schema}` on success or `{:error, errors}` if the resulting
   Peri schema fails `Peri.validate_schema/1`.
 
+  Recursive local references and `allOf` intersections that Peri cannot
+  represent return `{:error, reason}` instead of being expanded or merged
+  into a schema with different validation semantics. `oneOf` is represented
+  as Peri's first-success union and therefore behaves like `anyOf`.
+
   Prefer `Peri.from_json_schema/1` as the public entry point.
   """
 
@@ -12,21 +17,31 @@ defmodule Peri.JSONSchema.Decoder do
         when opt: {:keys, :strings | :atoms | :atoms!}
   def decode(json_schema, opts) when is_map(json_schema) do
     keys = Keyword.get(opts, :keys, :strings)
-    Process.put(:peri_json_schema_defs_in, Map.get(json_schema, "$defs", %{}))
+
+    definitions =
+      Map.get(json_schema, "definitions", %{})
+      |> Map.merge(Map.get(json_schema, "$defs", %{}))
+
+    Process.put(:peri_json_schema_defs_in, definitions)
+    Process.put(:peri_json_schema_refs_in, [])
 
     try do
       schema = convert_schema(json_schema, keys)
       Peri.validate_schema(schema)
+    catch
+      {:peri_json_schema_error, reason} -> {:error, reason}
     after
       Process.delete(:peri_json_schema_defs_in)
+      Process.delete(:peri_json_schema_refs_in)
     end
   end
 
-  defp convert_schema(%{"enum" => values, "type" => type}, keys_opts)
+  defp convert_schema(%{"enum" => values, "type" => type} = schema, keys_opts)
        when is_list(values) and is_binary(type) do
-    case decode_primitive(type, keys_opts) do
-      nil -> {:enum, values}
-      base -> {:enum, values, type: base}
+    case type do
+      "integer" -> {:enum, numeric_enum_values(values), type: integer_schema(schema)}
+      "number" -> {:enum, numeric_enum_values(values), type: number_schema(schema)}
+      _ -> decode_enum(values, type, keys_opts)
     end
   end
 
@@ -53,13 +68,16 @@ defmodule Peri.JSONSchema.Decoder do
     end
   end
 
-  defp convert_schema(%{"$ref" => "#/$defs/" <> name}, keys_opt) do
-    defs = Process.get(:peri_json_schema_defs_in, %{})
+  defp convert_schema(%{"$ref" => ref}, keys_opt)
+       when is_binary(ref) do
+    name =
+      case ref do
+        "#/$defs/" <> name -> name
+        "#/definitions/" <> name -> name
+        _ -> nil
+      end
 
-    case Map.fetch(defs, name) do
-      {:ok, def_schema} -> convert_schema(def_schema, keys_opt)
-      :error -> :any
-    end
+    if is_nil(name), do: :any, else: resolve_ref(name, keys_opt)
   end
 
   defp convert_schema(%{"const" => value}, _), do: {:literal, value}
@@ -86,17 +104,50 @@ defmodule Peri.JSONSchema.Decoder do
   defp convert_schema(%{"allOf" => schemas}, keys_opt) when is_list(schemas) do
     Enum.reduce(schemas, %{}, fn schema, acc ->
       case convert_schema(schema, keys_opt) do
-        map when is_map(map) -> Map.merge(acc, map)
-        _other -> acc
+        map when is_map(map) -> merge_all_of!(acc, map)
+        other -> throw({:peri_json_schema_error, {:unsupported_all_of_branch, other}})
       end
     end)
   end
+
+  defp convert_schema(%{"additionalProperties" => false}, _keys_opt), do: %{}
 
   defp convert_schema(%{"additionalProperties" => add_props}, keys_opt) when is_map(add_props) do
     {:map, convert_schema(add_props, keys_opt)}
   end
 
+  defp convert_schema(%{"additionalProperties" => true}, _keys_opt), do: {:map, :any}
+
   defp convert_schema(_, _), do: :any
+
+  defp decode_enum(values, type, keys_opts) do
+    case decode_primitive(type, keys_opts) do
+      nil -> {:enum, values}
+      base -> {:enum, values, type: base}
+    end
+  end
+
+  defp resolve_ref(name, keys_opt) do
+    defs = Process.get(:peri_json_schema_defs_in, %{})
+    refs = Process.get(:peri_json_schema_refs_in, [])
+
+    case {name in refs, Map.fetch(defs, name)} do
+      {true, _} ->
+        throw({:peri_json_schema_error, {:recursive_ref, name}})
+
+      {false, {:ok, def_schema}} ->
+        Process.put(:peri_json_schema_refs_in, [name | refs])
+
+        try do
+          convert_schema(def_schema, keys_opt)
+        after
+          Process.put(:peri_json_schema_refs_in, refs)
+        end
+
+      {false, :error} ->
+        :any
+    end
+  end
 
   defp decode_primitive("string", _), do: :string
   defp decode_primitive("integer", _), do: :integer
@@ -107,16 +158,32 @@ defmodule Peri.JSONSchema.Decoder do
   defp convert_object(%{"properties" => properties} = schema, keys_opt) do
     required = Map.get(schema, "required", [])
 
-    Map.new(properties, fn {key, prop_schema} ->
-      peri_type = convert_schema(prop_schema, keys_opt)
-      final = if key in required, do: {:required, peri_type}, else: peri_type
-      {safe_key(key, keys_opt), final}
-    end)
+    properties =
+      Map.new(properties, fn {key, prop_schema} ->
+        peri_type = convert_schema(prop_schema, keys_opt)
+        final = if key in required, do: {:required, peri_type}, else: peri_type
+        {safe_key(key, keys_opt), final}
+      end)
+
+    case Map.fetch(schema, "additionalProperties") do
+      {:ok, add_props} when is_map(add_props) ->
+        {:schema, properties, {:additional_keys, convert_schema(add_props, keys_opt)}}
+
+      {:ok, true} ->
+        {:schema, properties, {:additional_keys, :any}}
+
+      _ ->
+        properties
+    end
   end
 
   defp convert_object(%{"additionalProperties" => add_props}, keys_opt) when is_map(add_props) do
     {:map, convert_schema(add_props, keys_opt)}
   end
+
+  defp convert_object(%{"additionalProperties" => true}, _keys_opt), do: {:map, :any}
+
+  defp convert_object(%{"additionalProperties" => false}, _keys_opt), do: %{}
 
   defp convert_object(_, _), do: %{}
 
@@ -191,11 +258,61 @@ defmodule Peri.JSONSchema.Decoder do
     end)
   end
 
-  defp convert_number(schema),
-    do: {:either, {apply_numeric(:integer, schema), apply_numeric(:float, schema)}}
+  defp convert_number(schema), do: number_schema(schema)
 
-  defp convert_integer(schema),
-    do: {:either, {apply_numeric(:integer, schema), apply_numeric(:float, schema)}}
+  defp convert_integer(schema), do: integer_schema(schema)
+
+  defp number_schema(schema) do
+    {:either, {apply_numeric(:integer, schema), apply_numeric(:float, schema)}}
+  end
+
+  defp integer_schema(schema) do
+    integer = apply_numeric(:integer, schema)
+    integral_float = {:custom, {__MODULE__, :validate_integral_float, [schema]}}
+    {:either, {integer, integral_float}}
+  end
+
+  @doc false
+  def validate_integral_float(value, schema) when is_float(value) do
+    if value == trunc(value) do
+      Peri.validate(apply_numeric(:float, schema), value)
+    else
+      {:error, "expected an integer-valued number"}
+    end
+  end
+
+  def validate_integral_float(_value, _schema), do: {:error, "expected an integer-valued number"}
+
+  defp merge_all_of!(left, right) do
+    Enum.reduce(right, left, fn {key, value}, acc ->
+      case Map.fetch(acc, key) do
+        :error ->
+          Map.put(acc, key, value)
+
+        {:ok, ^value} ->
+          acc
+
+        {:ok, existing} ->
+          throw({:peri_json_schema_error, {:all_of_conflict, key, existing, value}})
+      end
+    end)
+  end
+
+  defp numeric_enum_values(values) do
+    values
+    |> Enum.flat_map(fn
+      value when is_integer(value) -> [value | float_equivalent(value)]
+      value when is_float(value) and value == trunc(value) -> [value, trunc(value)]
+      value -> [value]
+    end)
+    |> Enum.uniq()
+  end
+
+  defp float_equivalent(value) do
+    [value * 1.0]
+  rescue
+    ArithmeticError -> []
+  end
 
   defp apply_numeric(base, schema) do
     base

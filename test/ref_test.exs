@@ -153,9 +153,10 @@ defmodule Peri.RefTest do
       schema = %{root: {:ref, {Other, :node}}}
       json = Peri.to_json_schema(schema)
 
-      assert json["properties"]["root"] == %{"$ref" => "#/$defs/Peri_RefTest_Other_node"}
+      assert json["properties"]["root"] == %{"$ref" => "#/definitions/Peri_RefTest_Other_node"}
+      assert json["definitions"] == json["$defs"]
       assert is_map(json["$defs"])
-      def_body = json["$defs"]["Peri_RefTest_Other_node"]
+      def_body = json["definitions"]["Peri_RefTest_Other_node"]
       assert def_body["type"] == "object"
       assert def_body["required"] == ["id"]
     end

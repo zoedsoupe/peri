@@ -120,35 +120,63 @@ defmodule Peri.ListConstraintsTest do
       assert opts[:unique] == true
     end
 
-    test "decodes multipleOf for integer (widens to either int|float per spec)" do
+    test "decodes multipleOf for integer values and integral floats only" do
       json = %{"type" => "integer", "multipleOf" => 5}
 
-      assert {:ok, {:either, {{:integer, {:multiple_of, 5}}, {:float, {:multiple_of, 5}}}}} =
+      integral_float =
+        {:custom, {Peri.JSONSchema.Decoder, :validate_integral_float, [json]}}
+
+      assert {:ok, {:either, {{:integer, {:multiple_of, 5}}, ^integral_float}} = schema} =
                Peri.from_json_schema(json)
+
+      assert {:ok, 10} = Peri.validate(schema, 10)
+      assert {:ok, 10.0} = Peri.validate(schema, 10.0)
+      assert {:error, _} = Peri.validate(schema, 7)
+      assert {:error, _} = Peri.validate(schema, 5.5)
     end
 
-    test "plain array decodes integer items as either int|float" do
+    test "plain array integer items accept integers and integral floats" do
       json = %{"type" => "array", "items" => %{"type" => "integer"}}
-      assert {:ok, {:list, {:either, {:integer, :float}}}} = Peri.from_json_schema(json)
+      assert {:ok, {:list, item_schema}} = Peri.from_json_schema(json)
+      assert item_schema == decoded_integer_schema()
+      assert {:ok, [1, 2.0]} = Peri.validate({:list, item_schema}, [1, 2.0])
+      assert {:error, _} = Peri.validate({:list, item_schema}, [1, 2.5])
     end
   end
 
   describe "roundtrip" do
-    test "list constraints roundtrip (numeric items widen to either)" do
+    test "list constraints roundtrip with integer item semantics" do
       peri = {:list, :integer, [min: 1, max: 3, unique: true]}
       json = Peri.to_json_schema(peri)
 
-      assert {:ok, {:list, {:either, {:integer, :float}}, [min: 1, max: 3, unique: true]}} =
+      assert {:ok, {:list, item_schema, [min: 1, max: 3, unique: true]} = decoded} =
                Peri.from_json_schema(json)
+
+      assert item_schema == decoded_integer_schema()
+      assert {:ok, [1, 2.0]} = Peri.validate(decoded, [1, 2.0])
+      assert {:error, _} = Peri.validate(decoded, [1, 2.5])
     end
 
-    test "multiple_of roundtrip widens to either int|float" do
+    test "multiple_of roundtrip preserves integer-valued float semantics" do
       peri = {:integer, {:multiple_of, 5}}
       json = Peri.to_json_schema(peri)
 
-      assert {:ok, {:either, {{:integer, {:multiple_of, 5}}, {:float, {:multiple_of, 5}}}}} =
-               Peri.from_json_schema(json)
+      assert {:ok, schema} = Peri.from_json_schema(json)
+      assert schema == decoded_integer_schema(%{"type" => "integer", "multipleOf" => 5})
+      assert {:ok, 10.0} = Peri.validate(schema, 10.0)
+      assert {:error, _} = Peri.validate(schema, 10.5)
     end
+  end
+
+  defp decoded_integer_schema(json_schema \\ %{"type" => "integer"}) do
+    integer_type =
+      case Map.fetch(json_schema, "multipleOf") do
+        {:ok, divisor} -> {:integer, {:multiple_of, divisor}}
+        :error -> :integer
+      end
+
+    {:either,
+     {integer_type, {:custom, {Peri.JSONSchema.Decoder, :validate_integral_float, [json_schema]}}}}
   end
 
   if Code.ensure_loaded?(StreamData) do

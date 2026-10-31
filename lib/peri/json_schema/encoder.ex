@@ -2,6 +2,9 @@ defmodule Peri.JSONSchema.Encoder do
   @moduledoc """
   Encodes a Peri schema definition into a JSON Schema (Draft 7) map.
 
+  References use Draft 7 `definitions` pointers. A matching `$defs` alias is
+  emitted for compatibility with schemas produced by earlier Peri versions.
+
   Field-level metadata attached via `{:meta, type, opts}` is read during
   encoding and surfaced as JSON Schema annotation/format keywords. See
   `@meta_keys` for the recognised vocabulary; unknown keys are dropped.
@@ -17,6 +20,11 @@ defmodule Peri.JSONSchema.Encoder do
   output. Accepts any subset of the meta vocabulary plus `:default`. Useful
   when emitting consumer-facing JSON Schema where `default` values are
   validation-only and should not be exposed.
+
+  Top-level keyword-list schemas are encoded as objects. Required/coercion
+  options and named-schema annotations are Peri-only and omitted; coercion
+  wrappers encode their target. `:atom` and `:atom!` both encode as strings.
+  Refs use Draft 7 `definitions` pointers and include a `$defs` alias.
 
       Peri.to_json_schema(schema, exclude_meta_keys: [:default])
 
@@ -67,7 +75,9 @@ defmodule Peri.JSONSchema.Encoder do
     if map_size(defs) == 0 do
       result
     else
-      Map.put(result, "$defs", defs)
+      result
+      |> Map.put("definitions", defs)
+      |> Map.put("$defs", defs)
     end
   end
 
@@ -107,6 +117,7 @@ defmodule Peri.JSONSchema.Encoder do
   end
 
   defp convert({:required, type}, opts), do: convert(type, opts)
+  defp convert({:required, type, _required_opts}, opts), do: convert(type, opts)
 
   defp convert({type, {:default, default}}, opts) do
     base = convert(type, opts)
@@ -121,6 +132,7 @@ defmodule Peri.JSONSchema.Encoder do
   defp convert(:float, _), do: %{"type" => "number"}
   defp convert(:boolean, _), do: %{"type" => "boolean"}
   defp convert(:atom, _), do: %{"type" => "string"}
+  defp convert(:atom!, _), do: %{"type" => "string"}
   defp convert(:any, _), do: %{}
   defp convert(:map, _), do: %{"type" => "object"}
   defp convert(nil, _), do: %{"type" => "null"}
@@ -132,7 +144,9 @@ defmodule Peri.JSONSchema.Encoder do
   defp convert(:duration, _), do: %{"type" => "string", "format" => "duration"}
 
   defp convert({:literal, value}, _), do: %{"const" => value}
-  defp convert({:enum, values}, _) when is_list(values), do: %{"enum" => values}
+
+  defp convert({:enum, values}, _) when is_list(values),
+    do: %{"enum" => json_enum_values(values)}
 
   defp convert({:enum, values, enum_opts}, encoder_opts)
        when is_list(values) and is_list(enum_opts) do
@@ -142,7 +156,7 @@ defmodule Peri.JSONSchema.Encoder do
         {:ok, type} -> convert(type, encoder_opts)
       end
 
-    Map.put(base, "enum", values)
+    Map.put(base, "enum", json_enum_values(values))
   end
 
   defp convert({:string, {:regex, %Regex{source: pattern}}}, _),
@@ -225,8 +239,27 @@ defmodule Peri.JSONSchema.Encoder do
     }
   end
 
-  defp convert({:either, {a, b}}, opts) do
-    %{"oneOf" => [convert(a, opts), convert(b, opts)]}
+  defp convert(
+         {:either,
+          {integer_schema,
+           {:custom, {Peri.JSONSchema.Decoder, :validate_integral_float, [_numeric_schema]}}}},
+         opts
+       ) do
+    if integer_numeric_schema?(integer_schema) do
+      convert(integer_schema, opts)
+    else
+      unsupported({:either, {integer_schema, :integral_float}}, "unknown numeric schema", opts)
+    end
+  end
+
+  defp convert({:either, {integer_schema, float_schema}}, opts) do
+    with {:ok, integer_opts} <- numeric_options(integer_schema, :integer),
+         {:ok, float_opts} <- numeric_options(float_schema, :float),
+         true <- integer_opts == float_opts do
+      encode_numeric(:float, float_opts, opts)
+    else
+      _ -> %{"oneOf" => [convert(integer_schema, opts), convert(float_schema, opts)]}
+    end
   end
 
   defp convert({:oneof, types}, opts) when is_list(types) do
@@ -234,6 +267,9 @@ defmodule Peri.JSONSchema.Encoder do
   end
 
   defp convert({:schema, type}, opts), do: convert(type, opts)
+
+  defp convert({:schema, type, schema_opts}, opts) when is_list(schema_opts),
+    do: convert(type, opts)
 
   defp convert({:schema, type, {:additional_keys, value_type}}, opts) when is_map(type) do
     type
@@ -244,6 +280,11 @@ defmodule Peri.JSONSchema.Encoder do
   defp convert({type, {:transform, _}}, opts), do: convert(type, opts)
 
   defp convert({type, {:encode, _}}, opts), do: convert(type, opts)
+
+  defp convert({:coerce, target}, opts), do: convert(target, opts)
+
+  defp convert({:coerce, target, coerce_opts}, opts) when is_list(coerce_opts),
+    do: convert(target, opts)
 
   defp convert({:coerce, _source, target}, opts), do: convert(target, opts)
 
@@ -272,7 +313,7 @@ defmodule Peri.JSONSchema.Encoder do
   defp convert({:ref, {mod, name}}, opts) when is_atom(mod) and is_atom(name) do
     def_key = ref_def_name(mod, name)
     register_def(def_key, mod, name, opts)
-    %{"$ref" => "#/$defs/#{def_key}"}
+    %{"$ref" => "#/definitions/#{def_key}"}
   end
 
   defp convert({:custom, _} = node, opts), do: unsupported(node, "custom validator", opts)
@@ -288,6 +329,12 @@ defmodule Peri.JSONSchema.Encoder do
 
   defp convert(schema, opts) when is_map(schema), do: encode_object(schema, opts)
 
+  defp convert(schema, opts) when is_list(schema) do
+    if Keyword.keyword?(schema),
+      do: encode_object(Map.new(schema), opts),
+      else: unsupported(schema, "unknown type", opts)
+  end
+
   defp convert(other, opts), do: unsupported(other, "unknown type", opts)
 
   defp unsupported(type, reason, opts) do
@@ -299,6 +346,33 @@ defmodule Peri.JSONSchema.Encoder do
 
   defp numeric_base(:integer), do: %{"type" => "integer"}
   defp numeric_base(:float), do: %{"type" => "number"}
+
+  defp integer_numeric_schema?(:integer), do: true
+  defp integer_numeric_schema?({:integer, opts}) when is_tuple(opts) or is_list(opts), do: true
+  defp integer_numeric_schema?(_), do: false
+
+  defp numeric_options(:integer, :integer), do: {:ok, []}
+  defp numeric_options(:float, :float), do: {:ok, []}
+
+  defp numeric_options({type, opts}, type)
+       when type in [:integer, :float] and (is_tuple(opts) or is_list(opts)),
+       do: {:ok, List.wrap(opts)}
+
+  defp numeric_options(_, _), do: :error
+
+  defp encode_numeric(type, numeric_opts, encoder_opts) do
+    Enum.reduce(numeric_opts, numeric_base(type), fn option, acc ->
+      Map.merge(acc, convert({type, option}, encoder_opts))
+    end)
+  end
+
+  defp json_enum_values(values) do
+    Enum.reduce(values, [], fn value, acc ->
+      if is_number(value) and Enum.any?(acc, &(is_number(&1) and &1 == value)),
+        do: acc,
+        else: acc ++ [value]
+    end)
+  end
 
   defp ref_def_name(nil, name), do: Atom.to_string(name)
 
@@ -350,6 +424,7 @@ defmodule Peri.JSONSchema.Encoder do
   end
 
   defp required?({:required, _}), do: true
+  defp required?({:required, _, _}), do: true
   defp required?({:meta, type, _}), do: required?(type)
   defp required?(_), do: false
 end
