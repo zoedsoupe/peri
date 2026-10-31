@@ -423,7 +423,8 @@ defmodule Peri do
     This function validates the schema first, and if the schema is valid, it uses the
     `Peri.Generatable.gen/1` function to generate data according to the schema.
 
-    Note that this function returns a `Stream`, so you traverse easily the data generations.
+    Returns `{:ok, generator}` for a valid schema. The generator is an
+    `Enumerable` that can be traversed to produce sample data.
 
     ## Parameters
 
@@ -431,7 +432,7 @@ defmodule Peri do
 
     ## Returns
 
-      - `{:ok, stream}` if the data is successfully generated.
+      - `{:ok, generator}` if the data is successfully generated.
       - `{:error, errors}` if there are validation errors in the schema.
 
     ## Examples

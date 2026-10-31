@@ -253,11 +253,20 @@ defmodule OrderSchema do
 end
 ```
 
-## Callback Arities
+## Callback Context
 
-### 1-Arity Callbacks (Root Data)
+Callback arguments depend on the directive. `:cond` and dynamic
+`{:dependent, callback}` callbacks receive the root data in their one-arity
+form; their two-arity form receives the current value or element and the root
+data. The field-dependency form
+`{:dependent, field, condition, type}` instead calls `condition` with the
+current value and the dependent field's value. Custom validators receive the
+current value, and their two-arity form adds the original root input. See
+[Custom Validation](#custom-validation) for those contracts.
 
-Receives the entire root data structure:
+### Conditional callback
+
+The one-arity `:cond` callback receives the entire root data structure:
 
 ```elixir
 %{
@@ -268,7 +277,7 @@ Receives the entire root data structure:
 }
 ```
 
-### 2-Arity Callbacks (Current + Root)
+### Two-arity dependent callback (Current + Root)
 
 Receives current context and root data - useful for lists:
 
