@@ -37,7 +37,13 @@ defmodule Peri.JSONSchema.Encoder do
         ]
 
   defmodule UnsupportedTypeError do
-    @moduledoc false
+    @moduledoc """
+    Raised when JSON Schema encoding uses `on_unsupported: :raise` and encounters
+    a Peri schema node that cannot be represented statically.
+
+    The exception's `:type` field contains the unsupported node and `:reason`
+    describes why it could not be encoded.
+    """
     defexception [:type, :reason]
 
     @impl true
