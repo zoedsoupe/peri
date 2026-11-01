@@ -2,6 +2,46 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.12.0](https://github.com/zoedsoupe/peri/compare/v0.11.3...v0.12.0) (2026-11-01)
+
+
+### Features
+
+* add structured validation error codes ([19603c9](https://github.com/zoedsoupe/peri/commit/19603c98a5e8236aaefe2500e4f6e98d109e2645))
+* complete schema data generation ([d394734](https://github.com/zoedsoupe/peri/commit/d3947344775c80524bcb0d8e3a914be405021118))
+* support root-aware custom validators ([3fad129](https://github.com/zoedsoupe/peri/commit/3fad129c5e4da01be56c239a3f1d4effdd374329))
+
+
+### Bug Fixes
+
+* align Ecto validation with core schemas ([92bc40d](https://github.com/zoedsoupe/peri/commit/92bc40db696f104d1a81e07bebdaca4a38ee23c1))
+* ceil_div/1 only exists on elixir 1.20 ([1bdc583](https://github.com/zoedsoupe/peri/commit/1bdc5835d1a8f780182c9aa6ffdd65243d4452d8))
+* derive Jason encoder with native JSON ([620819f](https://github.com/zoedsoupe/peri/commit/620819f2da93fc78dd9ab460dc086a199c338f32))
+* generate data for schema wrappers ([6ac3ade](https://github.com/zoedsoupe/peri/commit/6ac3aded8fe610e6a1f08ec0c6e6a0872e6eedf7))
+* handle core validation edge cases ([e71a84f](https://github.com/zoedsoupe/peri/commit/e71a84fe29726a22cbc340bbe283e63d462f1d94))
+* preserve JSON Schema validation semantics ([bc3748e](https://github.com/zoedsoupe/peri/commit/bc3748eb94ab21c370e18471be6c0675a6b926fb))
+
+
+### Performance Improvements
+
+* avoid repeated validation and spellcheck work ([82c2bdd](https://github.com/zoedsoupe/peri/commit/82c2bddbc751323c2edaf44efd50ff7172f6a577))
+* fuse strict filtering with validation ([03cadc9](https://github.com/zoedsoupe/peri/commit/03cadc9afd01c15bde7c85f40298edc1a0043c1a))
+
+
+### Documentation
+
+* document unsupported JSON Schema errors ([949f927](https://github.com/zoedsoupe/peri/commit/949f927a8e4f2f102afc6238009a59166fa21c8e))
+
+
+### Tests
+
+* add cross-adapter conformance coverage ([6ee7b72](https://github.com/zoedsoupe/peri/commit/6ee7b7202fffc3f188f89506fa1c602342b4704c))
+
+
+### Continuous Integration
+
+* update elixir versions, drop elixir 1.17 ([6b80fd5](https://github.com/zoedsoupe/peri/commit/6b80fd5766663ccad691dad967f1b581e09c29f9))
+
 ## [0.11.3](https://github.com/zoedsoupe/peri/compare/v0.11.2...v0.11.3) (2026-10-01)
 
 ### Bug Fixes
