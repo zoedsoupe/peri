@@ -8,7 +8,7 @@ defmodule Peri.MixProject do
     [
       app: :peri,
       version: @version,
-      elixir: "~> 1.17",
+      elixir: "~> 1.18",
       start_permanent: Mix.env() == :prod,
       docs: docs(),
       deps: deps(),
