@@ -7,7 +7,7 @@ your dependencies to enable `Peri.generate/1`:
 # mix.exs
 defp deps do
   [
-    {:peri, "~> 0.11.3"}, # x-release-please-version
+    {:peri, "~> 0.12.0"}, # x-release-please-version
     {:stream_data, "~> 1.0", only: [:test, :dev]}
   ]
 end
