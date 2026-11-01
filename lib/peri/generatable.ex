@@ -452,7 +452,7 @@ if Code.ensure_loaded?(StreamData) do
     end
 
     defp integer_multiples_generator(min, max, step) when min <= max do
-      first = Integer.ceil_div(min, step)
+      first = ceil_div(min, step)
       last = Integer.floor_div(max, step)
 
       if first <= last do
@@ -465,6 +465,21 @@ if Code.ensure_loaded?(StreamData) do
 
     defp integer_multiples_generator(_min, _max, _step),
       do: StreamData.filter(StreamData.integer(), fn _ -> false end)
+
+    defp ceil_div(dividend, divisor) when is_integer(dividend) and is_integer(divisor) do
+      if divisor == 0, do: raise(ArithmeticError)
+
+      case {div(dividend, divisor), rem(dividend, divisor)} do
+        {quotient, 0} ->
+          quotient
+
+        {quotient, _} when (dividend > 0 and divisor > 0) or (dividend < 0 and divisor < 0) ->
+          quotient + 1
+
+        {quotient, _remainder} ->
+          quotient
+      end
+    end
 
     defp integer_multiple_of?(_value, 0), do: false
 
