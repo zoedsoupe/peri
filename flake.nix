@@ -1,12 +1,12 @@
 {
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.11-small";
-    elixir-overlay.url = "github:zoedsoupe/elixir-overlay";
+    beam-overlay.url = "github:zeeetech/beam-overlay";
   };
 
   outputs = {
     nixpkgs,
-    elixir-overlay,
+    beam-overlay,
     ...
   }: let
     inherit (nixpkgs.lib) genAttrs;
@@ -15,7 +15,7 @@
       genAttrs flakeExposed (system:
         f (import nixpkgs {
           inherit system;
-          overlays = [elixir-overlay.overlays.default];
+          overlays = [beam-overlay.overlays.default];
         }));
   in {
     devShells = forAllSystems (pkgs: let
@@ -25,7 +25,12 @@
       default = mkShell {
         name = "peri";
         packages = with pkgs;
-          [(elixir-with-otp erlang_28).latest erlang_28]
+          [
+            (pkgs.beam-overlay.mkToolchain {
+              elixir.version = "1.20.2";
+            })
+            erlang_28
+          ]
           ++ lib.optional stdenv.isLinux [inotify-tools];
       };
     });
