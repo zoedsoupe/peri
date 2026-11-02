@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.12.1](https://github.com/zoedsoupe/peri/compare/v0.12.0...v0.12.1) (2026-11-02)
+
+
+### Miscellaneous Chores
+
+* **nix:** migrate dev shell to beam-overlay ([67c4474](https://github.com/zoedsoupe/peri/commit/67c4474d811aa85aeaa8efedde2321164305a736))
+
 ## [0.12.0](https://github.com/zoedsoupe/peri/compare/v0.11.3...v0.12.0) (2026-11-01)
 
 
