@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.12.1](https://github.com/zoedsoupe/peri/compare/v0.12.0...v0.12.1) (2026-11-18)
+
+
+### Bug Fixes
+
+* **json-schema:** validate date and time format strings ([c193c3e](https://github.com/zoedsoupe/peri/commit/c193c3e2ca2ff19cfdadcfa6e9fa69d63e26c922)), closes [#89](https://github.com/zoedsoupe/peri/issues/89)
+
+
+### Miscellaneous Chores
+
+* **nix:** migrate dev shell to beam-overlay ([67c4474](https://github.com/zoedsoupe/peri/commit/67c4474d811aa85aeaa8efedde2321164305a736))
+
 ## [0.12.0](https://github.com/zoedsoupe/peri/compare/v0.11.3...v0.12.0) (2026-11-01)
 
 
