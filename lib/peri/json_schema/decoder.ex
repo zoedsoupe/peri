@@ -250,9 +250,9 @@ defmodule Peri.JSONSchema.Decoder do
       case format do
         "email" -> {:regex, ~r/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/}
         "uri" -> {:regex, ~r/^[a-zA-Z][a-zA-Z\d+.-]*:/}
-        "date" -> :date
-        "time" -> :time
-        "date-time" -> :datetime
+        "date" -> {:custom, {__MODULE__, :validate_string_format, ["date"]}}
+        "time" -> {:custom, {__MODULE__, :validate_string_format, ["time"]}}
+        "date-time" -> {:custom, {__MODULE__, :validate_string_format, ["date-time"]}}
         _ -> nil
       end
     end)
@@ -282,6 +282,22 @@ defmodule Peri.JSONSchema.Decoder do
   end
 
   def validate_integral_float(_value, _schema), do: {:error, "expected an integer-valued number"}
+
+  @doc false
+  def validate_string_format(value, format) when is_binary(value) do
+    case parse_string_format(value, format) do
+      {:ok, _} -> :ok
+      {:ok, _, _} -> :ok
+      {:error, _} -> {:error, "expected a valid ISO 8601 #{format} string"}
+    end
+  end
+
+  def validate_string_format(_value, format),
+    do: {:error, "expected a valid ISO 8601 #{format} string"}
+
+  defp parse_string_format(value, "date"), do: Date.from_iso8601(value)
+  defp parse_string_format(value, "time"), do: Time.from_iso8601(value)
+  defp parse_string_format(value, "date-time"), do: DateTime.from_iso8601(value)
 
   defp merge_all_of!(left, right) do
     Enum.reduce(right, left, fn {key, value}, acc ->
@@ -349,9 +365,7 @@ defmodule Peri.JSONSchema.Decoder do
         case converter.(value) do
           nil -> base
           {:regex, regex} when base == :string -> {:string, {:regex, regex}}
-          :date -> :date
-          :time -> :time
-          :datetime -> :datetime
+          {:custom, _callback} = custom -> custom
           constraint -> {base, constraint}
         end
     end

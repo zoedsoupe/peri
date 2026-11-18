@@ -447,6 +447,19 @@ defmodule Peri.JSONSchemaTest do
       assert {:ok, :string} = Peri.from_json_schema(json)
     end
 
+    test "date and time formats validate ISO 8601 strings without coercion (issue #89)" do
+      for {format, valid, invalid} <- [
+            {"date", "2026-01-02", "2026-02-30"},
+            {"time", "23:59:58", "25:00:00"},
+            {"date-time", "2026-01-02T03:04:05Z", "2026-01-02"}
+          ] do
+        assert {:ok, schema} = Peri.from_json_schema(%{"type" => "string", "format" => format})
+        assert {:ok, ^valid} = Peri.validate(schema, valid)
+        assert {:error, _} = Peri.validate(schema, invalid)
+        assert {:error, _} = Peri.validate(schema, 123)
+      end
+    end
+
     test "default :keys opt yields string keys regardless of atom-table state" do
       missing = "missing_atom_#{System.unique_integer([:positive])}"
 
