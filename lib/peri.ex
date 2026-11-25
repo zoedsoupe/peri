@@ -1333,13 +1333,14 @@ defmodule Peri do
   defp validate_field(val, {:custom, {mod, fun}}, data, _opts)
        when is_atom(mod) and is_atom(fun) do
     root = maybe_get_root_data(data)
+    loaded? = Code.ensure_loaded?(mod)
 
     result =
       cond do
-        function_exported?(mod, fun, 1) ->
+        loaded? and function_exported?(mod, fun, 1) ->
           apply(mod, fun, [val])
 
-        function_exported?(mod, fun, 2) ->
+        loaded? and function_exported?(mod, fun, 2) ->
           apply(mod, fun, [val, root])
 
         true ->
@@ -1352,13 +1353,14 @@ defmodule Peri do
   defp validate_field(val, {:custom, {mod, fun, args}}, data, _opts)
        when is_atom(mod) and is_atom(fun) and is_list(args) do
     root = maybe_get_root_data(data)
+    loaded? = Code.ensure_loaded?(mod)
 
     result =
       cond do
-        function_exported?(mod, fun, length(args) + 1) ->
+        loaded? and function_exported?(mod, fun, length(args) + 1) ->
           apply(mod, fun, [val | args])
 
-        function_exported?(mod, fun, length(args) + 2) ->
+        loaded? and function_exported?(mod, fun, length(args) + 2) ->
           apply(mod, fun, [val, root | args])
 
         true ->
