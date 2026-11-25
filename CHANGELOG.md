@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.12.2](https://github.com/zoedsoupe/peri/compare/v0.12.1...v0.12.2) (2026-11-25)
+
+
+### Bug Fixes
+
+* ensure module is loaded before check for exported function on custom directive ([03a3a0c](https://github.com/zoedsoupe/peri/commit/03a3a0c6a5737f023abafe39415f08da0c560a26))
+
 ## [0.12.1](https://github.com/zoedsoupe/peri/compare/v0.12.0...v0.12.1) (2026-11-18)
 
 
